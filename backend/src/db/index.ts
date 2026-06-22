@@ -37,6 +37,29 @@ db.exec(`
     container_id TEXT NOT NULL UNIQUE,
     category TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS backups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    source TEXT,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'ok',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS proxy_hosts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    container_id TEXT,
+    name TEXT NOT NULL,
+    hostname TEXT NOT NULL UNIQUE,
+    target_host TEXT NOT NULL DEFAULT 'localhost',
+    target_port INTEGER NOT NULL,
+    https INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
@@ -68,4 +91,53 @@ export const categoryQueries = {
   ),
   getAll: db.prepare<[], { container_id: string; category: string }>('SELECT * FROM container_categories'),
   delete: db.prepare<[string]>('DELETE FROM container_categories WHERE container_id = ?'),
+};
+
+export interface BackupRow {
+  id: number;
+  type: string;
+  name: string;
+  source: string | null;
+  path: string;
+  size: number;
+  status: string;
+  created_at: string;
+}
+
+export const backupQueries = {
+  create: db.prepare<[string, string, string | null, string, number, string]>(
+    'INSERT INTO backups (type, name, source, path, size, status) VALUES (?, ?, ?, ?, ?, ?)'
+  ),
+  getAll: db.prepare<[], BackupRow>('SELECT * FROM backups ORDER BY created_at DESC'),
+  getById: db.prepare<[number], BackupRow>('SELECT * FROM backups WHERE id = ?'),
+  delete: db.prepare<[number]>('DELETE FROM backups WHERE id = ?'),
+};
+
+export interface ProxyRow {
+  id: number;
+  container_id: string | null;
+  name: string;
+  hostname: string;
+  target_host: string;
+  target_port: number;
+  https: number;
+  enabled: number;
+  created_at: string;
+}
+
+export const proxyQueries = {
+  getAll: db.prepare<[], ProxyRow>('SELECT * FROM proxy_hosts ORDER BY name'),
+  getById: db.prepare<[number], ProxyRow>('SELECT * FROM proxy_hosts WHERE id = ?'),
+  upsert: db.prepare<[string | null, string, string, string, number, number, number]>(
+    `INSERT INTO proxy_hosts (container_id, name, hostname, target_host, target_port, https, enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(hostname) DO UPDATE SET
+       container_id = excluded.container_id, name = excluded.name,
+       target_host = excluded.target_host, target_port = excluded.target_port,
+       https = excluded.https, enabled = excluded.enabled`
+  ),
+  setHttps: db.prepare<[number, number]>('UPDATE proxy_hosts SET https = ? WHERE id = ?'),
+  setEnabled: db.prepare<[number, number]>('UPDATE proxy_hosts SET enabled = ? WHERE id = ?'),
+  setHttpsAll: db.prepare<[number]>('UPDATE proxy_hosts SET https = ?'),
+  delete: db.prepare<[number]>('DELETE FROM proxy_hosts WHERE id = ?'),
 };

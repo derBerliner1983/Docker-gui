@@ -1,6 +1,6 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
-  ProcessInfo, CronJob, VM, AutostartUnit,
+  ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -64,6 +64,43 @@ export const api = {
     killProcess: (pid: number, signal: 'TERM' | 'KILL' = 'TERM') =>
       req(`/api/system/processes/${pid}/kill`, { method: 'POST', body: JSON.stringify({ signal }) }),
     autostart: () => req<{ units: AutostartUnit[] }>('/api/system/autostart'),
+    updates: () => req<{ available: boolean; manager: string | null; updates: PackageUpdate[]; count: number; rebootRequired: boolean; message?: string }>('/api/system/updates'),
+    checkUpdates: () => req('/api/system/updates/check', { method: 'POST' }),
+    applyUpdates: (packages?: string[]) =>
+      req<{ ok: boolean; output: string }>('/api/system/updates/apply', { method: 'POST', body: JSON.stringify({ packages }) }),
+  },
+
+  backups: {
+    list: () => req<{ backups: Backup[]; dir: string }>('/api/backups'),
+    sources: () => req<{ containers: BackupSource[] }>('/api/backups/sources'),
+    backupContainer: (containerId: string, stop: boolean) =>
+      req('/api/backups/container', { method: 'POST', body: JSON.stringify({ containerId, stop }) }),
+    backupDirectory: (dir: string, label?: string) =>
+      req('/api/backups/directory', { method: 'POST', body: JSON.stringify({ dir, label }) }),
+    backupVm: (vm: string) => req('/api/backups/vm', { method: 'POST', body: JSON.stringify({ vm }) }),
+    remove: (id: number) => req(`/api/backups/${id}`, { method: 'DELETE' }),
+    downloadUrl: (id: number) => `/api/backups/${id}/download`,
+  },
+
+  shares: {
+    list: () => req<{ available: boolean; running: boolean; shares: Share[]; message?: string }>('/api/shares'),
+    create: (share: Share) => req('/api/shares', { method: 'POST', body: JSON.stringify(share) }),
+    remove: (name: string) => req(`/api/shares/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    service: (action: 'start' | 'stop' | 'restart') =>
+      req('/api/shares/service', { method: 'POST', body: JSON.stringify({ action }) }),
+    addUser: (username: string, password: string) =>
+      req('/api/shares/user', { method: 'POST', body: JSON.stringify({ username, password }) }),
+  },
+
+  linuxUsers: {
+    list: (showSystem = false) => req<{ users: LinuxUser[] }>(`/api/linux-users${showSystem ? '?system=1' : ''}`),
+    groups: () => req<{ groups: string[] }>('/api/linux-groups'),
+    create: (data: { username: string; password?: string; groups?: string[]; sudo?: boolean }) =>
+      req('/api/linux-users', { method: 'POST', body: JSON.stringify(data) }),
+    setPassword: (username: string, password: string) =>
+      req(`/api/linux-users/${username}/password`, { method: 'POST', body: JSON.stringify({ password }) }),
+    remove: (username: string, removeHome: boolean) =>
+      req(`/api/linux-users/${username}${removeHome ? '?removeHome=1' : ''}`, { method: 'DELETE' }),
   },
 
   cron: {

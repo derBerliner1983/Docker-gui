@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
@@ -30,9 +30,10 @@ const NAV = [
   {
     label: 'System',
     items: [
+      { to: '/updates', icon: RefreshCw, label: 'System-Updates' },
       { to: '/automation', icon: Clock, label: 'Automatisierung' },
-      { to: '/shares', icon: FolderOpen, label: 'SMB-Freigaben' },
       { to: '/backups', icon: HardDrive, label: 'Backups' },
+      { to: '/shares', icon: FolderOpen, label: 'SMB-Freigaben' },
       { to: '/users', icon: Users, label: 'Benutzer' },
       { to: '/settings', icon: Settings, label: 'Einstellungen' },
     ],

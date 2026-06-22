@@ -11,6 +11,10 @@ import { containerRoutes } from './routes/containers';
 import { systemRoutes } from './routes/system';
 import { cronRoutes } from './routes/cron';
 import { vmRoutes } from './routes/vms';
+import { updateRoutes } from './routes/updates';
+import { backupRoutes } from './routes/backups';
+import { shareRoutes } from './routes/shares';
+import { linuxUserRoutes } from './routes/linuxusers';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -41,6 +45,10 @@ async function main() {
   await fastify.register(systemRoutes);
   await fastify.register(cronRoutes);
   await fastify.register(vmRoutes);
+  await fastify.register(updateRoutes);
+  await fastify.register(backupRoutes);
+  await fastify.register(shareRoutes);
+  await fastify.register(linuxUserRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

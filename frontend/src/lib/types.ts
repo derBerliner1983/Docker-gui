@@ -63,6 +63,50 @@ export interface AutostartUnit {
   state: string;
 }
 
+export interface PackageUpdate {
+  name: string;
+  currentVersion: string;
+  newVersion: string;
+  repo: string;
+}
+
+export interface Backup {
+  id: number;
+  type: string;
+  name: string;
+  source: string | null;
+  path: string;
+  size: number;
+  status: string;
+  created_at: string;
+  exists: boolean;
+}
+
+export interface BackupSource {
+  id: string;
+  name: string;
+  state: string;
+  volumes: number;
+}
+
+export interface Share {
+  name: string;
+  path: string;
+  readOnly: boolean;
+  guestOk: boolean;
+  browseable: boolean;
+}
+
+export interface LinuxUser {
+  username: string;
+  uid: number;
+  gid: number;
+  home: string;
+  shell: string;
+  groups: string[];
+  system: boolean;
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

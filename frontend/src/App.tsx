@@ -7,6 +7,10 @@ import { Containers } from './pages/Containers';
 import { TaskManager } from './pages/TaskManager';
 import { Automation } from './pages/Automation';
 import { VMs } from './pages/VMs';
+import { Updates } from './pages/Updates';
+import { Backups } from './pages/Backups';
+import { Shares } from './pages/Shares';
+import { Users } from './pages/Users';
 import { Placeholder } from './pages/Placeholder';
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -34,9 +38,10 @@ function AppRoutes() {
       <Route path="/containers" element={<Protected><Containers /></Protected>} />
       <Route path="/vms" element={<Protected><VMs /></Protected>} />
       <Route path="/automation" element={<Protected><Automation /></Protected>} />
-      <Route path="/shares" element={<Protected><Placeholder title="SMB-Freigaben" icon="📁" /></Protected>} />
-      <Route path="/backups" element={<Protected><Placeholder title="Backups" icon="💾" /></Protected>} />
-      <Route path="/users" element={<Protected><Placeholder title="Benutzerverwaltung" icon="👥" /></Protected>} />
+      <Route path="/updates" element={<Protected><Updates /></Protected>} />
+      <Route path="/backups" element={<Protected><Backups /></Protected>} />
+      <Route path="/shares" element={<Protected><Shares /></Protected>} />
+      <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Placeholder title="Einstellungen" icon="🔧" /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
