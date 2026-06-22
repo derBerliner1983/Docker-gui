@@ -6,7 +6,7 @@
 
 Web-basiertes Verwaltungs-Dashboard für Linux-Server (headless).  
 Kein Desktop nötig – alles per Browser vom PC, Handy oder Tablet.  
-Designsprache: **mana-hub** (Emerald-Akzent, Inter-Font, Hell/Dunkel, Glass-Effekte).
+Designsprache: eigenes Design-System (Emerald-Akzent, Inter-Font, Hell/Dunkel, Glass-Effekte).
 
 ---
 
@@ -33,7 +33,7 @@ Docker GUI Backend   ← läuft als systemd-Dienst auf dem Server
 
 ---
 
-## Design (mana-hub Tokens)
+## Design (Design-Tokens)
 
 | Token | Hell | Dunkel |
 |---|---|---|

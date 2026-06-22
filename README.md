@@ -3,7 +3,7 @@
 # ⬡ Core-Hub
 
 **Die Zentrale deines Linux-Servers.**  
-Web-basiertes Server-Management im mana-hub Design – Docker, VMs, Prozesse, Dienste, Cron & mehr. Ohne SSH, ohne Desktop.
+Web-basiertes Server-Management – Docker, VMs, Prozesse, Dienste, Cron & mehr. Ohne SSH, ohne Desktop.
 
 </div>
 
@@ -11,7 +11,7 @@ Web-basiertes Server-Management im mana-hub Design – Docker, VMs, Prozesse, Di
 
 ## Was ist Core-Hub?
 
-Ein selbst-gehostetes Verwaltungs-Dashboard für headless Linux-Server – funktional wie Unraid, aber im modernen **mana-hub Design** (Emerald-Akzent, Hell/Dunkel, Glass-Effekte). Du steuerst alles bequem im Browser.
+Ein selbst-gehostetes Verwaltungs-Dashboard für headless Linux-Server – funktional wie Unraid, aber in einem modernen, eigenen Design (Emerald-Akzent, Hell/Dunkel, Glass-Effekte). Du steuerst alles bequem im Browser.
 
 ## Features
 
@@ -96,7 +96,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | Backend | Fastify, TypeScript, dockerode, systeminformation |
 | Auth | JWT, bcrypt | 
 | Datenbank | SQLite (better-sqlite3) |
-| Design | mana-hub Design-Tokens |
+| Design | Eigenes Design-System (Design-Tokens) |
 | Deployment | systemd-Service, install.sh |
 
 Siehe [KONZEPT.md](./KONZEPT.md) für die vollständige Roadmap.

@@ -12,7 +12,7 @@ import { Backups } from './pages/Backups';
 import { Shares } from './pages/Shares';
 import { Users } from './pages/Users';
 import { Proxy } from './pages/Proxy';
-import { Placeholder } from './pages/Placeholder';
+import { Settings } from './pages/Settings';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -44,7 +44,7 @@ function AppRoutes() {
       <Route path="/shares" element={<Protected><Shares /></Protected>} />
       <Route path="/proxy" element={<Protected><Proxy /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
-      <Route path="/settings" element={<Protected><Placeholder title="Einstellungen" icon="🔧" /></Protected>} />
+      <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

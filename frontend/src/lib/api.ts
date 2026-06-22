@@ -118,6 +118,25 @@ export const api = {
     caUrl: () => '/api/proxy/ca',
   },
 
+  settings: {
+    info: () => req<{ version: string; hostname: string; platform: string; dataDir: string; node: string; uptime: number; features: Record<string, boolean> }>('/api/settings/info'),
+    exportUrl: () => '/api/settings/export',
+    restart: () => req<{ ok: boolean; note: string }>('/api/settings/restart', { method: 'POST' }),
+    import: async (file: File) => {
+      const token = localStorage.getItem('token');
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/settings/import', {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: fd,
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
+      return res.json() as Promise<{ ok: boolean; restored: string[]; note: string }>;
+    },
+  },
+
   cron: {
     list: () => req<{ jobs: CronJob[]; raw: string }>('/api/cron'),
     add: (schedule: string, command: string, comment?: string) =>

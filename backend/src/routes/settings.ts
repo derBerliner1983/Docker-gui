@@ -1,0 +1,184 @@
+import type { FastifyInstance } from 'fastify';
+import { execSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
+import { requireAuth, requireAdmin } from '../middleware/auth';
+import { privExec, safeExec, hasBinary } from '../lib/privilege';
+import { auditQueries } from '../db/index';
+
+export const APP_VERSION = '0.3.0';
+const DATA_DIR = process.env.DATA_DIR || process.cwd();
+const DB_FILE = path.join(DATA_DIR, 'docker-gui.db');
+const CADDYFILE = process.env.CADDYFILE || '/etc/caddy/Caddyfile';
+const SMB_CONF = '/etc/samba/smb.conf';
+const CADDY_PKI_DIRS = [
+  '/var/lib/caddy/.local/share/caddy/pki',
+  '/var/lib/caddy/.config/caddy/pki',
+];
+
+function findCaddyPki(): string | null {
+  for (const d of CADDY_PKI_DIRS) if (fs.existsSync(d)) return d;
+  const found = safeExec('dirname "$(find /var/lib/caddy -name root.crt 2>/dev/null | head -1)" 2>/dev/null').trim();
+  // root.crt is inside pki/authorities/local — climb up to the pki dir
+  if (found) {
+    const idx = found.indexOf('/pki/');
+    if (idx !== -1) return found.slice(0, idx + 4);
+  }
+  return null;
+}
+
+export async function settingsRoutes(fastify: FastifyInstance) {
+  fastify.get('/api/settings/info', { preHandler: requireAuth }, async (_req, reply) => {
+    reply.send({
+      version: APP_VERSION,
+      hostname: os.hostname(),
+      platform: `${os.type()} ${os.release()}`,
+      dataDir: DATA_DIR,
+      node: process.version,
+      uptime: process.uptime(),
+      features: {
+        docker: hasBinary('docker'),
+        libvirt: hasBinary('virsh'),
+        samba: hasBinary('smbd'),
+        caddy: hasBinary('caddy'),
+      },
+    });
+  });
+
+  // ── Export full configuration as one .tar.gz (migration backup) ──
+  fastify.get('/api/settings/export', { preHandler: requireAdmin }, async (req, reply) => {
+    const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'corehub-export-'));
+    try {
+      fs.mkdirSync(path.join(stage, 'data'), { recursive: true });
+      // SQLite DB (use backup-safe copy via VACUUM INTO if possible, else cp)
+      if (fs.existsSync(DB_FILE)) {
+        try {
+          execSync(`sqlite3 ${DB_FILE} ".backup '${path.join(stage, 'data', 'docker-gui.db')}'"`, { timeout: 10000 });
+        } catch {
+          fs.copyFileSync(DB_FILE, path.join(stage, 'data', 'docker-gui.db'));
+        }
+      }
+      // Caddy config + PKI (certs + internal CA)
+      if (fs.existsSync(CADDYFILE)) {
+        fs.mkdirSync(path.join(stage, 'caddy'), { recursive: true });
+        const cf = safeExec(`cat ${CADDYFILE}`, 4000);
+        fs.writeFileSync(path.join(stage, 'caddy', 'Caddyfile'), cf);
+      }
+      const pki = findCaddyPki();
+      if (pki) {
+        fs.mkdirSync(path.join(stage, 'caddy'), { recursive: true });
+        // copy with sudo since /var/lib/caddy is root-owned
+        privExec(`cp -r ${pki} ${path.join(stage, 'caddy', 'pki')}`);
+        privExec(`chmod -R a+r ${path.join(stage, 'caddy', 'pki')}`);
+      }
+      // Samba managed config
+      if (fs.existsSync(SMB_CONF)) {
+        const smb = safeExec(`cat ${SMB_CONF}`, 4000);
+        if (smb) {
+          fs.mkdirSync(path.join(stage, 'samba'), { recursive: true });
+          fs.writeFileSync(path.join(stage, 'samba', 'smb.conf'), smb);
+        }
+      }
+      // Manifest
+      fs.writeFileSync(path.join(stage, 'manifest.json'), JSON.stringify({
+        app: 'core-hub', version: APP_VERSION, exportedAt: new Date().toISOString(), hostname: os.hostname(),
+      }, null, 2));
+
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const outFile = path.join(os.tmpdir(), `core-hub-config-${ts}.tar.gz`);
+      execSync(`tar czf ${outFile} -C ${stage} .`, { timeout: 60000 });
+
+      auditQueries.log.run(req.user.id, 'settings.export', null);
+      const stream = fs.createReadStream(outFile);
+      reply.header('Content-Disposition', `attachment; filename="core-hub-config-${ts}.tar.gz"`);
+      reply.type('application/gzip');
+      stream.on('close', () => { try { fs.rmSync(outFile, { force: true }); fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ } });
+      return reply.send(stream);
+    } catch (err: unknown) {
+      try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Export fehlgeschlagen' });
+    }
+  });
+
+  // ── Import a configuration archive (drag & drop restore) ──
+  fastify.post('/api/settings/import', { preHandler: requireAdmin }, async (req, reply) => {
+    const mp = await req.file().catch(() => null);
+    if (!mp) return reply.status(400).send({ error: 'Keine Datei hochgeladen' });
+
+    const stage = fs.mkdtempSync(path.join(os.tmpdir(), 'corehub-import-'));
+    const archive = path.join(stage, 'upload.tar.gz');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const ws = fs.createWriteStream(archive);
+        mp.file.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+      });
+
+      const extractDir = path.join(stage, 'x');
+      fs.mkdirSync(extractDir);
+      execSync(`tar xzf ${archive} -C ${extractDir}`, { timeout: 60000 });
+
+      // Validate manifest
+      const manifestPath = path.join(extractDir, 'manifest.json');
+      if (!fs.existsSync(manifestPath)) return reply.status(400).send({ error: 'Ungültiges Archiv (manifest fehlt)' });
+
+      const restored: string[] = [];
+      // Restore DB
+      const importedDb = path.join(extractDir, 'data', 'docker-gui.db');
+      if (fs.existsSync(importedDb)) {
+        fs.copyFileSync(importedDb, DB_FILE + '.imported');
+        restored.push('Datenbank');
+      }
+      // Restore Caddyfile + PKI
+      const importedCaddyfile = path.join(extractDir, 'caddy', 'Caddyfile');
+      if (fs.existsSync(importedCaddyfile)) {
+        privExec(`mkdir -p /etc/caddy`);
+        privExec(`cp ${importedCaddyfile} ${CADDYFILE}`);
+        restored.push('Caddy-Konfiguration');
+      }
+      const importedPki = path.join(extractDir, 'caddy', 'pki');
+      if (fs.existsSync(importedPki)) {
+        const target = CADDY_PKI_DIRS[0];
+        privExec(`mkdir -p ${path.dirname(target)}`);
+        privExec(`cp -r ${importedPki} ${target}`);
+        privExec(`chown -R caddy:caddy ${path.dirname(target)} 2>/dev/null || true`);
+        restored.push('Zertifikate (CA)');
+      }
+      // Restore Samba
+      const importedSmb = path.join(extractDir, 'samba', 'smb.conf');
+      if (fs.existsSync(importedSmb) && hasBinary('smbd')) {
+        privExec(`cp ${importedSmb} ${SMB_CONF}`);
+        restored.push('SMB-Freigaben');
+      }
+
+      auditQueries.log.run(req.user.id, 'settings.import', restored.join(','));
+      reply.send({
+        ok: true,
+        restored,
+        note: 'Import erfolgreich. Bitte Core-Hub neustarten, damit die Datenbank geladen wird.',
+      });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Import fehlgeschlagen' });
+    } finally {
+      try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
+    }
+  });
+
+  // Restart the Core-Hub service (applies an imported DB)
+  fastify.post('/api/settings/restart', { preHandler: requireAdmin }, async (req, reply) => {
+    auditQueries.log.run(req.user.id, 'settings.restart', null);
+    // Promote an imported DB if present
+    if (fs.existsSync(DB_FILE + '.imported')) {
+      try {
+        fs.copyFileSync(DB_FILE + '.imported', DB_FILE);
+        fs.rmSync(DB_FILE + '.imported', { force: true });
+      } catch { /* */ }
+    }
+    reply.send({ ok: true, note: 'Neustart wird ausgelöst…' });
+    setTimeout(() => {
+      try { privExec('systemctl restart core-hub', { timeout: 8000 }); } catch { process.exit(0); }
+    }, 500);
+  });
+}
