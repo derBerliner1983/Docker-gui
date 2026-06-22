@@ -11,6 +11,7 @@ import { Updates } from './pages/Updates';
 import { Backups } from './pages/Backups';
 import { Shares } from './pages/Shares';
 import { Users } from './pages/Users';
+import { Proxy } from './pages/Proxy';
 import { Placeholder } from './pages/Placeholder';
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/updates" element={<Protected><Updates /></Protected>} />
       <Route path="/backups" element={<Protected><Backups /></Protected>} />
       <Route path="/shares" element={<Protected><Shares /></Protected>} />
+      <Route path="/proxy" element={<Protected><Proxy /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Placeholder title="Einstellungen" icon="🔧" /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

@@ -107,6 +107,25 @@ export interface LinuxUser {
   system: boolean;
 }
 
+export interface ProxyHost {
+  id: number;
+  containerId: string | null;
+  name: string;
+  hostname: string;
+  targetHost: string;
+  targetPort: number;
+  https: boolean;
+  enabled: boolean;
+  url: string;
+}
+
+export interface ProxyCandidate {
+  id: string;
+  name: string;
+  port: number;
+  alreadyProxied: boolean;
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

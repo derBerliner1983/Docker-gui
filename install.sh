@@ -37,6 +37,7 @@ apt-get install -y --no-install-recommends build-essential python3 2>/dev/null |
 command -v docker  &>/dev/null || warn "Docker nicht gefunden – Container-Verwaltung deaktiviert"
 command -v virsh   &>/dev/null || warn "libvirt/virsh nicht gefunden – VM-Verwaltung deaktiviert (apt install qemu-kvm libvirt-daemon-system virtinst)"
 command -v smbd    &>/dev/null || warn "Samba nicht gefunden – SMB-Freigaben deaktiviert (apt install samba)"
+command -v caddy   &>/dev/null || warn "Caddy nicht gefunden – automatisches HTTPS deaktiviert (apt install caddy)"
 
 # Benutzer anlegen
 if ! id "$SERVICE_USER" &>/dev/null; then

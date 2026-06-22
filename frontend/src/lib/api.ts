@@ -1,6 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
+  ProxyHost, ProxyCandidate,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -101,6 +102,20 @@ export const api = {
       req(`/api/linux-users/${username}/password`, { method: 'POST', body: JSON.stringify({ password }) }),
     remove: (username: string, removeHome: boolean) =>
       req(`/api/linux-users/${username}${removeHome ? '?removeHome=1' : ''}`, { method: 'DELETE' }),
+  },
+
+  proxy: {
+    list: () => req<{ available: boolean; running: boolean; caReady: boolean; hosts: ProxyHost[]; message?: string }>('/api/proxy'),
+    candidates: () => req<{ candidates: ProxyCandidate[] }>('/api/proxy/candidates'),
+    create: (data: { containerId?: string; name: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean }) =>
+      req('/api/proxy', { method: 'POST', body: JSON.stringify(data) }),
+    setHttps: (id: number, https: boolean) =>
+      req(`/api/proxy/${id}/https`, { method: 'POST', body: JSON.stringify({ https }) }),
+    setHttpsAll: (https: boolean) =>
+      req('/api/proxy/https-all', { method: 'POST', body: JSON.stringify({ https }) }),
+    remove: (id: number) => req(`/api/proxy/${id}`, { method: 'DELETE' }),
+    apply: () => req('/api/proxy/apply', { method: 'POST' }),
+    caUrl: () => '/api/proxy/ca',
   },
 
   cron: {

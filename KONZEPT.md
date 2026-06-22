@@ -89,21 +89,41 @@ Font: Inter.
 
 ---
 
-### 🔜 Phase 4 – Backup, SMB & Benutzer (als nächstes)
+### ✅ Phase 4 – Updates, Backup, SMB & Benutzer (implementiert)
 
-| Feature | Details |
+| Feature | Status |
 |---|---|
-| **Docker Backup** | Container stoppen → Volumes tar.gz → Lokal/Remote speichern |
-| **Image-Export** | `docker save` → .tar, Download |
-| **VM-Backup** | qcow2 sichern, geplante Backups via Cron |
-| **Maschinen-Backup** | Konfig/Datenverzeichnisse sichern |
-| **SMB-Freigaben** | Ordner per Klick freigeben, `smb.conf` generieren |
-| **Benutzerverwaltung** | Linux-User anlegen/löschen, Gruppen, sudo |
-| **Backup-Restore** | Backups per Klick wiederherstellen |
+| **System-Updates** (apt/dnf/pacman: suchen + einspielen) | ✅ |
+| **Docker-Backup** (Volumes via busybox, ohne Host-Root) | ✅ |
+| **Verzeichnis-Backup** (tar.gz) | ✅ |
+| **VM-Backup** (qcow2 komprimiert) | ✅ |
+| **Backup Download / Löschen** | ✅ |
+| **SMB-Freigaben** (anlegen/löschen, smbd steuern, SMB-User) | ✅ |
+| **Benutzerverwaltung** (Core-Hub Logins + Linux-User, sudo) | ✅ |
+| **Rechte-Modell** (sudoers-Allowlist via install.sh) | ✅ |
+
+### ✅ Phase 5 – Automatisches HTTPS (implementiert)
+
+| Feature | Status |
+|---|---|
+| **Reverse-Proxy** auf Caddy-Basis | ✅ |
+| **HTTPS pro Host** per Schalter aktivieren/deaktivieren | ✅ |
+| **HTTPS für alle** Hosts auf einmal | ✅ |
+| **Interne CA** (`tls internal`) – automatische Zertifikate | ✅ |
+| **Root-CA Download** zum Installieren auf Geräten | ✅ |
+| **Auto-Vorschläge** aus laufenden Containern mit HTTP-Port | ✅ |
+| Caddyfile-Generierung + Reload per Klick | ✅ |
+
+#### So funktioniert das HTTPS-Modul
+1. Jeder Container mit HTTP-Port bekommt einen Hostnamen (z.B. `dienst.lan`).
+2. Schalter „HTTPS" pro Host → Caddy terminiert TLS mit selbst erzeugtem Zertifikat.
+3. Core-Hub schreibt einen verwalteten Block in `/etc/caddy/Caddyfile` und lädt Caddy neu.
+4. Root-CA einmal herunterladen + auf Geräten installieren → überall grünes Schloss.
+5. Für öffentliche Domains nutzt Caddy automatisch Let's Encrypt.
 
 ---
 
-### 🔜 Phase 5 – Polishing
+### 🔜 Phase 6 – Polishing
 
 - HTTPS (selbstsigniert / Let's Encrypt via ACME)
 - 2-Faktor-Authentifizierung (TOTP)

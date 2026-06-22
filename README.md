@@ -36,8 +36,22 @@ Ein selbst-gehostetes Verwaltungs-Dashboard für headless Linux-Server – funkt
 - **Cronjobs** anlegen/löschen mit Zeitplan-Presets
 - **Autostart**: Dienste beim Systemstart aktivieren/deaktivieren
 
+### 🔄 System-Updates ("Linux updaten")
+- apt / dnf / pacman: verfügbare Updates auflisten, einzeln oder alle per Klick installieren
+
+### 💾 Backups
+- Docker-Volumes (ohne Host-Root), Verzeichnisse, VM-qcow2 → Download / Löschen
+
+### 📁 SMB-Freigaben & 👥 Benutzer
+- Ordner freigeben, Samba steuern, SMB-User · Core-Hub-Logins + Linux-Benutzer (sudo)
+
+### 🔒 Automatisches HTTPS (Reverse-Proxy)
+- Pro Container HTTPS per Schalter (oder alle auf einmal) – Caddy mit interner CA
+- Root-CA-Download → einmal auf Geräten installieren, überall grünes Schloss
+
 ### 🔐 Sicherheit
 - Eigenes Login (JWT + bcrypt), Rollen (Admin/Viewer), Audit-Log
+- sudoers-Allowlist statt Root-Prozess (via install.sh)
 
 ---
 
@@ -57,7 +71,8 @@ sudo bash install.sh
 ```bash
 sudo apt install docker.io                                   # Container
 sudo apt install qemu-kvm libvirt-daemon-system virtinst     # VMs
-sudo apt install samba                                       # SMB (Phase 4)
+sudo apt install samba                                       # SMB-Freigaben
+sudo apt install caddy                                       # automatisches HTTPS
 ```
 
 ---
