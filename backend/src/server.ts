@@ -18,6 +18,8 @@ import { shareRoutes } from './routes/shares';
 import { linuxUserRoutes } from './routes/linuxusers';
 import { proxyRoutes } from './routes/proxy';
 import { settingsRoutes } from './routes/settings';
+import { networkRoutes } from './routes/networks';
+import { firewallRoutes } from './routes/firewall';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -55,6 +57,8 @@ async function main() {
   await fastify.register(linuxUserRoutes);
   await fastify.register(proxyRoutes);
   await fastify.register(settingsRoutes);
+  await fastify.register(networkRoutes);
+  await fastify.register(firewallRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

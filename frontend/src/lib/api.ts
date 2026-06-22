@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -116,6 +116,26 @@ export const api = {
     remove: (id: number) => req(`/api/proxy/${id}`, { method: 'DELETE' }),
     apply: () => req('/api/proxy/apply', { method: 'POST' }),
     caUrl: () => '/api/proxy/ca',
+  },
+
+  networks: {
+    list: () => req<{ networks: DockerNetwork[] }>('/api/networks'),
+    interfaces: () => req<{ interfaces: HostInterface[] }>('/api/networks/interfaces'),
+    create: (data: { name: string; driver?: string; subnet?: string; gateway?: string; parent?: string; vlan?: string; internal?: boolean }) =>
+      req('/api/networks', { method: 'POST', body: JSON.stringify(data) }),
+    remove: (id: string) => req(`/api/networks/${id}`, { method: 'DELETE' }),
+    connect: (id: string, container: string, ip?: string, aliases?: string[]) =>
+      req(`/api/networks/${id}/connect`, { method: 'POST', body: JSON.stringify({ container, ip, aliases }) }),
+    disconnect: (id: string, container: string) =>
+      req(`/api/networks/${id}/disconnect`, { method: 'POST', body: JSON.stringify({ container }) }),
+  },
+
+  firewall: {
+    list: () => req<{ available: boolean; active: boolean; rules: FirewallRule[]; message?: string; listening?: string }>('/api/firewall'),
+    add: (data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string }) =>
+      req('/api/firewall', { method: 'POST', body: JSON.stringify(data) }),
+    remove: (num: number) => req(`/api/firewall/${num}`, { method: 'DELETE' }),
+    toggle: (enable: boolean) => req('/api/firewall/toggle', { method: 'POST', body: JSON.stringify({ enable }) }),
   },
 
   settings: {

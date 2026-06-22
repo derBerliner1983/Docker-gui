@@ -126,6 +126,43 @@ export interface ProxyCandidate {
   alreadyProxied: boolean;
 }
 
+export interface NetEndpoint {
+  container: string;
+  name: string;
+  ipv4: string;
+  mac: string;
+}
+
+export interface DockerNetwork {
+  id: string;
+  name: string;
+  driver: string;
+  scope: string;
+  internal: boolean;
+  subnet: string;
+  gateway: string;
+  parent: string;
+  vlan: string;
+  containers: NetEndpoint[];
+  builtin: boolean;
+}
+
+export interface HostInterface {
+  iface: string;
+  ip4: string;
+  mac: string;
+  type: string;
+  operstate: string;
+}
+
+export interface FirewallRule {
+  num: number;
+  raw: string;
+  to: string;
+  action: string;
+  from: string;
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

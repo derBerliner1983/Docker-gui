@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
@@ -25,6 +25,7 @@ const NAV = [
     items: [
       { to: '/containers', icon: Container, label: 'Container' },
       { to: '/vms', icon: MonitorPlay, label: 'Virtuelle Maschinen' },
+      { to: '/networks', icon: Network, label: 'Netzwerke & VLANs' },
       { to: '/proxy', icon: ShieldCheck, label: 'HTTPS & Proxy' },
     ],
   },
