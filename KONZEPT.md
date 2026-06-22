@@ -121,9 +121,48 @@ Font: Inter.
 4. Root-CA einmal herunterladen + auf Geräten installieren → überall grünes Schloss.
 5. Für öffentliche Domains nutzt Caddy automatisch Let's Encrypt.
 
+### ✅ Phase 6 – Einstellungen & Migration (implementiert)
+
+| Feature | Status |
+|---|---|
+| Einstellungen-Seite, Passwort ändern | ✅ |
+| System-Info + erkannte Module | ✅ |
+| **Migration Export/Import** (DB + Zertifikate + SMB) als .tar.gz | ✅ |
+| Import per **Drag & Drop**, Neustart-Übernahme | ✅ |
+
+### ✅ Phase 7 – Netzwerke, VLANs & Firewall (implementiert)
+
+| Feature | Status |
+|---|---|
+| Docker-Netzwerke auflisten/erstellen/löschen | ✅ |
+| **VLANs** via macvlan/ipvlan + Eltern-Schnittstelle + VLAN-ID | ✅ |
+| **Isolierte Netze** (internal) für unsichere Container | ✅ |
+| Container verbinden mit **fester IP** + Aliassen | ✅ |
+| **Firewall** (ufw): Regeln allow/deny/reject nach Port/IP | ✅ |
+
+### ✅ Phase 8 – Sicherheits-Check & Härtung (implementiert)
+
+| Feature | Status |
+|---|---|
+| **Sicherheits-Scan** mit Score (0–100) + Note | ✅ |
+| SSH (Root-Login, Passwort-Auth), Firewall-Status | ✅ |
+| Sicherheitsupdates, Auto-Updates, fail2ban, Reboot | ✅ |
+| Konten ohne Passwort, mehrere UID-0, offene Ports | ✅ |
+| Docker: privilegierte Container, docker.sock-Mounts | ✅ |
+| Konkrete **Härtungs-Tipps** pro Fund | ✅ |
+
 ---
 
-### 🔜 Phase 6 – Polishing
+### 🔜 Phase 9 – Weiteres Polishing (Ideen)
+- 2FA (TOTP) für Logins
+- Container „Update verfügbar"-Badge (Registry-Digest-Vergleich)
+- Automatische Backup-Zeitpläne (Backups × Cron)
+- Benachrichtigungen (E-Mail/Webhook bei Events)
+- Mobile-Optimierung, `.deb`-Paket
+
+---
+
+### 📓 Historie – ursprüngliche Phase-Planung
 
 - HTTPS (selbstsigniert / Let's Encrypt via ACME)
 - 2-Faktor-Authentifizierung (TOTP)

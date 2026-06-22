@@ -163,6 +163,25 @@ export interface FirewallRule {
   from: string;
 }
 
+export type SecurityStatus = 'ok' | 'warn' | 'critical' | 'info';
+
+export interface SecurityFinding {
+  id: string;
+  category: string;
+  title: string;
+  status: SecurityStatus;
+  detail: string;
+  recommendation: string;
+}
+
+export interface SecurityScan {
+  score: number;
+  grade: string;
+  counts: { ok: number; warn: number; critical: number; info: number };
+  findings: SecurityFinding[];
+  scannedAt: string;
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

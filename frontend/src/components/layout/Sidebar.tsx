@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
@@ -32,6 +32,7 @@ const NAV = [
   {
     label: 'System',
     items: [
+      { to: '/security', icon: ShieldAlert, label: 'Sicherheit' },
       { to: '/updates', icon: RefreshCw, label: 'System-Updates' },
       { to: '/automation', icon: Clock, label: 'Automatisierung' },
       { to: '/backups', icon: HardDrive, label: 'Backups' },

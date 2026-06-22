@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -128,6 +128,10 @@ export const api = {
       req(`/api/networks/${id}/connect`, { method: 'POST', body: JSON.stringify({ container, ip, aliases }) }),
     disconnect: (id: string, container: string) =>
       req(`/api/networks/${id}/disconnect`, { method: 'POST', body: JSON.stringify({ container }) }),
+  },
+
+  security: {
+    scan: () => req<SecurityScan>('/api/security/scan'),
   },
 
   firewall: {
