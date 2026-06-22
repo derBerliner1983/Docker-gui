@@ -1,0 +1,21 @@
+[Unit]
+Description=Docker GUI – Linux Server Management
+Documentation=https://github.com/derberliner1983/docker-gui
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=docker-gui
+Group=docker
+WorkingDirectory=/opt/docker-gui/backend
+Environment=NODE_ENV=production
+Environment=PORT=4200
+Environment=DATA_DIR=/var/lib/docker-gui
+ExecStart=/usr/bin/node dist/server.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

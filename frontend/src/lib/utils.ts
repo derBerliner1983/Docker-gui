@@ -1,0 +1,42 @@
+export function formatBytes(bytes: number, decimals = 1): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(i === 0 ? 0 : decimals)} ${sizes[i]}`;
+}
+
+export function formatUptime(seconds: number): string {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+export function timeAgo(unixTs: number): string {
+  const diff = Date.now() / 1000 - unixTs;
+  if (diff < 60) return 'gerade eben';
+  if (diff < 3600) return `vor ${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `vor ${Math.floor(diff / 3600)}h`;
+  if (diff < 2592000) return `vor ${Math.floor(diff / 86400)}d`;
+  return `vor ${Math.floor(diff / 2592000)} Mon.`;
+}
+
+const AVATAR_COLORS = [
+  '#10B981', '#06B6D4', '#8B5CF6', '#F59E0B',
+  '#EF4444', '#2563EB', '#EC4899', '#14B8A6',
+];
+
+export function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+export function containerInitial(name: string): string {
+  return name.charAt(0).toUpperCase();
+}
