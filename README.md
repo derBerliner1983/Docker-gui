@@ -73,6 +73,11 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **1-Klick-Härtung** pro Fund (Firewall einrichten, fail2ban/unattended-upgrades installieren, SSH absichern)
 - **SSH ein-/ausschalten** + Autostart
 
+### 🦠 Virenschutz (ClamAV)
+- ClamAV per Klick installieren, Viren-Signaturen aktualisieren (freshclam)
+- Verzeichnisse scannen (Hintergrund-Scan mit Live-Fortschritt), Funde anzeigen
+- Status (Daemon, Signatur-Alter) fließt in den Sicherheits-Check ein
+
 ### 🔄 System-Updates
 - apt / dnf / pacman: Updates suchen, einzeln oder alle installieren, Reboot-Hinweis
 
@@ -118,6 +123,7 @@ sudo apt install samba                                       # SMB-Freigaben
 sudo apt install caddy                                       # automatisches HTTPS
 sudo apt install ufw                                         # Firewall
 sudo apt install fail2ban unattended-upgrades                # Härtung
+sudo apt install clamav clamav-daemon                        # Virenschutz
 ```
 
 Fehlt ein Tool, zeigt das jeweilige Modul einen Hinweis statt eines Fehlers.

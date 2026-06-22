@@ -160,7 +160,8 @@ Font: Inter.
 | Container „Update verfügbar"-Erkennung (Registry-Digest) + 1-Klick-Update | ✅ |
 | VM-Netzwerke (libvirt: NAT/isoliert/Bridge + VLAN, VM anhängen) | ✅ |
 | SSH ein-/ausschaltbar + 1-Klick-Härtung (Firewall/fail2ban/Auto-Updates/SSH) | ✅ |
-| Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, Zeit) | ✅ |
+| **Virenschutz (ClamAV): installieren, Signaturen updaten, scannen** | ✅ |
+| Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, Zeit, AV) | ✅ |
 | 2FA (TOTP) für Logins | ⏳ |
 | Automatische Backup-Zeitpläne (Backups × Cron, Aufbewahrung) | ⏳ |
 | Benachrichtigungen (E-Mail/Webhook bei Events) | ⏳ |

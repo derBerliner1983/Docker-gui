@@ -2,6 +2,7 @@ import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
   ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
+  AntivirusStatus,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -137,6 +138,13 @@ export const api = {
     sshControl: (action: 'start' | 'stop' | 'enable' | 'disable') =>
       req('/api/security/ssh', { method: 'POST', body: JSON.stringify({ action }) }),
     fix: (action: string) => req<{ ok: boolean; output: string }>('/api/security/action', { method: 'POST', body: JSON.stringify({ action }) }),
+  },
+
+  antivirus: {
+    status: () => req<AntivirusStatus>('/api/antivirus'),
+    install: () => req('/api/antivirus/install', { method: 'POST' }),
+    update: () => req<{ ok: boolean; defsAgeDays: number | null }>('/api/antivirus/update', { method: 'POST' }),
+    scan: (path: string) => req('/api/antivirus/scan', { method: 'POST', body: JSON.stringify({ path }) }),
   },
 
   vmNetworks: {

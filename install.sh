@@ -38,6 +38,7 @@ command -v docker  &>/dev/null || warn "Docker nicht gefunden – Container-Verw
 command -v virsh   &>/dev/null || warn "libvirt/virsh nicht gefunden – VM-Verwaltung deaktiviert (apt install qemu-kvm libvirt-daemon-system virtinst)"
 command -v smbd    &>/dev/null || warn "Samba nicht gefunden – SMB-Freigaben deaktiviert (apt install samba)"
 command -v caddy   &>/dev/null || warn "Caddy nicht gefunden – automatisches HTTPS deaktiviert (apt install caddy)"
+command -v clamscan &>/dev/null || warn "ClamAV nicht gefunden – Virenschutz deaktiviert (apt install clamav clamav-daemon)"
 
 # Benutzer anlegen
 if ! id "$SERVICE_USER" &>/dev/null; then
@@ -58,7 +59,7 @@ $SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf,
   /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, \\
   /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
   /usr/bin/sed, /usr/bin/chown, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
-  /usr/bin/dpkg-reconfigure, /sbin/ufw
+  /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan
 EOF
 chmod 0440 /etc/sudoers.d/core-hub
 visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }

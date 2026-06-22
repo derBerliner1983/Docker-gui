@@ -120,6 +120,20 @@ function intrusionCheck(): Finding[] {
     : { id: 'f2b', category: 'Intrusion', title: 'Kein Brute-Force-Schutz (fail2ban)', status: 'warn', detail: 'fail2ban inaktiv/fehlt', recommendation: 'Installiere fail2ban, um wiederholte Login-Versuche automatisch zu sperren.', fix: 'fail2ban-install' }];
 }
 
+function antivirusCheck(): Finding[] {
+  const installed = hasBinary('clamscan') || hasBinary('clamdscan');
+  if (!installed) {
+    return [{ id: 'av', category: 'Virenschutz', title: 'Kein Virenschutz (ClamAV) installiert', status: 'warn', detail: 'clamav nicht gefunden', recommendation: 'Installiere ClamAV, um Dateien auf Schadsoftware prüfen zu können.', fix: 'antivirus-install' }];
+  }
+  const findings: Finding[] = [{ id: 'av', category: 'Virenschutz', title: 'Virenschutz installiert (ClamAV)', status: 'ok', detail: '', recommendation: '' }];
+  const ts = safeExec("stat -c %Y /var/lib/clamav/daily.cvd /var/lib/clamav/daily.cld 2>/dev/null | sort -n | tail -1").trim();
+  if (ts) {
+    const age = Math.floor((Date.now() / 1000 - parseInt(ts)) / 86400);
+    if (age > 7) findings.push({ id: 'av-defs', category: 'Virenschutz', title: `Viren-Signaturen veraltet (${age} Tage)`, status: 'warn', detail: '', recommendation: 'Aktualisiere die Signaturen unter „Virenschutz" (freshclam).' });
+  }
+  return findings;
+}
+
 function accountChecks(): Finding[] {
   const findings: Finding[] = [];
   const empty = privSafe("awk -F: '($2==\"\"){print $1}' /etc/shadow").trim();
@@ -182,6 +196,7 @@ export async function securityRoutes(fastify: FastifyInstance) {
       ...firewallCheck(),
       ...updatesCheck(),
       ...intrusionCheck(),
+      ...antivirusCheck(),
       ...accountChecks(),
       ...portsCheck(),
       ...hardeningChecks(),
@@ -256,6 +271,9 @@ export async function securityRoutes(fastify: FastifyInstance) {
           case 'auto-updates-install':
             privExec('apt-get install -y unattended-upgrades', { timeout: 180000 });
             privExec('bash -c "echo unattended-upgrades unattended-upgrades/enable_auto_updates boolean true | debconf-set-selections; dpkg-reconfigure -f noninteractive unattended-upgrades"', { timeout: 30000 });
+            break;
+          case 'antivirus-install':
+            privExec('apt-get install -y clamav clamav-daemon', { timeout: 300000 });
             break;
           default:
             return reply.status(400).send({ error: 'Unbekannte Aktion' });
