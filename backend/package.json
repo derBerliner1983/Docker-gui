@@ -1,6 +1,6 @@
 {
-  "name": "docker-gui-backend",
-  "version": "0.1.0",
+  "name": "core-hub-backend",
+  "version": "0.2.0",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -23,6 +23,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/dockerode": "^3.3.31",
     "@types/node": "^20.17.9",
+    "pino-pretty": "^11.3.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

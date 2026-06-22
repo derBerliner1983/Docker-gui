@@ -1,4 +1,7 @@
-import type { User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData } from './types';
+import type {
+  User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
+  ProcessInfo, CronJob, VM, AutostartUnit,
+} from './types';
 
 const getToken = () => localStorage.getItem('token');
 
@@ -57,6 +60,31 @@ export const api = {
     services: () => req<{ services: SystemService[] }>('/api/system/services'),
     controlService: (service: string, action: string) =>
       req('/api/system/services/control', { method: 'POST', body: JSON.stringify({ service, action }) }),
+    processes: () => req<{ processes: ProcessInfo[]; total: number; running: number }>('/api/system/processes'),
+    killProcess: (pid: number, signal: 'TERM' | 'KILL' = 'TERM') =>
+      req(`/api/system/processes/${pid}/kill`, { method: 'POST', body: JSON.stringify({ signal }) }),
+    autostart: () => req<{ units: AutostartUnit[] }>('/api/system/autostart'),
+  },
+
+  cron: {
+    list: () => req<{ jobs: CronJob[]; raw: string }>('/api/cron'),
+    add: (schedule: string, command: string, comment?: string) =>
+      req('/api/cron', { method: 'POST', body: JSON.stringify({ schedule, command, comment }) }),
+    remove: (id: number) => req(`/api/cron/${id}`, { method: 'DELETE' }),
+    saveRaw: (raw: string) => req('/api/cron/raw', { method: 'PUT', body: JSON.stringify({ raw }) }),
+  },
+
+  vms: {
+    list: () => req<{ available: boolean; vms: VM[]; message?: string }>('/api/vms'),
+    start: (name: string) => req(`/api/vms/${name}/start`, { method: 'POST' }),
+    shutdown: (name: string) => req(`/api/vms/${name}/shutdown`, { method: 'POST' }),
+    stop: (name: string) => req(`/api/vms/${name}/stop`, { method: 'POST' }),
+    reboot: (name: string) => req(`/api/vms/${name}/reboot`, { method: 'POST' }),
+    toggleAutostart: (name: string) => req(`/api/vms/${name}/autostart`, { method: 'POST' }),
+    snapshot: (name: string) => req(`/api/vms/${name}/snapshot`, { method: 'POST' }),
+    remove: (name: string) => req(`/api/vms/${name}`, { method: 'DELETE' }),
+    create: (data: { name: string; memory: number; vcpus: number; diskSize: number; iso?: string; osVariant?: string }) =>
+      req('/api/vms/create', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   users: {

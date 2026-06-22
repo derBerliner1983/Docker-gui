@@ -1,4 +1,6 @@
-# Docker GUI – Konzept & Roadmap
+# Core-Hub – Konzept & Roadmap
+
+> **Core-Hub** – die Zentrale deines Linux-Servers.
 
 ## Vision
 
@@ -55,64 +57,49 @@ Font: Inter.
 | Modul | Status |
 |---|---|
 | Login (JWT, bcrypt, HttpOnly-Cookie) | ✅ |
-| Dashboard (CPU, RAM, Disk, Uptime, Container-Übersicht) | ✅ |
 | Container-Liste (Start/Stop/Restart/Delete/Logs) | ✅ |
 | Container erstellen (Image, Ports, Env, Volumes, Kategorie) | ✅ |
 | Update-Pull (neues Image holen) | ✅ |
-| Systemdienste API (auflisten, start/stop) | ✅ |
 | Audit-Log (wer hat was getan) | ✅ |
-| Hell/Dunkel-Theme | ✅ |
-| Sidebar collapsible | ✅ |
+| Hell/Dunkel-Theme, collapsible Sidebar | ✅ |
 | 1-Klick Installation (install.sh + systemd) | ✅ |
 
+### ✅ Phase 2 – Monitoring & Taskmanager (implementiert)
+
+| Modul | Status |
+|---|---|
+| **Dashboard im Unraid-Stil** (collapsible Panels) | ✅ |
+| Prozessor-Panel: Gesamtlast + pro CPU-Kern + Verlaufsgraph | ✅ |
+| System-Panel: RAM-Donut mit Aufteilung System/VM/Docker/Frei | ✅ |
+| Disk-Donuts pro Mount, Netzwerk-Schnittstellen | ✅ |
+| **Taskmanager**: Prozesse auflisten + beenden (TERM/KILL) | ✅ |
+| **Taskmanager**: systemd-Dienste start/stop/restart | ✅ |
+| **Automatisierung**: Crontab anlegen/löschen (mit Presets) | ✅ |
+| **Automatisierung**: Autostart (Dienste enable/disable) | ✅ |
+
+### ✅ Phase 3 – Virtualisierung (implementiert)
+
+| Modul | Status |
+|---|---|
+| **VM-Liste** mit Status, vCPU, RAM (libvirt/virsh) | ✅ |
+| VM starten / herunterfahren / hart aus / neustarten | ✅ |
+| VM erstellen (virt-install Wizard: RAM, CPU, Disk, ISO) | ✅ |
+| VM-Snapshot erstellen | ✅ |
+| VM-Autostart umschalten, VM löschen | ✅ |
+
 ---
 
-### 🔜 Phase 2 – Docker-Komfort
-
-- **Update-Prüfung**: Digest-Vergleich, Badge "Update verfügbar" pro Container
-- **Container-Kategorien/Dienste**: Gruppierung (z.B. "Medien", "Monitoring")
-- **App-Templates**: Vorgefertigte 1-Klick-Install-Vorlagen (Plex, Nextcloud, etc.)
-- **Container-Detail-Seite**: Vollständige Inspect-Daten, Netzwerke, Mounts
-- **Live-Logs**: WebSocket-Stream statt Snapshot
-- **Resource-Graphen**: CPU/RAM-Verlauf über Zeit
-
----
-
-### 🔜 Phase 3 – System & Storage
+### 🔜 Phase 4 – Backup, SMB & Benutzer (als nächstes)
 
 | Feature | Details |
 |---|---|
-| **SMB-Freigaben** | Ordner per Klick freigeben, `smb.conf` generieren, smbd starten/stoppen |
-| **Systemdienste** | systemd-Units anzeigen, starten, stoppen, aktivieren/deaktivieren |
-| **Benutzerverwaltung** | Linux-User anlegen/löschen, Gruppen, sudo-Rechte |
-| **Disk-Management** | Partitionen anzeigen, Mounts verwalten |
-
----
-
-### 🔜 Phase 4 – Backup & VM
-
-| Feature | Details |
-|---|---|
-| **Docker Backup** | Container stoppen → Volumes tar.gz → Upload/Lokal speichern |
+| **Docker Backup** | Container stoppen → Volumes tar.gz → Lokal/Remote speichern |
 | **Image-Export** | `docker save` → .tar, Download |
-| **VM anlegen** | `qemu-img create`, `virsh define` via Klick-Wizard |
-| **VM starten/stoppen** | `virsh start/stop/shutdown` per Button |
-| **VM-Backup** | qcow2-Snapshot erstellen, Backup-Plan mit Zeitplan |
-| **VM-Liste** | Alle VMs mit Status (running/off), CPU/RAM-Zuweisung |
-| **ISO-Verwaltung** | ISO-Images hochladen, zum Boot zuweisen |
-
-**Backend-Endpunkte (geplant für Phase 4):**
-```
-GET  /api/vms                     → virsh list --all
-POST /api/vms/create              → qemu-img + virsh define + virsh start
-POST /api/vms/:id/start           → virsh start
-POST /api/vms/:id/stop            → virsh shutdown
-POST /api/vms/:id/snapshot        → virsh snapshot-create-as
-GET  /api/vms/:id/snapshots       → virsh snapshot-list
-POST /api/vms/:id/backup          → qemu-img convert → tar.gz
-GET  /api/backups                 → Liste aller Backups
-POST /api/backups/restore         → Backup wiederherstellen
-```
+| **VM-Backup** | qcow2 sichern, geplante Backups via Cron |
+| **Maschinen-Backup** | Konfig/Datenverzeichnisse sichern |
+| **SMB-Freigaben** | Ordner per Klick freigeben, `smb.conf` generieren |
+| **Benutzerverwaltung** | Linux-User anlegen/löschen, Gruppen, sudo |
+| **Backup-Restore** | Backups per Klick wiederherstellen |
 
 ---
 

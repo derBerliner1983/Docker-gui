@@ -47,8 +47,8 @@ export function Login() {
       </button>
 
       <div className="login-card">
-        <div className="login-logo">D</div>
-        <h1 className="login-title">Docker GUI</h1>
+        <div className="login-logo">⬡</div>
+        <h1 className="login-title">Core-Hub</h1>
         <p className="login-subtitle">Linux Server Management</p>
 
         <form className="login-form" onSubmit={handleSubmit}>

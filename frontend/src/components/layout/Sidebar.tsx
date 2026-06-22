@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Container, Layers, FolderOpen, Settings,
-  Users, Server, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive,
+  LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
@@ -14,19 +14,25 @@ interface SidebarProps {
 
 const NAV = [
   {
-    label: 'Navigation',
+    label: 'Übersicht',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/taskmanager', icon: Activity, label: 'Taskmanager' },
+    ],
+  },
+  {
+    label: 'Workloads',
+    items: [
       { to: '/containers', icon: Container, label: 'Container' },
-      { to: '/services', icon: Layers, label: 'Dienste' },
+      { to: '/vms', icon: MonitorPlay, label: 'Virtuelle Maschinen' },
     ],
   },
   {
     label: 'System',
     items: [
+      { to: '/automation', icon: Clock, label: 'Automatisierung' },
       { to: '/shares', icon: FolderOpen, label: 'SMB-Freigaben' },
       { to: '/backups', icon: HardDrive, label: 'Backups' },
-      { to: '/system', icon: Server, label: 'Systemdienste' },
       { to: '/users', icon: Users, label: 'Benutzer' },
       { to: '/settings', icon: Settings, label: 'Einstellungen' },
     ],
@@ -45,8 +51,8 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarPr
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar__header">
-        <div className="sidebar__logo">D</div>
-        {!collapsed && <span className="sidebar__title">Docker GUI</span>}
+        <div className="sidebar__logo">⬡</div>
+        {!collapsed && <span className="sidebar__title">Core-Hub</span>}
         <button className="sidebar__collapse" onClick={onToggle} title={collapsed ? 'Ausklappen' : 'Einklappen'}>
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>

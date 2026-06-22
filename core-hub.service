@@ -1,17 +1,17 @@
 [Unit]
-Description=Docker GUI – Linux Server Management
+Description=Core-Hub – Linux Server Management
 Documentation=https://github.com/derberliner1983/docker-gui
 After=network.target docker.service
-Requires=docker.service
+Wants=docker.service
 
 [Service]
 Type=simple
-User=docker-gui
+User=core-hub
 Group=docker
-WorkingDirectory=/opt/docker-gui/backend
+WorkingDirectory=/opt/core-hub/backend
 Environment=NODE_ENV=production
 Environment=PORT=4200
-Environment=DATA_DIR=/var/lib/docker-gui
+Environment=DATA_DIR=/var/lib/core-hub
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
 RestartSec=5

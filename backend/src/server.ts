@@ -9,6 +9,8 @@ import './types';
 import { authRoutes } from './routes/auth';
 import { containerRoutes } from './routes/containers';
 import { systemRoutes } from './routes/system';
+import { cronRoutes } from './routes/cron';
+import { vmRoutes } from './routes/vms';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -37,6 +39,8 @@ async function main() {
   await fastify.register(authRoutes);
   await fastify.register(containerRoutes);
   await fastify.register(systemRoutes);
+  await fastify.register(cronRoutes);
+  await fastify.register(vmRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {
@@ -51,7 +55,7 @@ async function main() {
   }
 
   await fastify.listen({ port: PORT, host: HOST });
-  console.log(`\n🐳 Docker GUI running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}\n`);
+  console.log(`\n⬡ Core-Hub running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}\n`);
 }
 
 main().catch((err) => {

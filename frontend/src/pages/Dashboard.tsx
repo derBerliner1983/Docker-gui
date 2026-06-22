@@ -1,52 +1,48 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { Cpu, Database, HardDrive, Clock, Container } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { ContainerBadge } from '../components/ui/Badge';
+import { Panel } from '../components/ui/Panel';
+import { Donut, donutColor } from '../components/ui/Donut';
+import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
-import { formatBytes, formatUptime, avatarColor, containerInitial } from '../lib/utils';
-import type { SystemStats, Container as DockerContainer } from '../lib/types';
+import { formatBytes, formatUptime } from '../lib/utils';
+import type { SystemStats } from '../lib/types';
 
-function StatCard({
-  label, value, sub, percent, icon: Icon,
-}: {
-  label: string; value: string; sub: string; percent?: number; icon: React.ElementType;
-}) {
-  const fill = percent ?? 0;
-  const fillClass = fill >= 90 ? 'stat-card__bar-fill--danger' : fill >= 70 ? 'stat-card__bar-fill--warn' : '';
-  return (
-    <div className="stat-card">
-      <div className="stat-card__label" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        <Icon size={11} />
-        {label}
-      </div>
-      <div className="stat-card__value">{value}</div>
-      {percent !== undefined && (
-        <div className="stat-card__bar">
-          <div className={`stat-card__bar-fill ${fillClass}`} style={{ width: `${Math.min(fill, 100)}%` }} />
-        </div>
-      )}
-      <div className="stat-card__sub">{sub}</div>
-    </div>
-  );
+const MEM_COLORS = {
+  system: '#71717A',
+  vm: '#F59E0B',
+  docker: '#10B981',
+  free: 'var(--color-border-strong)',
+};
+
+function loadClass(pct: number): string {
+  if (pct >= 90) return 'loadbar-fill--danger';
+  if (pct >= 70) return 'loadbar-fill--warn';
+  return 'loadbar-fill--accent';
+}
+
+function fmtRate(bytesPerSec: number): string {
+  if (bytesPerSec < 1024) return `${Math.round(bytesPerSec)} B/s`;
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSec / 1024 / 1024).toFixed(1)} MB/s`;
 }
 
 export function Dashboard() {
   const [stats, setStats] = useState<SystemStats | null>(null);
-  const [containers, setContainers] = useState<DockerContainer[]>([]);
   const [dockerVersion, setDockerVersion] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [history, setHistory] = useState<number[]>([]);
+  const histRef = useRef<number[]>([]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [s, c, dv] = await Promise.allSettled([
-        api.system.stats(),
-        api.containers.list(),
-        api.system.dockerVersion(),
-      ]);
-      if (s.status === 'fulfilled') setStats(s.value);
-      if (c.status === 'fulfilled') setContainers(c.value.containers);
+      const [s, dv] = await Promise.allSettled([api.system.stats(), api.system.dockerVersion()]);
+      if (s.status === 'fulfilled') {
+        setStats(s.value);
+        histRef.current = [...histRef.current, s.value.cpu.usage].slice(-40);
+        setHistory([...histRef.current]);
+      }
       if (dv.status === 'fulfilled') setDockerVersion(dv.value.version);
     } finally {
       setRefreshing(false);
@@ -55,111 +51,175 @@ export function Dashboard() {
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), 10_000);
+    const id = setInterval(() => void load(), 5000);
     return () => clearInterval(id);
   }, [load]);
 
-  const running = containers.filter((c) => c.state === 'running');
-  const stopped = containers.filter((c) => c.state !== 'running');
+  const mem = stats?.memory;
 
   return (
     <>
       <Topbar
         title="Dashboard"
-        subtitle={stats?.os.hostname ? `${stats.os.hostname} · ${stats.os.distro} ${stats.os.release}` : undefined}
+        subtitle={stats ? `${stats.os.hostname} · ${stats.os.distro} ${stats.os.release} · Uptime ${formatUptime(stats.os.uptime)}` : undefined}
         onRefresh={load}
         refreshing={refreshing}
       />
       <main className="page">
-        {/* Stats */}
-        {stats && (
-          <div className="stats-grid">
-            <StatCard
-              label="CPU"
-              value={`${stats.cpu.usage}%`}
-              sub={`${stats.cpu.cores} Kerne`}
-              percent={stats.cpu.usage}
-              icon={Cpu}
-            />
-            <StatCard
-              label="Arbeitsspeicher"
-              value={`${stats.memory.percent}%`}
-              sub={`${formatBytes(stats.memory.used)} / ${formatBytes(stats.memory.total)}`}
-              percent={stats.memory.percent}
-              icon={Database}
-            />
-            {stats.disk[0] && (
-              <StatCard
-                label="Festplatte"
-                value={`${stats.disk[0].percent}%`}
-                sub={`${formatBytes(stats.disk[0].used)} / ${formatBytes(stats.disk[0].size)} · ${stats.disk[0].mount}`}
-                percent={stats.disk[0].percent}
-                icon={HardDrive}
-              />
-            )}
-            <StatCard
-              label="Laufzeit"
-              value={formatUptime(stats.os.uptime)}
-              sub={`Kernel ${stats.os.kernel}`}
-              icon={Clock}
-            />
-          </div>
-        )}
-
-        {/* Container overview */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <div className="section-heading">Container</div>
-          <div style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--color-subtle)' }}>
-            <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>● {running.length} läuft</span>
-            <span>○ {stopped.length} gestoppt</span>
-            <span>∑ {containers.length} gesamt</span>
-            {dockerVersion && <span style={{ color: 'var(--color-faint)' }}>Docker {dockerVersion}</span>}
-          </div>
-        </div>
-
-        {containers.length === 0 ? (
-          <div className="card">
-            <div className="empty-state">
-              <div className="empty-state__icon"><Container size={44} strokeWidth={1} /></div>
-              <div className="empty-state__title">Keine Container gefunden</div>
-              <div className="empty-state__desc">
-                Starte Docker-Container auf dem Server oder{' '}
-                <Link to="/containers" style={{ color: 'var(--color-accent)' }}>erstelle neue Container</Link>.
+        {/* ── PROZESSOR ── */}
+        <Panel
+          title="Prozessor"
+          icon={<Cpu size={15} />}
+          subtitle={stats?.cpu.brand}
+          storageKey="cpu"
+          actions={stats && (
+            <span style={{ fontSize: 13, fontWeight: 700, color: stats.cpu.usage >= 90 ? 'var(--color-error)' : stats.cpu.usage >= 70 ? 'var(--color-warning)' : 'var(--color-accent)' }}>
+              {stats.cpu.usage}%
+            </span>
+          )}
+        >
+          {stats && (
+            <>
+              <div className="loadbar-row" style={{ marginTop: 10 }}>
+                <span className="loadbar-label" style={{ fontWeight: 600 }}>Gesamtlast</span>
+                <span className="loadbar-pct">{stats.cpu.usage}%</span>
+                <div className="loadbar-track">
+                  <div className={`loadbar-fill ${loadClass(stats.cpu.usage)}`} style={{ width: `${stats.cpu.usage}%` }} />
+                </div>
               </div>
+              <div style={{ borderTop: '1px solid var(--color-border)', margin: '10px 0', paddingTop: 4 }} />
+              {stats.cpu.perCore.map((load, i) => (
+                <div className="loadbar-row" key={i}>
+                  <span className="loadbar-label">CPU {i}</span>
+                  <span className="loadbar-pct">{load}%</span>
+                  <div className="loadbar-track">
+                    <div className={`loadbar-fill ${loadClass(load)}`} style={{ width: `${load}%` }} />
+                  </div>
+                </div>
+              ))}
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 6 }}>Verlauf (letzte ~3 Min)</div>
+                <Sparkline data={history} max={100} height={90} />
+              </div>
+            </>
+          )}
+        </Panel>
+
+        {/* ── SYSTEM (RAM + Disk donuts) ── */}
+        <Panel
+          title="System"
+          icon={<MemoryStick size={15} />}
+          subtitle={mem ? `Arbeitsspeicher: ${formatBytes(mem.total)}` : undefined}
+          storageKey="system"
+        >
+          {stats && mem && (
+            <div className="donut-group" style={{ marginTop: 12 }}>
+              {/* RAM with breakdown */}
+              <div className="donut-item">
+                <Donut
+                  size={140}
+                  thickness={15}
+                  segments={[
+                    { value: mem.breakdown.system, color: MEM_COLORS.system },
+                    { value: mem.breakdown.vm, color: MEM_COLORS.vm },
+                    { value: mem.breakdown.docker, color: MEM_COLORS.docker },
+                    { value: mem.breakdown.free, color: MEM_COLORS.free },
+                  ]}
+                  centerLabel={`${mem.percent}%`}
+                  centerSub="RAM"
+                  centerColor={donutColor(mem.percent)}
+                />
+                <div className="donut-item__caption">RAM-Nutzung</div>
+              </div>
+
+              {/* Legend */}
+              <div className="legend" style={{ alignSelf: 'center', minWidth: 170 }}>
+                <div className="legend__item">
+                  <span className="legend__dot" style={{ background: MEM_COLORS.system }} />
+                  <span className="legend__label">System</span>
+                  <span className="legend__value">{formatBytes(mem.breakdown.system)}</span>
+                </div>
+                <div className="legend__item">
+                  <span className="legend__dot" style={{ background: MEM_COLORS.vm }} />
+                  <span className="legend__label">VM</span>
+                  <span className="legend__value">{formatBytes(mem.breakdown.vm)}</span>
+                </div>
+                <div className="legend__item">
+                  <span className="legend__dot" style={{ background: MEM_COLORS.docker }} />
+                  <span className="legend__label">Docker</span>
+                  <span className="legend__value">{formatBytes(mem.breakdown.docker)}</span>
+                </div>
+                <div className="legend__item">
+                  <span className="legend__dot" style={{ background: '#A1A1AA' }} />
+                  <span className="legend__label">Frei</span>
+                  <span className="legend__value">{formatBytes(mem.breakdown.free)}</span>
+                </div>
+              </div>
+
+              {/* Disks */}
+              {stats.disk.slice(0, 4).map((d) => (
+                <div className="donut-item" key={d.mount}>
+                  <Donut
+                    size={130}
+                    thickness={14}
+                    segments={[
+                      { value: d.used, color: donutColor(d.percent) },
+                      { value: d.available, color: 'var(--color-border-strong)' },
+                    ]}
+                    centerLabel={`${d.percent}%`}
+                    centerColor={donutColor(d.percent)}
+                  />
+                  <div className="donut-item__caption">
+                    <div style={{ fontWeight: 600 }}>{d.mount}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-subtle)' }}>
+                      {formatBytes(d.used)} / {formatBytes(d.size)}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="card">
-            {containers.map((c) => (
-              <div
-                key={c.id}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '10px 16px', borderBottom: '1px solid var(--color-border)',
-                }}
-              >
-                <div
-                  className="container-avatar"
-                  style={{ background: avatarColor(c.name), width: 28, height: 28, fontSize: 12, borderRadius: 6 }}
-                >
-                  {containerInitial(c.name)}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--color-subtle)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {c.image}
-                  </div>
-                </div>
-                {c.ports.length > 0 && (
-                  <span className="port-chip">{c.ports[0]}</span>
-                )}
-                <ContainerBadge state={c.state} />
-              </div>
-            ))}
-          </div>
-        )}
+          )}
+        </Panel>
+
+        {/* ── NETZWERK ── */}
+        <Panel
+          title="Schnittstelle"
+          icon={<Network size={15} />}
+          subtitle={dockerVersion ? `Docker ${dockerVersion}` : undefined}
+          storageKey="network"
+        >
+          {stats && (
+            <table className="dtable" style={{ marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Schnittstelle</th>
+                  <th>Status</th>
+                  <th className="dtable__num"><ArrowDown size={11} style={{ display: 'inline' }} /> Eingehend</th>
+                  <th className="dtable__num"><ArrowUp size={11} style={{ display: 'inline' }} /> Ausgehend</th>
+                  <th className="dtable__num">Gesamt ↓</th>
+                  <th className="dtable__num">Gesamt ↑</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.network.map((n) => (
+                  <tr key={n.iface}>
+                    <td style={{ fontWeight: 600 }}>{n.iface}</td>
+                    <td>
+                      <span className={`badge badge--${n.operstate === 'up' ? 'running' : 'stopped'}`}>
+                        <span className="badge__dot" />
+                        {n.operstate === 'up' ? 'aktiv' : 'inaktiv'}
+                      </span>
+                    </td>
+                    <td className="dtable__num">{fmtRate(n.rx_sec)}</td>
+                    <td className="dtable__num">{fmtRate(n.tx_sec)}</td>
+                    <td className="dtable__num dtable__mono">{formatBytes(n.rx_bytes)}</td>
+                    <td className="dtable__num dtable__mono">{formatBytes(n.tx_bytes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Panel>
       </main>
     </>
   );

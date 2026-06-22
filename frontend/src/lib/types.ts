@@ -19,11 +19,48 @@ export interface Container {
 }
 
 export interface SystemStats {
-  cpu: { usage: number; cores: number };
-  memory: { total: number; used: number; free: number; percent: number };
+  cpu: { usage: number; cores: number; brand: string; speed: number; perCore: number[] };
+  memory: {
+    total: number; used: number; free: number; available: number; percent: number;
+    breakdown: { system: number; docker: number; vm: number; free: number };
+  };
   disk: { fs: string; type: string; size: number; used: number; available: number; percent: number; mount: string }[];
-  network: { iface: string; rx_bytes: number; tx_bytes: number; rx_sec: number; tx_sec: number }[];
+  network: { iface: string; rx_bytes: number; tx_bytes: number; rx_sec: number; tx_sec: number; operstate: string }[];
   os: { hostname: string; platform: string; distro: string; release: string; kernel: string; arch: string; uptime: number };
+}
+
+export interface ProcessInfo {
+  pid: number;
+  name: string;
+  cpu: number;
+  mem: number;
+  memRss: number;
+  user: string;
+  state: string;
+  command: string;
+}
+
+export interface CronJob {
+  id: number;
+  schedule: string;
+  command: string;
+  comment: string;
+  enabled: boolean;
+  raw: string;
+}
+
+export interface VM {
+  id: string;
+  name: string;
+  state: string;
+  vcpus: number;
+  memory: number;
+  autostart: boolean;
+}
+
+export interface AutostartUnit {
+  name: string;
+  state: string;
 }
 
 export interface DockerImage {
