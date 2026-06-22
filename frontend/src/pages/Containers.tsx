@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ArrowUpCircle, Download } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -169,6 +169,8 @@ export function Containers() {
   const [createOpen, setCreateOpen] = useState(false);
   const [logContainer, setLogContainer] = useState<Container | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean | null; image: string }>>({});
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -180,6 +182,13 @@ export function Containers() {
       setLoading(false);
       setRefreshing(false);
     }
+  }, []);
+
+  const checkUpdates = useCallback(async () => {
+    setCheckingUpdates(true);
+    try { const { updates } = await api.containers.updates(); setUpdates(updates); }
+    catch { /* ignore */ }
+    finally { setCheckingUpdates(false); }
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -212,10 +221,16 @@ export function Containers() {
         onRefresh={() => load()}
         refreshing={refreshing}
         actions={
-          <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}>
-            <Plus size={13} />
-            Neuer Container
-          </button>
+          <>
+            <button className="btn btn--outline btn--sm" onClick={checkUpdates} disabled={checkingUpdates}>
+              {checkingUpdates ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <ArrowUpCircle size={13} />}
+              Updates prüfen
+            </button>
+            <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}>
+              <Plus size={13} />
+              Neuer Container
+            </button>
+          </>
         }
       />
 
@@ -257,6 +272,11 @@ export function Containers() {
                       <div className="container-card__name">{c.name}</div>
                       <div className="container-card__image">{c.image}</div>
                     </div>
+                    {updates[c.id]?.hasUpdate && (
+                      <span className="badge badge--restarting" title="Neues Image verfügbar">
+                        <ArrowUpCircle size={11} /> Update
+                      </span>
+                    )}
                     <ContainerBadge state={c.state} />
                     <button
                       className="icon-btn"
@@ -320,6 +340,17 @@ export function Containers() {
                     >
                       <Terminal size={12} />
                     </button>
+                    {updates[c.id]?.hasUpdate && (
+                      <button
+                        className="btn btn--ghost btn--icon btn--sm"
+                        title="Neues Image laden (Update)"
+                        style={{ color: 'var(--color-warning)' }}
+                        disabled={!!busy}
+                        onClick={() => action(c.id, 'pull', async () => { await api.containers.pull(c.id); await checkUpdates(); })}
+                      >
+                        {busy === 'pull' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={12} />}
+                      </button>
+                    )}
                     <button
                       className="btn btn--danger btn--icon btn--sm"
                       title="Löschen"

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut } from '../components/ui/Donut';
+import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
-import type { SecurityScan, SecurityFinding, SecurityStatus } from '../lib/types';
+import type { SecurityScan, SecurityFinding, SecurityStatus, SshStatus } from '../lib/types';
 
 const STATUS_META: Record<SecurityStatus, { color: string; label: string; icon: React.ElementType; order: number }> = {
   critical: { color: 'var(--color-error)', label: 'Kritisch', icon: XCircle, order: 0 },
@@ -20,7 +21,7 @@ function scoreColor(score: number): string {
   return 'var(--color-error)';
 }
 
-function FindingRow({ f }: { f: SecurityFinding }) {
+function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean }) {
   const meta = STATUS_META[f.status];
   const Icon = meta.icon;
   return (
@@ -39,13 +40,56 @@ function FindingRow({ f }: { f: SecurityFinding }) {
           </div>
         )}
       </div>
+      {f.fix && (
+        <button className="btn btn--outline btn--sm" style={{ flexShrink: 0, alignSelf: 'center' }} disabled={fixing} onClick={() => onFix(f.fix!)}>
+          {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
+        </button>
+      )}
     </div>
+  );
+}
+
+function SshPanel() {
+  const [ssh, setSsh] = useState<SshStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => { try { setSsh(await api.security.ssh()); } catch { /* */ } }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const control = async (action: 'start' | 'stop' | 'enable' | 'disable') => {
+    if ((action === 'stop' || action === 'disable') && !confirm('Achtung: Ohne SSH verlierst du ggf. den Remote-Zugang. Fortfahren?')) return;
+    setBusy(true);
+    try { await api.security.sshControl(action); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title="SSH-Zugang" icon={<Terminal size={15} />} subtitle={ssh ? `Port ${ssh.port} · ${ssh.unit}` : undefined} storageKey="sec-ssh">
+      {!ssh ? <div className="text-muted text-sm" style={{ padding: 8 }}>Lade…</div> : !ssh.installed ? (
+        <div className="text-muted text-sm" style={{ padding: 8 }}>SSH-Server nicht installiert.</div>
+      ) : (
+        <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Dienst läuft</span>
+            <Switch checked={ssh.active} disabled={busy} onChange={(v) => control(v ? 'start' : 'stop')} />
+            <span className={`badge badge--${ssh.active ? 'running' : 'stopped'}`}><span className="badge__dot" />{ssh.active ? 'aktiv' : 'gestoppt'}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Autostart</span>
+            <Switch checked={ssh.enabled} disabled={busy} onChange={(v) => control(v ? 'enable' : 'disable')} />
+            <span className="text-muted text-sm">{ssh.enabled ? 'beim Boot' : 'deaktiviert'}</span>
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }
 
 export function Security() {
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fixing, setFixing] = useState<string | null>(null);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -55,6 +99,14 @@ export function Security() {
   }, []);
 
   useEffect(() => { void run(); }, [run]);
+
+  const fix = async (action: string) => {
+    if (!confirm(`Sicherheits-Maßnahme „${action}" jetzt anwenden?`)) return;
+    setFixing(action);
+    try { await api.security.fix(action); await run(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setFixing(null); }
+  };
 
   const sorted = scan ? [...scan.findings].sort((a, b) => STATUS_META[a.status].order - STATUS_META[b.status].order) : [];
   const actionable = sorted.filter((f) => f.status === 'critical' || f.status === 'warn');
@@ -121,10 +173,12 @@ export function Security() {
                 </div>
               ) : (
                 <div style={{ marginTop: 2 }}>
-                  {actionable.map((f) => <FindingRow key={f.id} f={f} />)}
+                  {actionable.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
                 </div>
               )}
             </Panel>
+
+            <SshPanel />
 
             {/* Passed checks */}
             <Panel
@@ -135,7 +189,7 @@ export function Security() {
               defaultCollapsed
             >
               <div style={{ marginTop: 2 }}>
-                {passed.map((f) => <FindingRow key={f.id} f={f} />)}
+                {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
               </div>
             </Panel>
           </>

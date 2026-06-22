@@ -5,11 +5,11 @@ import path from 'path';
 import os from 'os';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary } from '../lib/privilege';
-import { auditQueries } from '../db/index';
+import { auditQueries, DB_PATH } from '../db/index';
 
-export const APP_VERSION = '0.3.0';
+export const APP_VERSION = '0.4.0';
 const DATA_DIR = process.env.DATA_DIR || process.cwd();
-const DB_FILE = path.join(DATA_DIR, 'docker-gui.db');
+const DB_FILE = DB_PATH;
 const CADDYFILE = process.env.CADDYFILE || '/etc/caddy/Caddyfile';
 const SMB_CONF = '/etc/samba/smb.conf';
 const CADDY_PKI_DIRS = [
@@ -53,10 +53,11 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       fs.mkdirSync(path.join(stage, 'data'), { recursive: true });
       // SQLite DB (use backup-safe copy via VACUUM INTO if possible, else cp)
       if (fs.existsSync(DB_FILE)) {
+        const stagedDb = path.join(stage, 'data', 'core-hub.db');
         try {
-          execSync(`sqlite3 ${DB_FILE} ".backup '${path.join(stage, 'data', 'docker-gui.db')}'"`, { timeout: 10000 });
+          execSync(`sqlite3 ${DB_FILE} ".backup '${stagedDb}'"`, { timeout: 10000 });
         } catch {
-          fs.copyFileSync(DB_FILE, path.join(stage, 'data', 'docker-gui.db'));
+          fs.copyFileSync(DB_FILE, stagedDb);
         }
       }
       // Caddy config + PKI (certs + internal CA)
@@ -125,9 +126,12 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       if (!fs.existsSync(manifestPath)) return reply.status(400).send({ error: 'Ungültiges Archiv (manifest fehlt)' });
 
       const restored: string[] = [];
-      // Restore DB
-      const importedDb = path.join(extractDir, 'data', 'docker-gui.db');
-      if (fs.existsSync(importedDb)) {
+      // Restore DB (accept new and legacy filename)
+      const importedDb = [
+        path.join(extractDir, 'data', 'core-hub.db'),
+        path.join(extractDir, 'data', 'docker-gui.db'),
+      ].find((p) => fs.existsSync(p));
+      if (importedDb) {
         fs.copyFileSync(importedDb, DB_FILE + '.imported');
         restored.push('Datenbank');
       }

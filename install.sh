@@ -56,7 +56,9 @@ $SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf,
   /usr/bin/systemctl, /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /usr/sbin/groupadd, \\
   /usr/bin/chpasswd, /usr/bin/smbpasswd, /usr/bin/cp, /usr/bin/tar, /usr/bin/mkdir, /usr/bin/rm, \\
   /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, \\
-  /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx
+  /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
+  /usr/bin/sed, /usr/bin/chown, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
+  /usr/bin/dpkg-reconfigure, /sbin/ufw
 EOF
 chmod 0440 /etc/sudoers.d/core-hub
 visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }

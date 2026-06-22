@@ -153,12 +153,19 @@ Font: Inter.
 
 ---
 
-### 🔜 Phase 9 – Weiteres Polishing (Ideen)
-- 2FA (TOTP) für Logins
-- Container „Update verfügbar"-Badge (Registry-Digest-Vergleich)
-- Automatische Backup-Zeitpläne (Backups × Cron)
-- Benachrichtigungen (E-Mail/Webhook bei Events)
-- Mobile-Optimierung, `.deb`-Paket
+### 🟡 Phase 9 – begonnen
+
+| Feature | Status |
+|---|---|
+| Container „Update verfügbar"-Erkennung (Registry-Digest) + 1-Klick-Update | ✅ |
+| VM-Netzwerke (libvirt: NAT/isoliert/Bridge + VLAN, VM anhängen) | ✅ |
+| SSH ein-/ausschaltbar + 1-Klick-Härtung (Firewall/fail2ban/Auto-Updates/SSH) | ✅ |
+| Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, Zeit) | ✅ |
+| 2FA (TOTP) für Logins | ⏳ |
+| Automatische Backup-Zeitpläne (Backups × Cron, Aufbewahrung) | ⏳ |
+| Benachrichtigungen (E-Mail/Webhook bei Events) | ⏳ |
+| App-Vorlagen / 1-Klick-Install beliebter Dienste | ⏳ |
+| Mobile-Optimierung, Mehrsprachigkeit, `.deb`-Paket | ⏳ |
 
 ---
 

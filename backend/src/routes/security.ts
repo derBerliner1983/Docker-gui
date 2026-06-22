@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import Dockerode from 'dockerode';
-import { requireAuth } from '../middleware/auth';
+import bcrypt from 'bcryptjs';
+import { requireAuth, requireAdmin } from '../middleware/auth';
 import { safeExec, privExec, hasBinary } from '../lib/privilege';
+import { userQueries, auditQueries } from '../db/index';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 
@@ -14,6 +16,22 @@ interface Finding {
   status: Status;
   detail: string;
   recommendation: string;
+  fix?: string; // action id for one-click remediation
+}
+
+function sshServiceUnit(): string {
+  // Debian uses "ssh", RHEL/Arch use "sshd"
+  return safeExec('systemctl list-unit-files 2>/dev/null | grep -qE "^sshd?\\.service" && (systemctl list-unit-files | grep -qE "^ssh\\.service" && echo ssh || echo sshd) || echo ssh').trim() || 'ssh';
+}
+
+function defaultPasswordCheck(): Finding[] {
+  try {
+    const admin = userQueries.getByUsername.get('admin');
+    if (admin && bcrypt.compareSync('admin', admin.password_hash)) {
+      return [{ id: 'default-pw', category: 'Core-Hub', title: 'Standard-Passwort "admin" noch aktiv', status: 'critical', detail: 'Login admin/admin', recommendation: 'Ändere das Passwort sofort unter Einstellungen → Passwort ändern.' }];
+    }
+  } catch { /* */ }
+  return [{ id: 'default-pw', category: 'Core-Hub', title: 'Standard-Passwort geändert', status: 'ok', detail: '', recommendation: '' }];
 }
 
 function privSafe(cmd: string): string {
@@ -28,7 +46,7 @@ function sshChecks(): Finding[] {
   const rootLogin = conf.match(/^\s*PermitRootLogin\s+(\S+)/im)?.[1]?.toLowerCase();
   findings.push(
     rootLogin === 'yes'
-      ? { id: 'ssh-root', category: 'SSH', title: 'Root-Login per SSH erlaubt', status: 'critical', detail: `PermitRootLogin ${rootLogin}`, recommendation: 'Setze "PermitRootLogin no" in /etc/ssh/sshd_config und nutze einen normalen Benutzer mit sudo.' }
+      ? { id: 'ssh-root', category: 'SSH', title: 'Root-Login per SSH erlaubt', status: 'critical', detail: `PermitRootLogin ${rootLogin}`, recommendation: 'Setze "PermitRootLogin no" und nutze einen normalen Benutzer mit sudo.', fix: 'ssh-disable-root' }
       : { id: 'ssh-root', category: 'SSH', title: 'Root-Login per SSH deaktiviert', status: 'ok', detail: `PermitRootLogin ${rootLogin ?? 'prohibit-password'}`, recommendation: '' }
   );
 
@@ -36,20 +54,39 @@ function sshChecks(): Finding[] {
   findings.push(
     pwAuth === 'no'
       ? { id: 'ssh-pw', category: 'SSH', title: 'SSH nur per Schlüssel (kein Passwort)', status: 'ok', detail: 'PasswordAuthentication no', recommendation: '' }
-      : { id: 'ssh-pw', category: 'SSH', title: 'SSH-Passwort-Anmeldung aktiv', status: 'warn', detail: `PasswordAuthentication ${pwAuth ?? 'yes (Standard)'}`, recommendation: 'Nutze SSH-Schlüssel und setze "PasswordAuthentication no", um Brute-Force zu verhindern.' }
+      : { id: 'ssh-pw', category: 'SSH', title: 'SSH-Passwort-Anmeldung aktiv', status: 'warn', detail: `PasswordAuthentication ${pwAuth ?? 'yes (Standard)'}`, recommendation: 'Nutze SSH-Schlüssel und setze "PasswordAuthentication no".', fix: 'ssh-disable-password' }
   );
   return findings;
 }
 
 function firewallCheck(): Finding[] {
   if (!hasBinary('ufw')) {
-    return [{ id: 'fw', category: 'Firewall', title: 'Keine Firewall (ufw) installiert', status: 'warn', detail: 'ufw nicht gefunden', recommendation: 'Installiere und aktiviere ufw: apt install ufw && ufw enable.' }];
+    return [{ id: 'fw', category: 'Firewall', title: 'Keine Firewall (ufw) installiert', status: 'warn', detail: 'ufw nicht gefunden', recommendation: 'Installiere und aktiviere ufw (eingehend blockieren, SSH erlauben).', fix: 'firewall-install-enable' }];
   }
   const status = safeExec('ufw status 2>/dev/null') || privSafe('ufw status');
   const active = /Status:\s*active/i.test(status);
   return [active
     ? { id: 'fw', category: 'Firewall', title: 'Firewall aktiv', status: 'ok', detail: 'ufw active', recommendation: '' }
-    : { id: 'fw', category: 'Firewall', title: 'Firewall installiert, aber inaktiv', status: 'critical', detail: 'ufw inactive', recommendation: 'Aktiviere die Firewall: ufw enable (Standard: eingehend blockieren).' }];
+    : { id: 'fw', category: 'Firewall', title: 'Firewall installiert, aber inaktiv', status: 'critical', detail: 'ufw inactive', recommendation: 'Aktiviere die Firewall (Standard: eingehend blockieren, SSH erlauben).', fix: 'firewall-install-enable' }];
+}
+
+function hardeningChecks(): Finding[] {
+  const findings: Finding[] = [];
+  // MAC framework (AppArmor / SELinux)
+  const apparmor = safeExec('aa-status --enabled 2>/dev/null && echo on').includes('on') || safeExec('systemctl is-active apparmor 2>/dev/null').trim() === 'active';
+  const selinux = safeExec('getenforce 2>/dev/null').trim().toLowerCase() === 'enforcing';
+  findings.push(apparmor || selinux
+    ? { id: 'mac', category: 'Härtung', title: `Mandatory Access Control aktiv (${selinux ? 'SELinux' : 'AppArmor'})`, status: 'ok', detail: '', recommendation: '' }
+    : { id: 'mac', category: 'Härtung', title: 'Kein AppArmor/SELinux aktiv', status: 'warn', detail: 'MAC-Framework inaktiv', recommendation: 'Aktiviere AppArmor (Debian/Ubuntu) oder SELinux (RHEL) für zusätzliche Isolierung.' });
+
+  // Time sync
+  const timesync = safeExec('timedatectl show -p NTPSynchronized --value 2>/dev/null').trim();
+  if (timesync) {
+    findings.push(timesync === 'yes'
+      ? { id: 'time', category: 'Härtung', title: 'Zeitsynchronisation aktiv', status: 'ok', detail: 'NTP synchronisiert', recommendation: '' }
+      : { id: 'time', category: 'Härtung', title: 'Keine Zeitsynchronisation', status: 'info', detail: 'NTP nicht synchronisiert', recommendation: 'Aktiviere NTP: timedatectl set-ntp true (wichtig für Zertifikate/Logs).' });
+  }
+  return findings;
 }
 
 function updatesCheck(): Finding[] {
@@ -67,7 +104,7 @@ function updatesCheck(): Finding[] {
     findings.push(
       unattended !== '0' && unattended !== ''
         ? { id: 'auto-upd', category: 'Updates', title: 'Automatische Updates aktiv', status: 'ok', detail: 'unattended-upgrades installiert', recommendation: '' }
-        : { id: 'auto-upd', category: 'Updates', title: 'Keine automatischen Sicherheitsupdates', status: 'warn', detail: 'unattended-upgrades fehlt', recommendation: 'Installiere unattended-upgrades für automatische Sicherheitspatches.' }
+        : { id: 'auto-upd', category: 'Updates', title: 'Keine automatischen Sicherheitsupdates', status: 'warn', detail: 'unattended-upgrades fehlt', recommendation: 'Installiere unattended-upgrades für automatische Sicherheitspatches.', fix: 'auto-updates-install' }
     );
   }
   if (safeExec('test -f /var/run/reboot-required && echo y').trim() === 'y') {
@@ -80,7 +117,7 @@ function intrusionCheck(): Finding[] {
   const f2b = safeExec('systemctl is-active fail2ban 2>/dev/null').trim();
   return [f2b === 'active'
     ? { id: 'f2b', category: 'Intrusion', title: 'fail2ban aktiv', status: 'ok', detail: 'Brute-Force-Schutz läuft', recommendation: '' }
-    : { id: 'f2b', category: 'Intrusion', title: 'Kein Brute-Force-Schutz (fail2ban)', status: 'warn', detail: 'fail2ban inaktiv/fehlt', recommendation: 'Installiere fail2ban, um wiederholte Login-Versuche automatisch zu sperren.' }];
+    : { id: 'f2b', category: 'Intrusion', title: 'Kein Brute-Force-Schutz (fail2ban)', status: 'warn', detail: 'fail2ban inaktiv/fehlt', recommendation: 'Installiere fail2ban, um wiederholte Login-Versuche automatisch zu sperren.', fix: 'fail2ban-install' }];
 }
 
 function accountChecks(): Finding[] {
@@ -140,12 +177,14 @@ async function dockerChecks(): Promise<Finding[]> {
 export async function securityRoutes(fastify: FastifyInstance) {
   fastify.get('/api/security/scan', { preHandler: requireAuth }, async (_req, reply) => {
     const findings: Finding[] = [
+      ...defaultPasswordCheck(),
       ...sshChecks(),
       ...firewallCheck(),
       ...updatesCheck(),
       ...intrusionCheck(),
       ...accountChecks(),
       ...portsCheck(),
+      ...hardeningChecks(),
       ...(await dockerChecks()),
     ];
 
@@ -158,4 +197,75 @@ export async function securityRoutes(fastify: FastifyInstance) {
 
     reply.send({ score, grade, counts, findings, scannedAt: new Date().toISOString() });
   });
+
+  // ── SSH service status & control ──
+  fastify.get('/api/security/ssh', { preHandler: requireAuth }, async (_req, reply) => {
+    const unit = sshServiceUnit();
+    const installed = hasBinary('sshd') || safeExec(`systemctl list-unit-files 2>/dev/null | grep -c "^${unit}.service"`).trim() !== '0';
+    const active = safeExec(`systemctl is-active ${unit} 2>/dev/null`).trim() === 'active';
+    const enabled = safeExec(`systemctl is-enabled ${unit} 2>/dev/null`).trim() === 'enabled';
+    const port = safeExec('grep -hiE "^\\s*Port\\s+" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf 2>/dev/null | head -1').trim().split(/\s+/)[1] || '22';
+    reply.send({ installed, active, enabled, unit, port });
+  });
+
+  fastify.post<{ Body: { action: 'start' | 'stop' | 'enable' | 'disable' } }>(
+    '/api/security/ssh',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const action = req.body?.action;
+      if (!['start', 'stop', 'enable', 'disable'].includes(action)) return reply.status(400).send({ error: 'Ungültige Aktion' });
+      const unit = sshServiceUnit();
+      try {
+        if (action === 'enable') privExec(`systemctl enable --now ${unit}`, { timeout: 12000 });
+        else if (action === 'disable') privExec(`systemctl disable --now ${unit}`, { timeout: 12000 });
+        else privExec(`systemctl ${action} ${unit}`, { timeout: 12000 });
+        auditQueries.log.run(req.user.id, `ssh.${action}`, unit);
+        reply.send({ ok: true });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: err instanceof Error ? err.message : 'SSH-Steuerung fehlgeschlagen' });
+      }
+    }
+  );
+
+  // ── One-click hardening actions ──
+  fastify.post<{ Body: { action: string } }>(
+    '/api/security/action',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const action = req.body?.action;
+      const unit = sshServiceUnit();
+      try {
+        let output = '';
+        switch (action) {
+          case 'ssh-disable-root':
+            privExec(`bash -c "sed -ri 's/^[#\\s]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config; grep -qiE '^PermitRootLogin' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config"`);
+            privExec(`systemctl reload ${unit} 2>/dev/null || systemctl restart ${unit}`, { timeout: 12000 });
+            break;
+          case 'ssh-disable-password':
+            privExec(`bash -c "sed -ri 's/^[#\\s]*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config; grep -qiE '^PasswordAuthentication' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config"`);
+            privExec(`systemctl reload ${unit} 2>/dev/null || systemctl restart ${unit}`, { timeout: 12000 });
+            break;
+          case 'firewall-install-enable':
+            if (!hasBinary('ufw')) privExec('apt-get install -y ufw', { timeout: 180000 });
+            privExec('bash -c "ufw default deny incoming; ufw default allow outgoing; ufw allow OpenSSH 2>/dev/null || ufw allow 22/tcp; yes | ufw enable"', { timeout: 30000 });
+            break;
+          case 'fail2ban-install':
+            privExec('apt-get install -y fail2ban', { timeout: 180000 });
+            privExec('systemctl enable --now fail2ban', { timeout: 15000 });
+            break;
+          case 'auto-updates-install':
+            privExec('apt-get install -y unattended-upgrades', { timeout: 180000 });
+            privExec('bash -c "echo unattended-upgrades unattended-upgrades/enable_auto_updates boolean true | debconf-set-selections; dpkg-reconfigure -f noninteractive unattended-upgrades"', { timeout: 30000 });
+            break;
+          default:
+            return reply.status(400).send({ error: 'Unbekannte Aktion' });
+        }
+        auditQueries.log.run(req.user.id, 'security.fix', action);
+        reply.send({ ok: true, output });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+      }
+    }
+  );
 }

@@ -21,6 +21,8 @@ import { settingsRoutes } from './routes/settings';
 import { networkRoutes } from './routes/networks';
 import { firewallRoutes } from './routes/firewall';
 import { securityRoutes } from './routes/security';
+import { vmNetworkRoutes } from './routes/vmnetworks';
+import { imageUpdateRoutes } from './routes/imageupdates';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -61,6 +63,8 @@ async function main() {
   await fastify.register(networkRoutes);
   await fastify.register(firewallRoutes);
   await fastify.register(securityRoutes);
+  await fastify.register(vmNetworkRoutes);
+  await fastify.register(imageUpdateRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

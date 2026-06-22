@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
-import type { DockerNetwork, HostInterface, FirewallRule, Container } from '../lib/types';
+import type { DockerNetwork, HostInterface, FirewallRule, Container, VmNetwork, VM } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
   const [name, setName] = useState('');
@@ -198,7 +198,174 @@ function FirewallPanel() {
   );
 }
 
+function CreateVmNetModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const [mode, setMode] = useState('nat');
+  const [subnet, setSubnet] = useState('192.168.123.0');
+  const [bridge, setBridge] = useState('br0');
+  const [vlan, setVlan] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const save = async () => {
+    if (!name.trim()) { setError('Name erforderlich'); return; }
+    setLoading(true); setError('');
+    try {
+      await api.vmNetworks.create({ name, mode, subnet: subnet || undefined, bridge: bridge || undefined, vlan: vlan || undefined });
+      setName(''); setVlan(''); onDone(); onClose();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} title="Neues VM-Netzwerk" onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Erstellen
+        </button>
+      </>}>
+      {error && <div className="login-error">{error}</div>}
+      <div className="form-row">
+        <div className="form-group"><label className="form-label">Name</label>
+          <input className="input input--rect" placeholder="vm-dmz" value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-group"><label className="form-label">Modus</label>
+          <select className="input input--rect" value={mode} onChange={(e) => setMode(e.target.value)} style={{ cursor: 'pointer' }}>
+            <option value="nat">NAT (Internet über Host)</option>
+            <option value="isolated">Isoliert (kein Außenzugriff)</option>
+            <option value="bridge">Bridge (direkt im LAN)</option>
+          </select></div>
+      </div>
+      {mode !== 'bridge' ? (
+        <div className="form-group"><label className="form-label">Subnetz</label>
+          <input className="input input--rect" placeholder="192.168.123.0" value={subnet} onChange={(e) => setSubnet(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+          <div className="form-hint">DHCP wird automatisch eingerichtet (.2–.254).</div></div>
+      ) : (
+        <div className="form-row">
+          <div className="form-group"><label className="form-label">Host-Bridge</label>
+            <input className="input input--rect" placeholder="br0" value={bridge} onChange={(e) => setBridge(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
+          <div className="form-group"><label className="form-label">VLAN-ID (optional)</label>
+            <input className="input input--rect" placeholder="z.B. 100" value={vlan} onChange={(e) => setVlan(e.target.value)} /></div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function AttachVmModal({ net, open, onClose, onDone }: { net: VmNetwork | null; open: boolean; onClose: () => void; onDone: () => void }) {
+  const [vms, setVms] = useState<VM[]>([]);
+  const [vm, setVm] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.vms.list().then((r) => { setVms(r.vms); if (r.vms[0]) setVm(r.vms[0].name); }).catch(() => {});
+  }, [open]);
+
+  const save = async () => {
+    if (!net || !vm) { setError('VM wählen'); return; }
+    setLoading(true); setError('');
+    try { await api.vmNetworks.attach(net.name, vm); onDone(); onClose(); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} title={`VM anhängen → ${net?.name ?? ''}`} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Anhängen
+        </button>
+      </>}>
+      {error && <div className="login-error">{error}</div>}
+      <div className="form-group"><label className="form-label">Virtuelle Maschine</label>
+        <select className="input input--rect" value={vm} onChange={(e) => setVm(e.target.value)} style={{ cursor: 'pointer' }}>
+          {vms.length === 0 && <option value="">Keine VMs</option>}
+          {vms.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+        </select>
+        <div className="form-hint">Hängt eine virtio-Netzwerkkarte an (config + live).</div></div>
+    </Modal>
+  );
+}
+
+function VmNetworksView() {
+  const [networks, setNetworks] = useState<VmNetwork[]>([]);
+  const [available, setAvailable] = useState(true);
+  const [message, setMessage] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [attachNet, setAttachNet] = useState<VmNetwork | null>(null);
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
+
+  const load = useCallback(async () => {
+    const res = await api.vmNetworks.list();
+    setNetworks(res.networks); setAvailable(res.available); setMessage(res.message ?? '');
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const act = async (name: string, fn: () => Promise<unknown>, confirmMsg?: string) => {
+    if (confirmMsg && !confirm(confirmMsg)) return;
+    setBusy((b) => ({ ...b, [name]: true }));
+    try { await fn(); await load(); } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setBusy((b) => { const n = { ...b }; delete n[name]; return n; }); }
+  };
+
+  if (!available) {
+    return (
+      <div className="empty-state">
+        <div className="empty-state__icon"><MonitorPlay size={44} strokeWidth={1} /></div>
+        <div className="empty-state__title">libvirt nicht installiert</div>
+        <div className="empty-state__desc">{message}<br /><br /><code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--color-surface-sunken)', padding: '4px 8px', borderRadius: 6 }}>sudo apt install qemu-kvm libvirt-daemon-system</code></div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> VM-Netzwerk</button>
+      </div>
+      {networks.length === 0 ? (
+        <div className="empty-state"><div className="empty-state__desc">Keine VM-Netzwerke. Erstelle eins mit dem Button oben.</div></div>
+      ) : (
+        <Panel title="libvirt-Netzwerke" icon={<Network size={15} />} subtitle={`${networks.length}`} storageKey="vmnets">
+          <table className="dtable" style={{ marginTop: 6 }}>
+            <thead><tr><th>Name</th><th>Modus</th><th>Bridge</th><th>Status</th><th>Autostart</th><th style={{ width: 150 }}></th></tr></thead>
+            <tbody>
+              {networks.map((n) => (
+                <tr key={n.name}>
+                  <td style={{ fontWeight: 600 }}>{n.name}</td>
+                  <td><span className="badge badge--paused">{n.forward}</span></td>
+                  <td className="dtable__mono text-muted">{n.bridge || '—'}</td>
+                  <td><span className={`badge badge--${n.active ? 'running' : 'stopped'}`}><span className="badge__dot" />{n.active ? 'aktiv' : 'gestoppt'}</span></td>
+                  <td>{n.autostart ? <Star size={13} fill="var(--color-warning)" color="var(--color-warning)" /> : '—'}</td>
+                  <td>
+                    <div className="dtable__actions">
+                      <button className="btn btn--ghost btn--icon btn--sm" title="VM anhängen" onClick={() => setAttachNet(n)}><Link size={12} /></button>
+                      {n.active
+                        ? <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.stop(n.name))}><Square size={12} /></button>
+                        : <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.start(n.name))}><Play size={12} /></button>}
+                      <button className="btn btn--ghost btn--icon btn--sm" title="Autostart umschalten" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.autostart(n.name))} style={n.autostart ? { color: 'var(--color-warning)' } : undefined}><Star size={12} /></button>
+                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.remove(n.name), `VM-Netzwerk "${n.name}" löschen?`)}><Trash2 size={12} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
+      <CreateVmNetModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={load} />
+      <AttachVmModal net={attachNet} open={!!attachNet} onClose={() => setAttachNet(null)} onDone={load} />
+    </>
+  );
+}
+
+type NetTab = 'docker' | 'vm' | 'firewall';
+
 export function Networks() {
+  const [view, setView] = useState<NetTab>('docker');
   const [networks, setNetworks] = useState<DockerNetwork[]>([]);
   const [interfaces, setInterfaces] = useState<HostInterface[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
@@ -232,13 +399,21 @@ export function Networks() {
     <>
       <Topbar
         title="Netzwerke & VLANs"
-        subtitle={`${networks.length} Netzwerke`}
+        subtitle={`${networks.length} Docker-Netzwerke`}
         onRefresh={load}
         refreshing={refreshing}
-        actions={<button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> Netzwerk</button>}
+        actions={view === 'docker' && <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> Netzwerk</button>}
       />
       <main className="page">
-        {networks.map((n) => (
+        <div className="filter-tabs">
+          <button className={`filter-tab${view === 'docker' ? ' filter-tab--active' : ''}`} onClick={() => setView('docker')}>Docker</button>
+          <button className={`filter-tab${view === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setView('vm')}>VMs</button>
+          <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>Firewall</button>
+        </div>
+
+        {view === 'vm' && <VmNetworksView />}
+        {view === 'firewall' && <FirewallPanel />}
+        {view === 'docker' && networks.map((n) => (
           <Panel
             key={n.id}
             title={n.name}
@@ -281,8 +456,6 @@ export function Networks() {
             )}
           </Panel>
         ))}
-
-        <FirewallPanel />
       </main>
 
       <CreateNetModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={load} interfaces={interfaces} />

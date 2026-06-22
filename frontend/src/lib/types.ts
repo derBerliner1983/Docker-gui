@@ -172,6 +172,7 @@ export interface SecurityFinding {
   status: SecurityStatus;
   detail: string;
   recommendation: string;
+  fix?: string;
 }
 
 export interface SecurityScan {
@@ -180,6 +181,23 @@ export interface SecurityScan {
   counts: { ok: number; warn: number; critical: number; info: number };
   findings: SecurityFinding[];
   scannedAt: string;
+}
+
+export interface SshStatus {
+  installed: boolean;
+  active: boolean;
+  enabled: boolean;
+  unit: string;
+  port: string;
+}
+
+export interface VmNetwork {
+  name: string;
+  active: boolean;
+  autostart: boolean;
+  persistent: boolean;
+  bridge: string;
+  forward: string;
 }
 
 export interface DockerImage {

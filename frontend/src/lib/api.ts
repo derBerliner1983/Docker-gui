@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -49,6 +49,7 @@ export const api = {
     pull: (id: string) => req(`/api/containers/${id}/pull`, { method: 'POST' }),
     setCategory: (id: string, category: string) =>
       req(`/api/containers/${id}/category`, { method: 'POST', body: JSON.stringify({ category }) }),
+    updates: () => req<{ updates: Record<string, { hasUpdate: boolean | null; image: string }> }>('/api/containers/updates'),
   },
 
   images: {
@@ -132,6 +133,21 @@ export const api = {
 
   security: {
     scan: () => req<SecurityScan>('/api/security/scan'),
+    ssh: () => req<SshStatus>('/api/security/ssh'),
+    sshControl: (action: 'start' | 'stop' | 'enable' | 'disable') =>
+      req('/api/security/ssh', { method: 'POST', body: JSON.stringify({ action }) }),
+    fix: (action: string) => req<{ ok: boolean; output: string }>('/api/security/action', { method: 'POST', body: JSON.stringify({ action }) }),
+  },
+
+  vmNetworks: {
+    list: () => req<{ available: boolean; networks: VmNetwork[]; message?: string }>('/api/vm-networks'),
+    create: (data: { name: string; mode?: string; subnet?: string; bridge?: string; vlan?: string }) =>
+      req('/api/vm-networks', { method: 'POST', body: JSON.stringify(data) }),
+    start: (name: string) => req(`/api/vm-networks/${name}/start`, { method: 'POST' }),
+    stop: (name: string) => req(`/api/vm-networks/${name}/stop`, { method: 'POST' }),
+    autostart: (name: string) => req(`/api/vm-networks/${name}/autostart`, { method: 'POST' }),
+    remove: (name: string) => req(`/api/vm-networks/${name}`, { method: 'DELETE' }),
+    attach: (name: string, vm: string) => req(`/api/vm-networks/${name}/attach`, { method: 'POST', body: JSON.stringify({ vm }) }),
   },
 
   firewall: {

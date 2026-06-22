@@ -2,60 +2,100 @@
 
 # ⬡ Core-Hub
 
-**Die Zentrale deines Linux-Servers.**  
-Web-basiertes Server-Management – Docker, VMs, Prozesse, Dienste, Cron & mehr. Ohne SSH, ohne Desktop.
+**Die Zentrale deines Linux-Servers.**
+
+Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Sicherheit & mehr.
+Alles im Browser. Ohne SSH, ohne Desktop. Funktional wie Unraid, in einem modernen eigenen Design.
 
 </div>
 
 ---
 
+## Inhaltsverzeichnis
+- [Was ist Core-Hub?](#was-ist-core-hub)
+- [Features](#features)
+- [Installation](#installation)
+- [Architektur & Sicherheit](#architektur--sicherheit)
+- [Entwicklung](#entwicklung)
+- [Tech-Stack](#tech-stack)
+- [Roadmap & Timeline](#roadmap--timeline)
+
+---
+
 ## Was ist Core-Hub?
 
-Ein selbst-gehostetes Verwaltungs-Dashboard für headless Linux-Server – funktional wie Unraid, aber in einem modernen, eigenen Design (Emerald-Akzent, Hell/Dunkel, Glass-Effekte). Du steuerst alles bequem im Browser.
+Ein selbst-gehostetes Verwaltungs-Dashboard für Linux-Server. Du steuerst Docker-Container,
+virtuelle Maschinen, Netzwerke/VLANs, Backups, Benutzer, SMB-Freigaben, System-Updates und die
+Server-Sicherheit – komplett bequem über die Weboberfläche. Helles und dunkles Design,
+aufklappbare Panels, läuft auf jedem Gerät (PC, Handy, Tablet).
+
+Core-Hub läuft **direkt auf Linux** (als systemd-Dienst), nicht in einem Container – nur so kann
+es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
+
+---
 
 ## Features
 
-### 📊 Dashboard (Unraid-Stil, aufklappbare Panels)
+### 📊 Dashboard (Live-Monitoring, aufklappbare Panels)
 - **Prozessor**: Gesamtlast + Auslastung pro CPU-Kern + Live-Verlaufsgraph
 - **System**: RAM-Donut mit Aufteilung System / VM / Docker / Frei, Festplatten-Donuts pro Mount
 - **Netzwerk**: alle Schnittstellen mit Live-Durchsatz
 
 ### ⚡ Taskmanager
-- Laufende **Prozesse** auflisten, beenden (TERM) oder hart killen (KILL)
-- **systemd-Dienste** starten / stoppen / neustarten
+- Prozesse auflisten, beenden (TERM) oder hart killen (KILL)
+- systemd-Dienste starten / stoppen / neustarten
 
 ### 🐳 Container
-- Anlegen (Wizard: Image, Ports, Env, Volumes, Kategorie), Start/Stop/Restart/Delete
-- Logs ansehen, Image-Updates ziehen
+- Anlegen (Wizard: Image, Ports, Env, Volumes, Kategorie)
+- Start / Stop / Restart / Delete, Logs ansehen
+- **„Update verfügbar"-Erkennung** (Registry-Digest-Vergleich) + 1-Klick-Update
 
 ### 🖥️ Virtuelle Maschinen (libvirt/KVM)
 - VMs erstellen (RAM, CPU, Disk, ISO), starten / herunterfahren / neustarten
 - Snapshots, Autostart, Löschen
 
-### ⏰ Automatisierung
-- **Cronjobs** anlegen/löschen mit Zeitplan-Presets
-- **Autostart**: Dienste beim Systemstart aktivieren/deaktivieren
+### 🌐 Netzwerke & VLANs
+- **Docker**: Netzwerke (bridge / macvlan / ipvlan), VLAN-Tag, isolierte Netze, feste IP + Aliasse
+- **VMs**: libvirt-Netzwerke (NAT / isoliert / Bridge + VLAN), VM anhängen
+- **Firewall (ufw)**: Regeln allow/deny/reject nach Port / Protokoll / Quell-IP
 
-### 🔄 System-Updates ("Linux updaten")
-- apt / dnf / pacman: verfügbare Updates auflisten, einzeln oder alle per Klick installieren
+### 🔒 HTTPS & Reverse-Proxy (Caddy)
+- Pro Container HTTPS per Schalter aktivieren – oder alle auf einmal
+- Automatische Zertifikate über interne CA (kein Let's Encrypt/Domain nötig)
+- Root-CA-Download → einmal auf Geräten installieren, überall grünes Schloss
+- Für öffentliche Domains: automatisches Let's Encrypt
+
+### 🛡️ Sicherheit (Audit & Härtung)
+- Sicherheits-Scan mit **Score (0–100)** + Note
+- Prüft: SSH (Root-Login/Passwort-Auth), Firewall, Sicherheitsupdates, fail2ban, AppArmor/SELinux,
+  Konten ohne Passwort, mehrere Root-Konten, offene Ports, privilegierte Container, docker.sock,
+  Standard-Passwort
+- **1-Klick-Härtung** pro Fund (Firewall einrichten, fail2ban/unattended-upgrades installieren, SSH absichern)
+- **SSH ein-/ausschalten** + Autostart
+
+### 🔄 System-Updates
+- apt / dnf / pacman: Updates suchen, einzeln oder alle installieren, Reboot-Hinweis
 
 ### 💾 Backups
-- Docker-Volumes (ohne Host-Root), Verzeichnisse, VM-qcow2 → Download / Löschen
+- Docker-Volumes (ohne Host-Root), Verzeichnisse (tar.gz), VM-qcow2
+- Download / Löschen, Metadaten in der Datenbank
+
+### ⏰ Automatisierung
+- Cronjobs anlegen/löschen mit Zeitplan-Presets
+- Autostart: Dienste beim Systemstart aktivieren/deaktivieren
 
 ### 📁 SMB-Freigaben & 👥 Benutzer
-- Ordner freigeben, Samba steuern, SMB-User · Core-Hub-Logins + Linux-Benutzer (sudo)
+- Ordner freigeben, Samba steuern, SMB-Benutzer
+- Core-Hub-Logins (App, Rollen) + Linux-Benutzer (anlegen/löschen/Passwort/sudo)
 
-### 🔒 Automatisches HTTPS (Reverse-Proxy)
-- Pro Container HTTPS per Schalter (oder alle auf einmal) – Caddy mit interner CA
-- Root-CA-Download → einmal auf Geräten installieren, überall grünes Schloss
-
-### 🔐 Sicherheit
-- Eigenes Login (JWT + bcrypt), Rollen (Admin/Viewer), Audit-Log
-- sudoers-Allowlist statt Root-Prozess (via install.sh)
+### ⚙️ Einstellungen & Migration
+- Passwort ändern, System-Info, erkannte Module
+- **Migration**: gesamte Konfiguration (DB + Caddy-Zertifikate inkl. Root-CA + SMB) als ein `.tar.gz`
+  exportieren und per **Drag & Drop** importieren → Serverumzug mit einem Klick
 
 ---
 
-## Installation (Produktion)
+## Installation
 
 ```bash
 git clone https://github.com/derberliner1983/docker-gui.git
@@ -63,17 +103,45 @@ cd docker-gui
 sudo bash install.sh
 ```
 
-→ Erreichbar unter `http://SERVER-IP:4200` · Login: `admin` / `admin`  
-⚠️ **Passwort nach dem ersten Login ändern!**
+→ Erreichbar unter `http://SERVER-IP:4200` · Login: `admin` / `admin`
+⚠️ **Passwort nach dem ersten Login ändern!** (Der Sicherheits-Scan erinnert dich daran.)
 
-### Optionale Abhängigkeiten (für volle Funktionalität)
+Der Installer legt Benutzer/Verzeichnisse unter `core-hub` an (`/opt/core-hub`, `/var/lib/core-hub`),
+installiert einen systemd-Dienst und eine sudoers-Allowlist für die benötigten Befehle.
+
+### Optionale Abhängigkeiten (schalten weitere Module frei)
 
 ```bash
 sudo apt install docker.io                                   # Container
-sudo apt install qemu-kvm libvirt-daemon-system virtinst     # VMs
+sudo apt install qemu-kvm libvirt-daemon-system virtinst     # VMs & VM-Netzwerke
 sudo apt install samba                                       # SMB-Freigaben
 sudo apt install caddy                                       # automatisches HTTPS
+sudo apt install ufw                                         # Firewall
+sudo apt install fail2ban unattended-upgrades                # Härtung
 ```
+
+Fehlt ein Tool, zeigt das jeweilige Modul einen Hinweis statt eines Fehlers.
+
+---
+
+## Architektur & Sicherheit
+
+```
+Browser (überall)
+    │ HTTPS + REST
+    ▼
+Core-Hub (systemd-Dienst auf dem Host)
+├── Fastify (Node.js / TypeScript)
+├── JWT-Auth + bcrypt, Rollen, Audit-Log
+├── SQLite (core-hub.db)
+└── Steuert via Docker-API, virsh, systemd, ufw, samba, caddy …
+```
+
+> Core-Hub hat weitreichenden Zugriff auf den Server. Wichtig:
+> - Default-Passwort sofort ändern
+> - Nur im LAN oder hinter VPN/Reverse-Proxy mit HTTPS betreiben
+> - Privilegierte Befehle laufen über eine **sudoers-Allowlist** (nicht als Root-Prozess)
+> - Jede Aktion wird im Audit-Log protokolliert
 
 ---
 
@@ -94,15 +162,36 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 |---|---|
 | Frontend | React 18, TypeScript, Vite, lucide-react |
 | Backend | Fastify, TypeScript, dockerode, systeminformation |
-| Auth | JWT, bcrypt | 
+| Auth | JWT, bcrypt, Rollen (Admin/Viewer) |
 | Datenbank | SQLite (better-sqlite3) |
+| HTTPS | Caddy (interne CA / Let's Encrypt) |
 | Design | Eigenes Design-System (Design-Tokens) |
-| Deployment | systemd-Service, install.sh |
-
-Siehe [KONZEPT.md](./KONZEPT.md) für die vollständige Roadmap.
+| Deployment | systemd-Service, install.sh, sudoers-Allowlist |
 
 ---
 
-## ⚠️ Sicherheitshinweis
+## Roadmap & Timeline
 
-Core-Hub hat vollen Zugriff auf Docker, VMs und Systemdienste (≈ root). Betreibe es nur im lokalen Netz oder hinter VPN/Reverse-Proxy mit HTTPS. Default-Passwort sofort ändern.
+| Phase | Inhalt | Status |
+|---|---|---|
+| **1** | Grundgerüst, Login, Container-Verwaltung, Installer | ✅ |
+| **2** | Dashboard-Monitoring (CPU/RAM/Disk/Netz), Taskmanager | ✅ |
+| **3** | Virtuelle Maschinen (libvirt/KVM) | ✅ |
+| **4** | System-Updates, Backups, SMB, Benutzerverwaltung | ✅ |
+| **5** | Automatisches HTTPS / Reverse-Proxy (Caddy) | ✅ |
+| **6** | Einstellungen, Passwort, Migration (Export/Import) | ✅ |
+| **7** | Netzwerke & VLANs (Docker + VMs), Firewall | ✅ |
+| **8** | Sicherheits-Scan, Härtung, SSH-Steuerung | ✅ |
+| **9** | Container „Update verfügbar"-Erkennung | 🟡 begonnen |
+
+### Geplant / Ideen (kommende Phasen)
+- ⏳ Automatische Backup-Zeitpläne (Backups × Cron) mit Aufbewahrung
+- ⏳ 2-Faktor-Authentifizierung (TOTP) für Logins
+- ⏳ Benachrichtigungen (E-Mail / Webhook) bei Events & Fehlern
+- ⏳ App-Vorlagen / 1-Klick-Installation beliebter Dienste
+- ⏳ Container-Detailseite (Live-Logs-Stream, Ressourcen-Graphen)
+- ⏳ Reverse-Proxy: Zertifikat-Export/-Import getrennt, weitere Backends (nginx/Traefik)
+- ⏳ Mehrsprachigkeit, Mobile-Optimierung
+- ⏳ `.deb`-Paket für noch einfachere Installation
+
+Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).
