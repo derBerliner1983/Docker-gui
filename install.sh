@@ -60,7 +60,9 @@ fi
 
 if ! command -v virsh &>/dev/null; then
   info "Installiere libvirt/KVM..."
-  apt-get install -y qemu-kvm libvirt-daemon-system virtinst
+  QEMU_PKG="qemu-system-x86"
+  apt-cache show qemu-kvm >/dev/null 2>&1 && QEMU_PKG="qemu-kvm"
+  apt-get install -y "$QEMU_PKG" libvirt-daemon-system virtinst
 fi
 
 if ! command -v smbd &>/dev/null; then
