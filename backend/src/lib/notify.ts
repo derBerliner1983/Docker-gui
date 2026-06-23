@@ -1,4 +1,5 @@
 import { execFileSync } from 'child_process';
+import nodemailer from 'nodemailer';
 import { notificationQueries, notifyConfigQueries, type NotifyConfigRow } from '../db/index';
 import { hasBinary } from './privilege';
 
@@ -30,12 +31,53 @@ async function dispatchWebhook(url: string, level: NotifyLevel, title: string, m
   } catch { /* webhook unreachable – ignore, already logged in DB */ }
 }
 
-function dispatchEmail(to: string, title: string, message: string): void {
+/** Mehrere Empfänger aus einem Komma/Semikolon/Leerzeichen-getrennten String. */
+function parseRecipients(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.includes('@'));
+}
+
+/**
+ * E-Mail an die angegebenen Empfänger senden.
+ * Bevorzugt SMTP (wenn konfiguriert), sonst lokales mail-Programm.
+ * Gibt true zurück, wenn ein Versandweg vorhanden war.
+ */
+export async function sendEmail(cfg: NotifyConfigRow, recipients: string, title: string, message: string): Promise<boolean> {
+  const to = parseRecipients(recipients);
+  if (to.length === 0) return false;
+
+  // 1) SMTP, falls konfiguriert
+  if (cfg.smtp_host && cfg.smtp_port) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: cfg.smtp_host,
+        port: cfg.smtp_port,
+        secure: cfg.smtp_secure === 1, // true für Port 465
+        auth: cfg.smtp_user ? { user: cfg.smtp_user, pass: cfg.smtp_pass ?? '' } : undefined,
+      });
+      await transporter.sendMail({
+        from: cfg.smtp_from || cfg.smtp_user || 'core-hub@localhost',
+        to: to.join(', '),
+        subject: `[Core-Hub] ${title}`,
+        text: message,
+      });
+      return true;
+    } catch {
+      // SMTP fehlgeschlagen → auf lokales mail zurückfallen
+    }
+  }
+
+  // 2) Lokales mail/mailx
   const bin = hasBinary('mail') ? 'mail' : hasBinary('mailx') ? 'mailx' : null;
-  if (!bin) return;
+  if (!bin) return false;
   try {
-    execFileSync(bin, ['-s', `[Core-Hub] ${title}`, to], { input: message, timeout: 8000, stdio: ['pipe', 'ignore', 'ignore'] });
-  } catch { /* local MTA missing – ignore */ }
+    execFileSync(bin, ['-s', `[Core-Hub] ${title}`, ...to], { input: message, timeout: 8000, stdio: ['pipe', 'ignore', 'ignore'] });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -53,5 +95,5 @@ export async function notify(level: NotifyLevel, title: string, message = '', ev
   if (!cfg || !eventEnabled(cfg, event)) return;
 
   if (cfg.webhook_url) await dispatchWebhook(cfg.webhook_url, level, title, message);
-  if (cfg.email_to) dispatchEmail(cfg.email_to, title, message);
+  if (cfg.email_to) await sendEmail(cfg, cfg.email_to, title, message);
 }

@@ -4,6 +4,7 @@ import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut } from '../components/ui/Donut';
 import { Switch } from '../components/ui/Switch';
+import { SecurityAlerts } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import type { SecurityScan, SecurityFinding, SecurityStatus, SshStatus } from '../lib/types';
 
@@ -179,6 +180,9 @@ export function Security() {
             </Panel>
 
             <SshPanel />
+
+            {/* E-Mail-Versand + Alarm-Regeln */}
+            <SecurityAlerts />
 
             {/* Passed checks */}
             <Panel

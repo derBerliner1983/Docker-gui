@@ -109,6 +109,21 @@ db.exec(`
     on_antivirus INTEGER NOT NULL DEFAULT 1
   );
   INSERT OR IGNORE INTO notification_config (id) VALUES (1);
+
+  CREATE TABLE IF NOT EXISTS alert_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,            -- 'predefined' | 'metric'
+    rule_key TEXT,                 -- predefined: ssh_root_login | failed_logins | risky_ports | low_score | priv_container
+    metric TEXT,                   -- metric: cpu | ram | disk
+    threshold REAL,                -- metric: percentage; low_score: score
+    duration_min INTEGER NOT NULL DEFAULT 0,
+    recipients TEXT,               -- comma-separated emails; empty → global email_to
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_triggered TEXT,
+    breach_since TEXT,             -- when the condition first became true (for duration tracking)
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // ── Schema migrations (add columns to existing tables) ──
@@ -117,6 +132,14 @@ function columnExists(table: string, col: string): boolean {
 }
 if (!columnExists('users', 'totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
 if (!columnExists('users', 'totp_enabled')) db.exec("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0");
+
+// SMTP-Konfiguration für echten E-Mail-Versand (an notification_config angehängt)
+if (!columnExists('notification_config', 'smtp_host')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_host TEXT');
+if (!columnExists('notification_config', 'smtp_port')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_port INTEGER');
+if (!columnExists('notification_config', 'smtp_user')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_user TEXT');
+if (!columnExists('notification_config', 'smtp_pass')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_pass TEXT');
+if (!columnExists('notification_config', 'smtp_from')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_from TEXT');
+if (!columnExists('notification_config', 'smtp_secure')) db.exec("ALTER TABLE notification_config ADD COLUMN smtp_secure INTEGER NOT NULL DEFAULT 0");
 
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
 if (!adminExists) {
@@ -260,6 +283,12 @@ export interface NotifyConfigRow {
   on_security: number;
   on_container: number;
   on_antivirus: number;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_user: string | null;
+  smtp_pass: string | null;
+  smtp_from: string | null;
+  smtp_secure: number;
 }
 
 export const notifyConfigQueries = {
@@ -267,4 +296,36 @@ export const notifyConfigQueries = {
   update: db.prepare<[string | null, string | null, number, number, number, number]>(
     `UPDATE notification_config SET webhook_url = ?, email_to = ?, on_backup = ?, on_security = ?, on_container = ?, on_antivirus = ? WHERE id = 1`
   ),
+  updateSmtp: db.prepare<[string | null, number | null, string | null, string | null, string | null, number]>(
+    `UPDATE notification_config SET smtp_host = ?, smtp_port = ?, smtp_user = ?, smtp_pass = ?, smtp_from = ?, smtp_secure = ? WHERE id = 1`
+  ),
+};
+
+export interface AlertRuleRow {
+  id: number;
+  name: string;
+  kind: string;          // 'predefined' | 'metric'
+  rule_key: string | null;
+  metric: string | null;
+  threshold: number | null;
+  duration_min: number;
+  recipients: string | null;
+  enabled: number;
+  last_triggered: string | null;
+  breach_since: string | null;
+  created_at: string;
+}
+
+export const alertQueries = {
+  getAll: db.prepare<[], AlertRuleRow>('SELECT * FROM alert_rules ORDER BY created_at DESC'),
+  getEnabled: db.prepare<[], AlertRuleRow>('SELECT * FROM alert_rules WHERE enabled = 1'),
+  getById: db.prepare<[number], AlertRuleRow>('SELECT * FROM alert_rules WHERE id = ?'),
+  create: db.prepare<[string, string, string | null, string | null, number | null, number, string | null]>(
+    `INSERT INTO alert_rules (name, kind, rule_key, metric, threshold, duration_min, recipients)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ),
+  setEnabled: db.prepare<[number, number]>('UPDATE alert_rules SET enabled = ? WHERE id = ?'),
+  setTriggered: db.prepare<[string | null, number]>('UPDATE alert_rules SET last_triggered = ? WHERE id = ?'),
+  setBreachSince: db.prepare<[string | null, number]>('UPDATE alert_rules SET breach_since = ? WHERE id = ?'),
+  delete: db.prepare<[number]>('DELETE FROM alert_rules WHERE id = ?'),
 };

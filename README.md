@@ -36,10 +36,11 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ## Features
 
-### 📊 Dashboard (Live-Monitoring, aufklappbare Panels)
-- **Prozessor**: Gesamtlast + Auslastung pro CPU-Kern + Live-Verlaufsgraph
-- **System**: RAM-Donut mit Aufteilung System / VM / Docker / Frei, Festplatten-Donuts pro Mount
+### 📊 Dashboard (Live-Monitoring alle 2 s, aufklappbare Panels)
+- **Prozessor**: Gesamtlast als Tortendiagramm + Live-Verlaufsgraph, Einzelkerne einklappbar
+- **System**: RAM-Donut (echter Wert wie htop) mit Aufteilung System / VM / Docker / Frei, Festplatten-Donuts pro Mount
 - **Netzwerk**: alle Schnittstellen mit Live-Durchsatz
+- **Optimierung**: erkennt RAM-/CPU-Fresser, gestoppte Container, hohe Swap-Nutzung, volle Platten – mit Direktlink zur Aktion
 
 ### ⚡ Taskmanager
 - Prozesse auflisten, beenden (TERM) oder hart killen (KILL)
@@ -94,9 +95,14 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Automatische Zeitpläne** (Cron-basiert) mit **Aufbewahrung** – alte Backups werden
   automatisch aufgeräumt; „Jetzt ausführen", Aktivieren/Deaktivieren pro Plan
 
-### 🔔 Benachrichtigungen
-- **Webhook** (Discord, Slack, Mattermost oder eigener Endpunkt) und **E-Mail** (lokales Mail-System)
+### 🔔 Benachrichtigungen & Alarme
+- **Webhook** (Discord, Slack, Mattermost oder eigener Endpunkt) und **E-Mail per SMTP**
+  (Server/Port/Benutzer/Passwort/SSL im UI, z.B. Gmail/Web.de – auch an externe Adressen)
 - Ereignisse einzeln schaltbar: geplante Backups, Container-Abstürze, Sicherheits- & Viren-Funde
+- **Alarm-Regeln** (unter Sicherheit): vordefinierte Auffälligkeiten (SSH-Root-Login, fail2ban-Sperren,
+  riskante offene Ports, Security-Score-Schwelle, privilegierte Container) **und eigene Schwellwerte**
+  (CPU/RAM/Disk über X % für Y Minuten) – pro Regel eigene **Empfänger-Adressen** (mehrere möglich)
+- Hintergrund-Monitor prüft alle 60 s und mailt bei Auffälligkeiten (mit Anti-Spam-Cooldown)
 - Verlauf in der Oberfläche, Testnachricht per Klick
 
 ### ⏰ Automatisierung
@@ -223,6 +229,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **8** | Sicherheits-Scan, Härtung, SSH-Steuerung | ✅ |
 | **9** | Update-Erkennung, Virenschutz, **2FA**, **Backup-Zeitpläne**, **Benachrichtigungen**, **App-Vorlagen**, Update-Prüfung | ✅ |
 | **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
+| **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
 - ⏳ Mehrsprachigkeit (EN/DE)

@@ -184,6 +184,21 @@ Font: Inter.
 | **Mobile-Optimierung** (Sidebar als Drawer, Touch-Targets, responsive Layouts) | ✅ |
 | **`.deb`-Paket** (`build-deb.sh` – baut ein installationsfertiges Debian-Paket) | ✅ |
 
+### ✅ Phase 11 – Alarme, E-Mail & Optimierung (implementiert)
+
+| Feature | Status |
+|---|---|
+| **SMTP-E-Mail-Versand** (Server/Port/User/Passwort/SSL im UI, Test-Mail) | ✅ |
+| **Alarm-Regeln**: vordefinierte Auffälligkeiten (SSH-Root, fail2ban-Sperren, Risiko-Ports, Score-Schwelle, privilegierte Container) | ✅ |
+| **Eigene Schwellwert-Regeln** (CPU/RAM/Disk über X % für Y Minuten) | ✅ |
+| **Empfänger pro Regel** (mehrere E-Mail-Adressen, sonst globale Adresse) | ✅ |
+| **Hintergrund-Monitor** (prüft alle 60 s, Anti-Spam-Cooldown 1 h) | ✅ |
+| **Optimierungs-Panel** im Dashboard (RAM-/CPU-Fresser, gestoppte Container, Swap, volle Platten) | ✅ |
+| **Echter RAM-Wert** wie htop (aus /proc/meminfo) + Live-Updates alle 2 s | ✅ |
+| **CPU-Gesamtlast als Tortendiagramm**, Einzelkerne einklappbar | ✅ |
+| **HTTPS überall** (Caddy: HTTP→HTTPS-Redirect, Core-Hub nur auf localhost) | ✅ |
+| **Deinstallation** (`install.sh --deinstall [--purge]`) + `--update`-Modus | ✅ |
+
 ### ⏳ Geplant / Ideen (kommende Phasen)
 
 | Feature | Status |

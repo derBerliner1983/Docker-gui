@@ -150,6 +150,95 @@ export async function systemRoutes(fastify: FastifyInstance) {
     reply.send({ version: version || 'unknown' });
   });
 
+  // ── Optimierungsvorschläge (Ressourcen-Fresser, gestoppte Container, Swap …) ──
+  fastify.get('/api/system/optimize', { preHandler: requireAuth }, async (_req, reply) => {
+    interface Suggestion {
+      id: string;
+      severity: 'info' | 'warn';
+      title: string;
+      detail: string;
+      actionType?: 'process' | 'container' | 'link';
+      actionTarget?: string;
+      actionLabel?: string;
+    }
+    const suggestions: Suggestion[] = [];
+    try {
+      const [procs, mem] = await Promise.all([si.processes(), si.mem()]);
+
+      // Top-RAM-Prozesse (> 5% RAM, nicht Kernel/Core-Hub selbst)
+      const ramHogs = procs.list
+        .filter((p) => p.memRss * 1024 > mem.total * 0.05 && p.pid !== process.pid)
+        .sort((a, b) => b.memRss - a.memRss)
+        .slice(0, 3);
+      for (const p of ramHogs) {
+        suggestions.push({
+          id: `ram-${p.pid}`,
+          severity: 'warn',
+          title: `${p.name} belegt viel RAM`,
+          detail: `${(p.memRss * 1024 / 1024 / 1024).toFixed(1)} GB (${Math.round(p.mem)}%) – PID ${p.pid}`,
+          actionType: 'process',
+          actionTarget: String(p.pid),
+          actionLabel: 'Im Taskmanager öffnen',
+        });
+      }
+
+      // Top-CPU-Prozesse (> 50%)
+      const cpuHogs = procs.list
+        .filter((p) => p.cpu > 50 && p.pid !== process.pid)
+        .sort((a, b) => b.cpu - a.cpu)
+        .slice(0, 3);
+      for (const p of cpuHogs) {
+        suggestions.push({
+          id: `cpu-${p.pid}`,
+          severity: 'warn',
+          title: `${p.name} verbraucht viel CPU`,
+          detail: `${Math.round(p.cpu)}% CPU – PID ${p.pid}`,
+          actionType: 'process',
+          actionTarget: String(p.pid),
+          actionLabel: 'Im Taskmanager öffnen',
+        });
+      }
+
+      // Zombie-Prozesse
+      const zombies = procs.list.filter((p) => p.state === 'zombie').length;
+      if (zombies > 0) {
+        suggestions.push({ id: 'zombies', severity: 'info', title: `${zombies} Zombie-Prozess(e)`, detail: 'Verwaiste Prozesse – ein Neustart des Elternprozesses räumt sie auf.' });
+      }
+
+      // Swap-Nutzung hoch
+      if (mem.swaptotal > 0 && mem.swapused / mem.swaptotal > 0.5) {
+        suggestions.push({ id: 'swap', severity: 'warn', title: 'Hohe Swap-Nutzung', detail: `${Math.round((mem.swapused / mem.swaptotal) * 100)}% des Swap belegt – RAM könnte knapp werden.` });
+      }
+    } catch { /* si error – skip */ }
+
+    // Gestoppte Docker-Container (belegen Platz, könnten entfernt werden)
+    try {
+      const all = await docker.listContainers({ all: true });
+      const stopped = all.filter((c) => c.State === 'exited');
+      if (stopped.length > 0) {
+        suggestions.push({
+          id: 'stopped-containers',
+          severity: 'info',
+          title: `${stopped.length} gestoppte(r) Container`,
+          detail: stopped.slice(0, 5).map((c) => (c.Names[0] ?? '').replace(/^\//, '')).join(', '),
+          actionType: 'link',
+          actionTarget: '/containers',
+          actionLabel: 'Container verwalten',
+        });
+      }
+    } catch { /* docker off */ }
+
+    // Festplatten über 85%
+    try {
+      const fsSizes = await si.fsSize();
+      for (const f of fsSizes.filter((f) => f.size > 0 && f.use >= 85 && !f.mount.startsWith('/snap'))) {
+        suggestions.push({ id: `disk-${f.mount}`, severity: 'warn', title: `Festplatte ${f.mount} fast voll`, detail: `${Math.round(f.use)}% belegt – alte Backups/Logs aufräumen.` });
+      }
+    } catch { /* */ }
+
+    reply.send({ suggestions, checkedAt: new Date().toISOString() });
+  });
+
   // ── Processes (Task Manager) ──
   fastify.get('/api/system/processes', { preHandler: requireAuth }, async (_req, reply) => {
     try {

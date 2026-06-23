@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Gauge, CheckCircle2, AlertTriangle, Info, ArrowRight } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut, donutColor } from '../components/ui/Donut';
 import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
 import { formatBytes, formatUptime } from '../lib/utils';
-import type { SystemStats } from '../lib/types';
+import type { SystemStats, OptimizeSuggestion } from '../lib/types';
 
 const MEM_COLORS = {
   system: '#71717A',
@@ -28,11 +29,13 @@ function fmtRate(bytesPerSec: number): string {
 }
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [dockerVersion, setDockerVersion] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [history, setHistory] = useState<number[]>([]);
   const [coresOpen, setCoresOpen] = useState(() => localStorage.getItem('cpu-cores-open') === '1');
+  const [suggestions, setSuggestions] = useState<OptimizeSuggestion[] | null>(null);
   const histRef = useRef<number[]>([]);
 
   const toggleCores = () => {
@@ -62,6 +65,22 @@ export function Dashboard() {
     const id = setInterval(() => void load(), 2000);
     return () => clearInterval(id);
   }, [load]);
+
+  // Optimierungsvorschläge separat & seltener laden (aufwändiger)
+  const loadOptimize = useCallback(async () => {
+    try { setSuggestions((await api.system.optimize()).suggestions); } catch { /* */ }
+  }, []);
+  useEffect(() => {
+    void loadOptimize();
+    const id = setInterval(() => void loadOptimize(), 20000);
+    return () => clearInterval(id);
+  }, [loadOptimize]);
+
+  const onSuggestionAction = (s: OptimizeSuggestion) => {
+    if (s.actionType === 'link' && s.actionTarget) navigate(s.actionTarget);
+    else if (s.actionType === 'process') navigate('/taskmanager');
+    else if (s.actionType === 'container') navigate('/containers');
+  };
 
   const mem = stats?.memory;
 
@@ -254,6 +273,44 @@ export function Dashboard() {
                 ))}
               </tbody>
             </table>
+          )}
+        </Panel>
+
+        {/* ── OPTIMIERUNG ── */}
+        <Panel
+          title="Optimierung"
+          icon={<Gauge size={15} />}
+          subtitle={suggestions ? `${suggestions.length} Vorschläge` : undefined}
+          storageKey="optimize"
+        >
+          {!suggestions ? (
+            <div className="text-muted text-sm" style={{ padding: 8 }}>Analysiere…</div>
+          ) : suggestions.length === 0 ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 4px', color: 'var(--color-success)' }}>
+              <CheckCircle2 size={20} />
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>Alles optimal – keine Auffälligkeiten gefunden.</span>
+            </div>
+          ) : (
+            <div style={{ marginTop: 4 }}>
+              {suggestions.map((s) => {
+                const warn = s.severity === 'warn';
+                const Icon = warn ? AlertTriangle : Info;
+                return (
+                  <div key={s.id} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '11px 0', borderBottom: '1px solid var(--color-border)' }}>
+                    <Icon size={18} color={warn ? 'var(--color-warning)' : 'var(--color-info)'} style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600 }}>{s.title}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--color-subtle)', marginTop: 2 }}>{s.detail}</div>
+                    </div>
+                    {s.actionLabel && (
+                      <button className="btn btn--outline btn--sm" style={{ flexShrink: 0 }} onClick={() => onSuggestionAction(s)}>
+                        {s.actionLabel} <ArrowRight size={12} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </Panel>
       </main>

@@ -3,6 +3,7 @@ import type {
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
   ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
+  OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -78,6 +79,7 @@ export const api = {
     checkUpdates: () => req('/api/system/updates/check', { method: 'POST' }),
     applyUpdates: (packages?: string[]) =>
       req<{ ok: boolean; output: string }>('/api/system/updates/apply', { method: 'POST', body: JSON.stringify({ packages }) }),
+    optimize: () => req<{ suggestions: OptimizeSuggestion[]; checkedAt: string }>('/api/system/optimize'),
   },
 
   backups: {
@@ -111,6 +113,19 @@ export const api = {
     clear: () => req('/api/notifications', { method: 'DELETE' }),
     saveConfig: (config: NotificationConfig) => req('/api/notifications/config', { method: 'POST', body: JSON.stringify(config) }),
     test: () => req('/api/notifications/test', { method: 'POST' }),
+    saveSmtp: (data: SmtpConfig) => req('/api/notifications/smtp', { method: 'POST', body: JSON.stringify(data) }),
+    testSmtp: (to?: string) => req('/api/notifications/smtp/test', { method: 'POST', body: JSON.stringify({ to }) }),
+  },
+
+  alerts: {
+    list: () => req<{ rules: AlertRule[]; predefined: PredefinedAlert[]; metrics: AlertMetric[] }>('/api/alerts'),
+    create: (data: { name?: string; kind: 'predefined' | 'metric'; ruleKey?: string; metric?: string; threshold?: number; durationMin?: number; recipients?: string }) =>
+      req('/api/alerts', { method: 'POST', body: JSON.stringify(data) }),
+    toggle: (id: number, enabled: boolean) =>
+      req(`/api/alerts/${id}/enabled`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+    remove: (id: number) => req(`/api/alerts/${id}`, { method: 'DELETE' }),
+    test: (id: number) => req(`/api/alerts/${id}/test`, { method: 'POST' }),
+    checkNow: () => req('/api/alerts/check', { method: 'POST' }),
   },
 
   shares: {

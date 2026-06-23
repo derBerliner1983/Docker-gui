@@ -55,6 +55,60 @@ export interface NotificationConfig {
   onSecurity: boolean;
   onContainer: boolean;
   onAntivirus: boolean;
+  // Nur Anzeige (vom GET geliefert) – beim Speichern via saveSmtp separat
+  smtpHost?: string;
+  smtpPort?: number | null;
+  smtpUser?: string;
+  smtpFrom?: string;
+  smtpSecure?: boolean;
+  smtpConfigured?: boolean;
+}
+
+export interface SmtpConfig {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPass: string;
+  smtpFrom: string;
+  smtpSecure: boolean;
+}
+
+export interface OptimizeSuggestion {
+  id: string;
+  severity: 'info' | 'warn';
+  title: string;
+  detail: string;
+  actionType?: 'process' | 'container' | 'link';
+  actionTarget?: string;
+  actionLabel?: string;
+}
+
+export interface AlertRule {
+  id: number;
+  name: string;
+  kind: 'predefined' | 'metric';
+  ruleKey: string | null;
+  metric: string | null;
+  threshold: number | null;
+  durationMin: number;
+  recipients: string;
+  enabled: boolean;
+  lastTriggered: string | null;
+}
+
+export interface PredefinedAlert {
+  key: string;
+  name: string;
+  description: string;
+  hasThreshold?: boolean;
+  thresholdLabel?: string;
+  defaultThreshold?: number;
+}
+
+export interface AlertMetric {
+  key: string;
+  name: string;
+  unit: string;
 }
 
 export interface VersionInfo {

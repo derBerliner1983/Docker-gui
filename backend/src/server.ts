@@ -28,8 +28,10 @@ import { imageUpdateRoutes } from './routes/imageupdates';
 import { antivirusRoutes } from './routes/antivirus';
 import { notificationRoutes } from './routes/notifications';
 import { appTemplateRoutes } from './routes/apptemplates';
+import { alertRoutes } from './routes/alerts';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
+import { startAlertMonitor } from './lib/alertmonitor';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -80,6 +82,7 @@ async function main() {
   await fastify.register(antivirusRoutes);
   await fastify.register(notificationRoutes);
   await fastify.register(appTemplateRoutes);
+  await fastify.register(alertRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {
@@ -110,6 +113,9 @@ async function main() {
 
   // Watch Docker for unexpected container deaths and notify
   startDockerWatcher();
+
+  // Security/System-Alarme periodisch auswerten (E-Mail bei Auffälligkeiten)
+  startAlertMonitor();
 }
 
 main().catch((err) => {
