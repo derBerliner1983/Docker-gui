@@ -4,6 +4,7 @@ import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Containers } from './pages/Containers';
+import { ContainerDetail } from './pages/ContainerDetail';
 import { TaskManager } from './pages/TaskManager';
 import { Automation } from './pages/Automation';
 import { VMs } from './pages/VMs';
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/taskmanager" element={<Protected><TaskManager /></Protected>} />
       <Route path="/containers" element={<Protected><Containers /></Protected>} />
+      <Route path="/containers/:id" element={<Protected><ContainerDetail /></Protected>} />
       <Route path="/apps" element={<Protected><AppTemplates /></Protected>} />
       <Route path="/vms" element={<Protected><VMs /></Protected>} />
       <Route path="/automation" element={<Protected><Automation /></Protected>} />

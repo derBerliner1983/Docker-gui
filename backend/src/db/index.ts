@@ -142,6 +142,7 @@ export const auditQueries = {
     'INSERT INTO audit_log (user_id, action, target) VALUES (?, ?, ?)'
   ),
   recent: db.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 50'),
+  pruneOld: db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')"),
 };
 
 export const categoryQueries = {

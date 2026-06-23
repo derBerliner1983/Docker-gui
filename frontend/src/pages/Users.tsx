@@ -3,6 +3,7 @@ import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield } from 'lu
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
 import { avatarColor } from '../lib/utils';
 import { useAuth } from '../lib/auth';
@@ -92,6 +93,9 @@ export function Users() {
   const [refreshing, setRefreshing] = useState(false);
   const [appModal, setAppModal] = useState(false);
   const [linuxModal, setLinuxModal] = useState(false);
+  const [deleteAppConfirm, setDeleteAppConfirm] = useState<UserPublic | null>(null);
+  const [deleteLinuxConfirm, setDeleteLinuxConfirm] = useState<string | null>(null);
+  const [linuxDeleteHome, setLinuxDeleteHome] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -106,17 +110,8 @@ export function Users() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const delApp = async (id: number, name: string) => {
-    if (!confirm(`Login "${name}" löschen?`)) return;
-    try { await api.users.delete(id); await load(); }
-    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
-  };
-
-  const delLinux = async (name: string) => {
-    const removeHome = confirm(`Linux-Benutzer "${name}" löschen.\n\nOK = inkl. Home-Verzeichnis, Abbrechen = behalten.\n\n(Schließe den Dialog mit Esc zum kompletten Abbruch)`);
-    try { await api.linuxUsers.remove(name, removeHome); await load(); }
-    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
-  };
+  const delApp = async (user: UserPublic) => { setDeleteAppConfirm(user); };
+  const delLinux = async (name: string) => { setLinuxDeleteHome(false); setDeleteLinuxConfirm(name); };
 
   const setLinuxPw = async (name: string) => {
     const pw = prompt(`Neues Passwort für "${name}":`);
@@ -150,7 +145,7 @@ export function Users() {
                   <td className="text-muted">{u.created_at?.slice(0, 10)}</td>
                   <td>
                     {u.id !== user?.id && (
-                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delApp(u.id, u.username)}><Trash2 size={12} /></button>
+                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delApp(u)}><Trash2 size={12} /></button>
                     )}
                   </td>
                 </tr>
@@ -197,6 +192,43 @@ export function Users() {
 
       <AppUserModal open={appModal} onClose={() => setAppModal(false)} onDone={load} />
       <LinuxUserModal open={linuxModal} onClose={() => setLinuxModal(false)} onDone={load} />
+
+      <ConfirmModal
+        open={!!deleteAppConfirm}
+        title="Login löschen"
+        message={`Soll der Login "${deleteAppConfirm?.username}" wirklich gelöscht werden?`}
+        confirmLabel="Löschen"
+        danger
+        onConfirm={async () => {
+          if (deleteAppConfirm) {
+            try { await api.users.delete(deleteAppConfirm.id); await load(); } catch { /* */ }
+          }
+          setDeleteAppConfirm(null);
+        }}
+        onCancel={() => setDeleteAppConfirm(null)}
+      />
+
+      {/* Linux user delete – extra option to keep/remove home */}
+      <ConfirmModal
+        open={!!deleteLinuxConfirm}
+        title="Linux-Benutzer löschen"
+        message={`Soll der Benutzer "${deleteLinuxConfirm}" gelöscht werden?`}
+        extra={
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-muted)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={linuxDeleteHome} onChange={(e) => setLinuxDeleteHome(e.target.checked)} />
+            Home-Verzeichnis mitlöschen
+          </label>
+        }
+        confirmLabel="Löschen"
+        danger
+        onConfirm={async () => {
+          if (deleteLinuxConfirm) {
+            try { await api.linuxUsers.remove(deleteLinuxConfirm, linuxDeleteHome); await load(); } catch { /* */ }
+          }
+          setDeleteLinuxConfirm(null);
+        }}
+        onCancel={() => setDeleteLinuxConfirm(null)}
+      />
     </>
   );
 }

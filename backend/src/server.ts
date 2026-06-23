@@ -7,6 +7,8 @@ import fastifyMultipart from '@fastify/multipart';
 import path from 'path';
 import fs from 'fs';
 import './types';
+import { auditQueries } from './db/index';
+import { APP_VERSION } from './routes/settings';
 import { authRoutes } from './routes/auth';
 import { containerRoutes } from './routes/containers';
 import { systemRoutes } from './routes/system';
@@ -54,6 +56,11 @@ async function main() {
     credentials: true,
   });
 
+  // Health check endpoint (no auth required – for monitoring tools)
+  fastify.get('/health', async (_req, reply) => {
+    reply.send({ ok: true, version: APP_VERSION, uptime: Math.floor(process.uptime()), ts: new Date().toISOString() });
+  });
+
   await fastify.register(authRoutes);
   await fastify.register(containerRoutes);
   await fastify.register(systemRoutes);
@@ -91,6 +98,15 @@ async function main() {
 
   // Backup scheduler – check every 30s for due cron-based schedules
   setInterval(() => { void runDueSchedules(); }, 30_000);
+
+  // Audit-log rotation – delete entries older than 90 days, runs daily
+  const pruneAuditLog = () => {
+    try {
+      auditQueries.pruneOld.run();
+    } catch { /* non-critical */ }
+  };
+  pruneAuditLog();
+  setInterval(pruneAuditLog, 24 * 60 * 60 * 1000);
 
   // Watch Docker for unexpected container deaths and notify
   startDockerWatcher();

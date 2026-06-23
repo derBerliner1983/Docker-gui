@@ -5,7 +5,9 @@ import { LayoutContext } from '../../lib/layoutContext';
 type Theme = 'light' | 'dark';
 
 function getStoredTheme(): Theme {
-  return (localStorage.getItem('theme') as Theme) ?? 'dark';
+  const stored = localStorage.getItem('theme') as Theme | null;
+  if (stored) return stored;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
 function applyTheme(theme: Theme) {

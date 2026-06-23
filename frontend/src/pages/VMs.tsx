@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Power, RotateCcw, Plus, Trash2, Camera, Star, MonitorPlay } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
 import { formatBytes, avatarColor } from '../lib/utils';
 import type { VM } from '../lib/types';
@@ -97,6 +98,7 @@ export function VMs() {
   const [message, setMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [busy, setBusy] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
@@ -117,8 +119,7 @@ export function VMs() {
     return () => clearInterval(id);
   }, [load]);
 
-  const action = async (name: string, label: string, fn: () => Promise<unknown>, confirmMsg?: string) => {
-    if (confirmMsg && !confirm(confirmMsg)) return;
+  const action = async (name: string, label: string, fn: () => Promise<unknown>) => {
     setBusy((b) => ({ ...b, [name]: label }));
     try { await fn(); setTimeout(() => void load(), 800); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
@@ -191,7 +192,7 @@ export function VMs() {
                         <button className="btn btn--ghost btn--icon btn--sm" title="Herunterfahren" disabled={!!b} onClick={() => action(vm.name, 'shutdown', () => api.vms.shutdown(vm.name))}>
                           {b === 'shutdown' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Power size={12} />}
                         </button>
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Hart ausschalten" disabled={!!b} onClick={() => action(vm.name, 'stop', () => api.vms.stop(vm.name), `VM "${vm.name}" hart ausschalten?`)}>
+                        <button className="btn btn--ghost btn--icon btn--sm" title="Hart ausschalten" disabled={!!b} onClick={() => action(vm.name, 'stop', () => api.vms.stop(vm.name))}>
                           <Square size={12} />
                         </button>
                         <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={!!b} onClick={() => action(vm.name, 'reboot', () => api.vms.reboot(vm.name))}>
@@ -205,7 +206,7 @@ export function VMs() {
                     <button className="btn btn--ghost btn--icon btn--sm" title="Autostart umschalten" disabled={!!b} onClick={() => action(vm.name, 'auto', () => api.vms.toggleAutostart(vm.name))} style={vm.autostart ? { color: 'var(--color-warning)' } : undefined}>
                       <Star size={12} fill={vm.autostart ? 'currentColor' : 'none'} />
                     </button>
-                    <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={!!b} onClick={() => action(vm.name, 'del', () => api.vms.remove(vm.name), `VM "${vm.name}" inkl. Festplatte unwiderruflich löschen?`)}>
+                    <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={!!b} onClick={() => setDeleteConfirm(vm.name)}>
                       {b === 'del' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
                     </button>
                   </div>
@@ -217,6 +218,18 @@ export function VMs() {
       </main>
 
       <CreateVMModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={load} />
+      <ConfirmModal
+        open={!!deleteConfirm}
+        title="VM löschen"
+        message={`Soll "${deleteConfirm}" inkl. Festplatte unwiderruflich gelöscht werden?`}
+        confirmLabel="Löschen"
+        danger
+        onConfirm={() => {
+          if (deleteConfirm) void action(deleteConfirm, 'del', () => api.vms.remove(deleteConfirm));
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
+      />
     </>
   );
 }

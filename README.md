@@ -221,11 +221,11 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **7** | Netzwerke & VLANs (Docker + VMs), Firewall | ✅ |
 | **8** | Sicherheits-Scan, Härtung, SSH-Steuerung | ✅ |
 | **9** | Update-Erkennung, Virenschutz, **2FA**, **Backup-Zeitpläne**, **Benachrichtigungen**, **App-Vorlagen**, Update-Prüfung | ✅ |
+| **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
-- ⏳ Container-Detailseite (Live-Logs-Stream, Ressourcen-Graphen)
-- ⏳ Reverse-Proxy: Zertifikat-Export/-Import getrennt, weitere Backends (nginx/Traefik)
-- ⏳ Mehrsprachigkeit, Mobile-Optimierung
-- ⏳ `.deb`-Paket für noch einfachere Installation
+- ⏳ Mehrsprachigkeit (EN/DE)
+- ⏳ Reverse-Proxy: weitere Backends (nginx/Traefik)
+- ⏳ Container-Logs als echter SSE-Stream
 
 Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).

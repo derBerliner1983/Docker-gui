@@ -4,6 +4,29 @@ import { userQueries, auditQueries } from '../db/index';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { generateSecret, verifyToken, otpauthUrl } from '../lib/totp';
 
+// ── Brute-force protection: 5 attempts per 15 min per IP ──
+const loginAttempts = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 5;
+const RATE_WINDOW_MS = 15 * 60 * 1000;
+
+function checkRateLimit(ip: string): { blocked: boolean; waitMinutes: number } {
+  const now = Date.now();
+  const rec = loginAttempts.get(ip);
+  if (!rec || now >= rec.resetAt) return { blocked: false, waitMinutes: 0 };
+  if (rec.count >= RATE_LIMIT) {
+    return { blocked: true, waitMinutes: Math.ceil((rec.resetAt - now) / 60000) };
+  }
+  return { blocked: false, waitMinutes: 0 };
+}
+
+function recordFailedAttempt(ip: string) {
+  const now = Date.now();
+  const rec = loginAttempts.get(ip) ?? { count: 0, resetAt: now + RATE_WINDOW_MS };
+  if (now >= rec.resetAt) { rec.count = 0; rec.resetAt = now + RATE_WINDOW_MS; }
+  rec.count++;
+  loginAttempts.set(ip, rec);
+}
+
 export async function authRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: { username: string; password: string; token?: string } }>('/api/auth/login', async (req, reply) => {
     const { username, password, token: otp } = req.body ?? {};
@@ -11,8 +34,15 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Username and password required' });
     }
 
+    const ip = req.ip ?? 'unknown';
+    const { blocked, waitMinutes } = checkRateLimit(ip);
+    if (blocked) {
+      return reply.status(429).send({ error: `Zu viele Fehlversuche. Bitte in ${waitMinutes} Minuten erneut versuchen.` });
+    }
+
     const user = userQueries.getByUsername.get(username);
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      recordFailedAttempt(ip);
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
@@ -22,13 +52,17 @@ export async function authRoutes(fastify: FastifyInstance) {
         return reply.send({ totpRequired: true });
       }
       if (!verifyToken(user.totp_secret, otp)) {
+        recordFailedAttempt(ip);
         return reply.status(401).send({ error: 'Ungültiger 2FA-Code', totpRequired: true });
       }
     }
 
+    // Clear rate-limit record on success
+    loginAttempts.delete(ip);
+
     const token = fastify.jwt.sign(
       { id: user.id, username: user.username, role: user.role },
-      { expiresIn: '7d' }
+      { expiresIn: '24h' }
     );
 
     auditQueries.log.run(user.id, 'login', null);
@@ -38,7 +72,7 @@ export async function authRoutes(fastify: FastifyInstance) {
         httpOnly: true,
         secure: false,
         sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60,
+        maxAge: 24 * 60 * 60,
         path: '/',
       })
       .send({ user: { id: user.id, username: user.username, role: user.role }, token });

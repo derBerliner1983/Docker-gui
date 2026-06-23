@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ArrowUpCircle, Download } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Plus, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ArrowUpCircle, Download, ExternalLink } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
 import { timeAgo, avatarColor, containerInitial } from '../lib/utils';
 import type { Container, CreateContainerData } from '../lib/types';
@@ -171,6 +173,7 @@ export function Containers() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean | null; image: string }>>({});
   const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<Container | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -269,7 +272,9 @@ export function Containers() {
                       {containerInitial(c.name)}
                     </div>
                     <div className="container-card__info">
-                      <div className="container-card__name">{c.name}</div>
+                      <Link to={`/containers/${c.id}`} className="container-card__name" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {c.name} <ExternalLink size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
+                      </Link>
                       <div className="container-card__image">{c.image}</div>
                     </div>
                     {updates[c.id]?.hasUpdate && (
@@ -355,11 +360,7 @@ export function Containers() {
                       className="btn btn--danger btn--icon btn--sm"
                       title="Löschen"
                       disabled={!!busy}
-                      onClick={() => {
-                        if (confirm(`Container "${c.name}" wirklich löschen?`)) {
-                          void action(c.id, 'remove', () => api.containers.remove(c.id));
-                        }
-                      }}
+                      onClick={() => setDeleteConfirm(c)}
                     >
                       {busy === 'remove' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
                     </button>
@@ -380,6 +381,20 @@ export function Containers() {
         container={logContainer}
         open={!!logContainer}
         onClose={() => setLogContainer(null)}
+      />
+      <ConfirmModal
+        open={!!deleteConfirm}
+        title="Container löschen"
+        message={`Soll "${deleteConfirm?.name}" wirklich gelöscht werden? Dieser Vorgang kann nicht rückgängig gemacht werden.`}
+        confirmLabel="Löschen"
+        danger
+        onConfirm={() => {
+          if (deleteConfirm) {
+            void action(deleteConfirm.id, 'remove', () => api.containers.remove(deleteConfirm.id));
+          }
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
       />
     </>
   );

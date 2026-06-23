@@ -169,13 +169,27 @@ Font: Inter.
 | **Versionsanzeige + Update-Prüfung** gegen GitHub-Releases | ✅ |
 | **Installer-Update-Modus**: erkennt bestehende Installation, aktualisiert datenschonend | ✅ |
 
+### ✅ Phase 10 – Qualität & Betrieb (implementiert)
+
+| Feature | Status |
+|---|---|
+| **Container-Detailseite** (Live-Logs-Polling, CPU/RAM-Sparkline, Env/Volumes/Ports) | ✅ |
+| **Bestätigungsdialoge** bei Löschen (Container, VMs, App-/Linux-Benutzer) | ✅ |
+| **Rate-Limiting** auf Login (5 Versuche / 15 min per IP) | ✅ |
+| **Session-Timeout** (2h Inaktivität → automatischer Logout) | ✅ |
+| **JWT-Ablaufzeit** von 7d auf 24h verkürzt | ✅ |
+| **Audit-Log-Rotation** (Einträge älter 90 Tage werden täglich gelöscht) | ✅ |
+| **Health-Endpunkt** `GET /health` (Version, Uptime – für Monitoring-Tools) | ✅ |
+| **System-Dark-Mode** als Standard falls keine Präferenz gespeichert | ✅ |
+| **Mobile-Optimierung** (Sidebar als Drawer, Touch-Targets, responsive Layouts) | ✅ |
+| **`.deb`-Paket** (`build-deb.sh` – baut ein installationsfertiges Debian-Paket) | ✅ |
+
 ### ⏳ Geplant / Ideen (kommende Phasen)
 
 | Feature | Status |
 |---|---|
-| Mobile-Optimierung, Mehrsprachigkeit | ⏳ |
-| `.deb`-Paket für noch einfachere Installation | ⏳ |
-| Container-Detailseite (Live-Logs-Stream, Ressourcen-Graphen) | ⏳ |
+| Mehrsprachigkeit (EN/DE) | ⏳ |
+| Container-Logs als echter SSE-Stream (statt Polling) | ⏳ |
 
 ---
 

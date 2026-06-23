@@ -92,15 +92,17 @@ export async function containerRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get<{ Params: { id: string }; Querystring: { tail?: string } }>(
+  fastify.get<{ Params: { id: string }; Querystring: { tail?: string; since?: string } }>(
     '/api/containers/:id/logs',
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
         const tail = parseInt(req.query.tail ?? '200');
+        const since = req.query.since ? parseInt(req.query.since) : undefined;
         const container = docker.getContainer(req.params.id);
-        const stream = await container.logs({ stdout: true, stderr: true, tail, timestamps: true });
-        const raw = (stream as Buffer).toString('utf8');
+        const logOpts: Dockerode.ContainerLogsOptions & { follow: false } = { stdout: true, stderr: true, tail, timestamps: true, follow: false };
+        if (since) logOpts.since = since;
+        const raw = (await container.logs(logOpts)).toString('utf8');
         const lines = raw
           .split('\n')
           .map((line) => (line.length > 8 ? line.slice(8) : line))

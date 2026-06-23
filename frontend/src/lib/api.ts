@@ -49,6 +49,7 @@ export const api = {
     restart: (id: string) => req(`/api/containers/${id}/restart`, { method: 'POST' }),
     remove: (id: string) => req(`/api/containers/${id}`, { method: 'DELETE' }),
     logs: (id: string, tail = 200) => req<{ logs: string[] }>(`/api/containers/${id}/logs?tail=${tail}`),
+    logsSince: (id: string, since: number) => req<{ logs: string[] }>(`/api/containers/${id}/logs?tail=200&since=${since}`),
     stats: (id: string) =>
       req<{ cpu: number; memory: { used: number; limit: number; percent: number } }>(`/api/containers/${id}/stats`),
     create: (data: CreateContainerData) =>
