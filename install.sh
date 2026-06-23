@@ -112,7 +112,7 @@ Wants=docker.service
 [Service]
 Type=simple
 User=$SERVICE_USER
-Group=docker
+Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR/backend
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
