@@ -167,6 +167,7 @@ export interface Container {
   created: number;
   labels: Record<string, string>;
   category: string | null;
+  icon?: string | null;
 }
 
 export interface SystemStats {

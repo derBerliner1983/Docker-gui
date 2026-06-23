@@ -141,6 +141,9 @@ if (!columnExists('notification_config', 'smtp_pass')) db.exec('ALTER TABLE noti
 if (!columnExists('notification_config', 'smtp_from')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_from TEXT');
 if (!columnExists('notification_config', 'smtp_secure')) db.exec("ALTER TABLE notification_config ADD COLUMN smtp_secure INTEGER NOT NULL DEFAULT 0");
 
+// App-Icon je Container (aus dem Store übernommen) – an container_categories angehängt
+if (!columnExists('container_categories', 'icon')) db.exec('ALTER TABLE container_categories ADD COLUMN icon TEXT');
+
 const adminExists = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
 if (!adminExists) {
   const hash = bcrypt.hashSync('admin', 10);
@@ -172,7 +175,12 @@ export const categoryQueries = {
   set: db.prepare<[string, string]>(
     'INSERT INTO container_categories (container_id, category) VALUES (?, ?) ON CONFLICT(container_id) DO UPDATE SET category = excluded.category'
   ),
-  getAll: db.prepare<[], { container_id: string; category: string }>('SELECT * FROM container_categories'),
+  // Icon setzen, ohne die Kategorie zu überschreiben (category als leerer Default)
+  setIcon: db.prepare<[string, string]>(
+    "INSERT INTO container_categories (container_id, category, icon) VALUES (?, '', ?) ON CONFLICT(container_id) DO UPDATE SET icon = excluded.icon"
+  ),
+  getAll: db.prepare<[], { container_id: string; category: string; icon: string | null }>('SELECT container_id, category, icon FROM container_categories'),
+  get: db.prepare<[string], { container_id: string; category: string; icon: string | null }>('SELECT container_id, category, icon FROM container_categories WHERE container_id = ?'),
   delete: db.prepare<[string]>('DELETE FROM container_categories WHERE container_id = ?'),
 };
 

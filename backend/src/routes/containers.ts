@@ -12,6 +12,44 @@ function parsePorts(ports: Dockerode.Port[]): string[] {
     .map((p) => `${p.PublicPort}:${p.PrivatePort}`);
 }
 
+interface PortSpec { host: number; container: number; proto?: string }
+
+/** Baut die Docker-Create-Optionen aus einer normalisierten Konfiguration. */
+function buildCreateOptions(cfg: {
+  image: string;
+  name?: string;
+  ports?: PortSpec[];
+  env?: string[];
+  volumes?: string[];
+  category?: string;
+  restart?: string;
+}): Dockerode.ContainerCreateOptions {
+  const portBindings: Record<string, Array<{ HostPort: string }>> = {};
+  const exposedPorts: Record<string, Record<string, never>> = {};
+  for (const p of cfg.ports ?? []) {
+    if (!p.container || !p.host) continue;
+    const proto = p.proto === 'udp' ? 'udp' : 'tcp';
+    const key = `${p.container}/${proto}`;
+    exposedPorts[key] = {};
+    portBindings[key] = [{ HostPort: String(p.host) }];
+  }
+  const labels: Record<string, string> = {};
+  if (cfg.category) labels['docker-gui.category'] = cfg.category;
+
+  return {
+    Image: cfg.image,
+    name: cfg.name,
+    Env: cfg.env,
+    ExposedPorts: exposedPorts,
+    Labels: labels,
+    HostConfig: {
+      PortBindings: portBindings,
+      Binds: cfg.volumes,
+      RestartPolicy: cfg.restart ? { Name: cfg.restart } : undefined,
+    },
+  };
+}
+
 export async function containerRoutes(fastify: FastifyInstance) {
   fastify.get('/api/containers', { preHandler: requireAuth }, async (_req, reply) => {
     try {
@@ -21,6 +59,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
       ]);
 
       const categoryMap = Object.fromEntries(categoryRows.map((r) => [r.container_id, r.category]));
+      const iconMap = Object.fromEntries(categoryRows.map((r) => [r.container_id, r.icon]));
 
       const result = containers.map((c) => ({
         id: c.Id,
@@ -34,6 +73,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
         created: c.Created,
         labels: c.Labels ?? {},
         category: categoryMap[c.Id] ?? c.Labels?.['docker-gui.category'] ?? null,
+        icon: iconMap[c.Id] || null,
       }));
 
       reply.send({ containers: result });
@@ -164,33 +204,16 @@ export async function containerRoutes(fastify: FastifyInstance) {
     async (req, reply) => {
       try {
         const { image, name, ports, env, volumes, category, restart } = req.body ?? {};
+        if (!image) return reply.status(400).send({ error: 'Image erforderlich' });
 
-        const portBindings: Record<string, Array<{ HostPort: string }>> = {};
-        const exposedPorts: Record<string, Record<string, never>> = {};
+        // Ports kommen als Record<containerPort, hostPort> (tcp) vom Standard-Formular
+        const portSpecs: PortSpec[] = Object.entries(ports ?? {}).map(([c, h]) => ({
+          container: parseInt(c, 10), host: parseInt(h, 10), proto: 'tcp',
+        }));
 
-        if (ports) {
-          for (const [containerPort, hostPort] of Object.entries(ports)) {
-            const key = `${containerPort}/tcp`;
-            exposedPorts[key] = {};
-            portBindings[key] = [{ HostPort: hostPort }];
-          }
-        }
-
-        const labels: Record<string, string> = {};
-        if (category) labels['docker-gui.category'] = category;
-
-        const container = await docker.createContainer({
-          Image: image,
-          name,
-          Env: env,
-          ExposedPorts: exposedPorts,
-          Labels: labels,
-          HostConfig: {
-            PortBindings: portBindings,
-            Binds: volumes,
-            RestartPolicy: restart ? { Name: restart } : undefined,
-          },
-        });
+        const container = await docker.createContainer(
+          buildCreateOptions({ image, name, ports: portSpecs, env, volumes, category, restart }),
+        );
 
         await container.start();
         if (category) categoryQueries.set.run(container.id, category);
@@ -202,6 +225,100 @@ export async function containerRoutes(fastify: FastifyInstance) {
       }
     }
   );
+
+  // Container neu erstellen (Docker erlaubt kein Ändern von Ports/Env/Volumes
+  // im laufenden Betrieb – daher: alten Container entfernen und mit neuer
+  // Konfiguration unter gleichem Namen neu anlegen). Named-Volumes bleiben
+  // erhalten, daher gehen keine Daten verloren.
+  fastify.post<{
+    Params: { id: string };
+    Body: {
+      name?: string; image: string;
+      ports?: PortSpec[]; env?: string[]; volumes?: string[];
+      restart?: string; category?: string;
+    };
+  }>(
+    '/api/containers/:id/recreate',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      try {
+        const body = req.body ?? { image: '' };
+        if (!body.image) return reply.status(400).send({ error: 'Image erforderlich' });
+
+        // Alte Meta (Icon) sichern, um sie auf den neuen Container zu übertragen
+        const oldMeta = categoryQueries.get.get(req.params.id);
+        const icon = oldMeta?.icon ?? null;
+        const category = body.category ?? oldMeta?.category ?? undefined;
+
+        const opts = buildCreateOptions({
+          image: body.image, name: body.name, ports: body.ports,
+          env: body.env, volumes: body.volumes, restart: body.restart, category,
+        });
+
+        // Alten Container stoppen & entfernen (force), dann neu anlegen
+        const old = docker.getContainer(req.params.id);
+        try { await old.remove({ force: true }); } catch { /* evtl. schon weg */ }
+        categoryQueries.delete.run(req.params.id);
+
+        const container = await docker.createContainer(opts);
+        await container.start();
+
+        if (category) categoryQueries.set.run(container.id, category);
+        if (icon) categoryQueries.setIcon.run(container.id, icon);
+        auditQueries.log.run(req.user.id, 'container.recreate', body.name ?? body.image);
+
+        reply.status(201).send({ ok: true, id: container.id });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: err instanceof Error ? err.message : 'Docker error' });
+      }
+    }
+  );
+
+  // Interaktive Shell IN einem Container (docker exec) über WebSocket
+  fastify.get<{ Params: { id: string } }>('/api/containers/:id/exec', { websocket: true }, (connection, req) => {
+    const ws = connection.socket;
+    void (async () => {
+      try { await req.jwtVerify(); } catch { ws.close(1008, 'Unauthorized'); return; }
+      if (req.user.role !== 'admin') { ws.close(1008, 'Admin erforderlich'); return; }
+
+      const id = (req.params as { id: string }).id;
+      auditQueries.log.run(req.user.id, 'container.exec', id);
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let stream: any = null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let exec: any = null;
+
+      try {
+        const container = docker.getContainer(id);
+        exec = await container.exec({
+          // bash bevorzugen, sonst sh
+          Cmd: ['/bin/sh', '-c', 'if [ -x /bin/bash ]; then exec /bin/bash; else exec /bin/sh; fi'],
+          AttachStdin: true, AttachStdout: true, AttachStderr: true, Tty: true,
+        });
+        stream = await exec.start({ hijack: true, stdin: true, Tty: true });
+        stream.on('data', (d: Buffer) => { try { ws.send(d.toString('utf8')); } catch { /* */ } });
+        stream.on('end', () => { try { ws.close(); } catch { /* */ } });
+        stream.on('error', () => { try { ws.close(); } catch { /* */ } });
+      } catch (err) {
+        try { ws.send(`\r\n\x1b[31mFehler: ${err instanceof Error ? err.message : 'exec fehlgeschlagen'}\x1b[0m\r\n`); } catch { /* */ }
+        ws.close();
+        return;
+      }
+
+      ws.on('message', (raw: Buffer) => {
+        let msg: { type: string; data?: string; cols?: number; rows?: number };
+        try { msg = JSON.parse(raw.toString()); } catch { return; }
+        if (msg.type === 'data' && typeof msg.data === 'string') {
+          try { stream.write(msg.data); } catch { /* */ }
+        } else if (msg.type === 'resize') {
+          try { void exec.resize({ h: msg.rows ?? 24, w: msg.cols ?? 80 }); } catch { /* */ }
+        }
+      });
+      ws.on('close', () => { try { stream?.end(); } catch { /* */ } });
+      ws.on('error', () => { try { stream?.end(); } catch { /* */ } });
+    })();
+  });
 
   fastify.post<{ Params: { id: string }; Body: { category: string } }>(
     '/api/containers/:id/category',

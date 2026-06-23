@@ -173,6 +173,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
         restart,
         templateId: item.source === 'unraid' ? item.id : undefined,
         category: item.category,
+        icon: item.icon || undefined,
       });
       setDone(`„${res.name}" wurde installiert und gestartet.`);
       onDone();

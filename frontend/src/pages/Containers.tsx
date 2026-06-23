@@ -1,13 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Square, RotateCcw, Trash2, Terminal, ChevronDown, ArrowUpCircle, Download, ExternalLink } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
-import { timeAgo, avatarColor, containerInitial } from '../lib/utils';
+import { timeAgo, avatarColor, containerInitial, germanStatus } from '../lib/utils';
 import type { Container, CreateContainerData } from '../lib/types';
+
+/** Container-Avatar: App-Icon (aus dem Store) mit Buchstaben-Fallback. */
+function ContainerAvatar({ container }: { container: Container }) {
+  const [err, setErr] = useState(false);
+  if (container.icon && !err) {
+    return (
+      <div className="container-avatar" style={{ background: '#fff', padding: 4 }}>
+        <img src={container.icon} alt={container.name} onError={() => setErr(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 4 }} />
+      </div>
+    );
+  }
+  return (
+    <div className="container-avatar" style={{ background: avatarColor(container.name) }}>
+      {containerInitial(container.name)}
+    </div>
+  );
+}
 
 type Filter = 'all' | 'running' | 'stopped';
 
@@ -170,6 +189,7 @@ export function Containers() {
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
   const [createOpen, setCreateOpen] = useState(false);
   const [logContainer, setLogContainer] = useState<Container | null>(null);
+  const [execContainer, setExecContainer] = useState<Container | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean | null; image: string }>>({});
   const [checkingUpdates, setCheckingUpdates] = useState(false);
@@ -268,9 +288,7 @@ export function Containers() {
               return (
                 <div className="container-card" key={c.id}>
                   <div className="container-card__header">
-                    <div className="container-avatar" style={{ background: avatarColor(c.name) }}>
-                      {containerInitial(c.name)}
-                    </div>
+                    <ContainerAvatar container={c} />
                     <div className="container-card__info">
                       <Link to={`/containers/${c.id}`} className="container-card__name" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
                         {c.name} <ExternalLink size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
@@ -303,12 +321,12 @@ export function Containers() {
                       <div><span style={{ color: 'var(--color-faint)' }}>ID: </span><span style={{ fontFamily: 'var(--font-mono)' }}>{c.shortId}</span></div>
                       <div><span style={{ color: 'var(--color-faint)' }}>Erstellt: </span>{timeAgo(c.created)}</div>
                       {c.category && <div><span style={{ color: 'var(--color-faint)' }}>Kategorie: </span>{c.category}</div>}
-                      <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{c.status}</div>
+                      <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{germanStatus(c.status)}</div>
                     </div>
                   )}
 
                   <div className="container-card__footer">
-                    <span className="container-card__status-text">{c.status}</span>
+                    <span className="container-card__status-text">{germanStatus(c.status)}</span>
 
                     {c.state !== 'running' && (
                       <button
@@ -338,12 +356,21 @@ export function Containers() {
                     >
                       {busy === 'restart' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={12} />}
                     </button>
+                    {c.state === 'running' && (
+                      <button
+                        className="btn btn--ghost btn--icon btn--sm"
+                        title="Konsole im Container öffnen"
+                        onClick={() => { setExecContainer(c); }}
+                      >
+                        <SquareTerminal size={12} />
+                      </button>
+                    )}
                     <button
                       className="btn btn--ghost btn--icon btn--sm"
                       title="Logs"
                       onClick={() => { setLogContainer(c); }}
                     >
-                      <Terminal size={12} />
+                      <ScrollText size={12} />
                     </button>
                     {updates[c.id]?.hasUpdate && (
                       <button
@@ -382,6 +409,13 @@ export function Containers() {
         open={!!logContainer}
         onClose={() => setLogContainer(null)}
       />
+      {execContainer && (
+        <ContainerTerminal
+          id={execContainer.id}
+          name={execContainer.name}
+          onClose={() => setExecContainer(null)}
+        />
+      )}
       <ConfirmModal
         open={!!deleteConfirm}
         title="Container löschen"

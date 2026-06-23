@@ -60,6 +60,11 @@ export const api = {
       req<{ cpu: number; memory: { used: number; limit: number; percent: number } }>(`/api/containers/${id}/stats`),
     create: (data: CreateContainerData) =>
       req<{ id: string }>('/api/containers/create', { method: 'POST', body: JSON.stringify(data) }),
+    recreate: (id: string, data: {
+      name?: string; image: string;
+      ports?: { host: number; container: number; proto?: string }[];
+      env?: string[]; volumes?: string[]; restart?: string; category?: string;
+    }) => req<{ ok: boolean; id: string }>(`/api/containers/${id}/recreate`, { method: 'POST', body: JSON.stringify(data) }),
     pull: (id: string) => req(`/api/containers/${id}/pull`, { method: 'POST' }),
     setCategory: (id: string, category: string) =>
       req(`/api/containers/${id}/category`, { method: 'POST', body: JSON.stringify({ category }) }),
@@ -134,7 +139,7 @@ export const api = {
       ports?: { container: number; host: number; proto?: string }[];
       volumes?: { name: string; path: string }[];
       env?: Record<string, string>;
-      restart?: string; templateId?: string; category?: string;
+      restart?: string; templateId?: string; category?: string; icon?: string;
     }) => req<{ ok: boolean; id: string; name: string }>('/api/app-templates/store/install', { method: 'POST', body: JSON.stringify(data) }),
   },
 

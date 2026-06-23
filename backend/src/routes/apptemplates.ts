@@ -185,6 +185,7 @@ interface InstallBody {
   restart?: string;
   templateId?: string;
   category?: string;
+  icon?: string;
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -315,6 +316,9 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
         await container.start();
         if (body.category) {
           try { categoryQueries.set.run(container.id, body.category); } catch { /* */ }
+        }
+        if (body.icon) {
+          try { categoryQueries.setIcon.run(container.id, body.icon); } catch { /* */ }
         }
         auditQueries.log.run(req.user.id, 'store.install', body.image);
         void notify('success', `App „${name}" installiert`, `Container „${name}" wurde aus dem Store gestartet.`, 'container');

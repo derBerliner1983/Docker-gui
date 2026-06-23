@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
+import { Modal } from '../components/ui/Modal';
+import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
-import { formatBytes } from '../lib/utils';
+import { formatBytes, germanStatus } from '../lib/utils';
 import type { Container } from '../lib/types';
 
 const HISTORY_LEN = 40;
@@ -23,9 +25,138 @@ interface ContainerInspect {
   Name: string;
   Config: { Image: string; Env: string[] | null; Labels: Record<string, string> };
   State: { Status: string; StartedAt: string; FinishedAt: string; Pid: number };
-  HostConfig: { RestartPolicy: { Name: string }; Binds: string[] | null };
+  HostConfig: {
+    RestartPolicy: { Name: string };
+    Binds: string[] | null;
+    PortBindings?: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null;
+  };
   NetworkSettings: { Ports: Record<string, Array<{ HostIp: string; HostPort: string }> | null> };
   Created: string;
+}
+
+interface PortLine { host: number; container: number; proto: string }
+
+/** Liest die Port-Mappings (bevorzugt aus HostConfig.PortBindings, sonst NetworkSettings). */
+function readPortLines(inspect: ContainerInspect | null): PortLine[] {
+  const src = inspect?.HostConfig.PortBindings && Object.keys(inspect.HostConfig.PortBindings).length
+    ? inspect.HostConfig.PortBindings
+    : inspect?.NetworkSettings.Ports;
+  const out: PortLine[] = [];
+  for (const [key, bindings] of Object.entries(src ?? {})) {
+    if (!bindings) continue;
+    const [cport, proto] = key.split('/');
+    for (const b of bindings) {
+      if (b.HostPort) out.push({ host: parseInt(b.HostPort, 10), container: parseInt(cport, 10), proto: proto || 'tcp' });
+    }
+  }
+  return out;
+}
+
+// ── Reconfigure / Edit modal ─────────────────────────────────────────────────
+
+function EditModal({ container, inspect, onClose, onDone }: {
+  container: Container;
+  inspect: ContainerInspect | null;
+  onClose: () => void;
+  onDone: (newId: string) => void;
+}) {
+  const [image, setImage] = useState('');
+  const [name, setName] = useState('');
+  const [restart, setRestart] = useState('unless-stopped');
+  const [portStr, setPortStr] = useState('');
+  const [envStr, setEnvStr] = useState('');
+  const [volStr, setVolStr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setImage(inspect?.Config.Image ?? container.image);
+    setName(container.name);
+    setRestart(inspect?.HostConfig.RestartPolicy?.Name || 'unless-stopped');
+    setPortStr(readPortLines(inspect).map((p) => `${p.host}:${p.container}${p.proto === 'udp' ? '/udp' : ''}`).join('\n'));
+    const env = (inspect?.Config.Env ?? []).filter((e) => !e.startsWith('PATH=') && !e.startsWith('HOME='));
+    setEnvStr(env.join('\n'));
+    setVolStr((inspect?.HostConfig.Binds ?? []).join('\n'));
+    setError('');
+  }, [container, inspect]);
+
+  const save = async () => {
+    if (!image.trim()) { setError('Image ist erforderlich'); return; }
+    setBusy(true); setError('');
+    try {
+      const ports = portStr.split('\n').map((l) => l.trim()).filter(Boolean).map((line) => {
+        const [host, rest] = line.split(':');
+        const [cport, proto] = (rest ?? '').split('/');
+        return { host: parseInt(host, 10), container: parseInt(cport, 10), proto: proto === 'udp' ? 'udp' : 'tcp' };
+      }).filter((p) => p.host && p.container);
+      const env = envStr.split('\n').map((l) => l.trim()).filter(Boolean);
+      const volumes = volStr.split('\n').map((l) => l.trim()).filter(Boolean);
+      const res = await api.containers.recreate(container.id, {
+        name: name.trim() || container.name,
+        image: image.trim(),
+        ports, env, volumes, restart,
+        category: container.category ?? undefined,
+      });
+      onDone(res.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Neu-Erstellen fehlgeschlagen');
+    } finally { setBusy(false); }
+  };
+
+  const ta = { height: 'auto', resize: 'vertical' as const, padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 12 };
+
+  return (
+    <Modal
+      open
+      title="Container neu konfigurieren"
+      onClose={onClose}
+      width={620}
+      footer={
+        <>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
+            {busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={13} />} Übernehmen & neu starten
+          </button>
+        </>
+      }
+    >
+      {error && <div className="login-error">{error}</div>}
+      <div style={{ fontSize: 12, color: 'var(--color-warning)', marginBottom: 12, lineHeight: 1.5 }}>
+        ⚠️ Der Container wird mit der neuen Konfiguration neu erstellt. Named-Volumes (und damit deine Daten) bleiben erhalten.
+      </div>
+      <div className="form-group">
+        <label className="form-label">Image</label>
+        <input className="input input--rect" value={image} onChange={(e) => setImage(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label className="form-label">Container-Name</label>
+          <input className="input input--rect" value={name} onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9._-]/g, '_'))} style={{ fontFamily: 'var(--font-mono)' }} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Neustart-Richtlinie</label>
+          <select className="input input--rect" value={restart} onChange={(e) => setRestart(e.target.value)} style={{ cursor: 'pointer' }}>
+            <option value="unless-stopped">unless-stopped</option>
+            <option value="always">always</option>
+            <option value="on-failure">on-failure</option>
+            <option value="no">no</option>
+          </select>
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Ports (eine pro Zeile: host:container, optional /udp)</label>
+        <textarea className="input input--rect" value={portStr} onChange={(e) => setPortStr(e.target.value)} rows={3} style={ta} placeholder={'8080:80\n53:53/udp'} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Umgebungsvariablen (eine pro Zeile: KEY=VALUE)</label>
+        <textarea className="input input--rect" value={envStr} onChange={(e) => setEnvStr(e.target.value)} rows={4} style={ta} placeholder={'PUID=1000\nTZ=Europe/Berlin'} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Volumes (eine pro Zeile: host_oder_name:/container)</label>
+        <textarea className="input input--rect" value={volStr} onChange={(e) => setVolStr(e.target.value)} rows={3} style={ta} placeholder={'/opt/appdata/app:/config\nmein_vol:/data'} />
+      </div>
+    </Modal>
+  );
 }
 
 export function ContainerDetail() {
@@ -56,6 +187,8 @@ export function ContainerDetail() {
   const [actionLoading, setActionLoading] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [execOpen, setExecOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const loadInfo = useCallback(async () => {
     if (!id) return;
@@ -185,6 +318,9 @@ export function ContainerDetail() {
             </Link>
             {isRunning ? (
               <>
+                <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setExecOpen(true)} title="Konsole im Container öffnen">
+                  <SquareTerminal size={12} /> Konsole
+                </button>
                 <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => action('restart', () => api.containers.restart(container.id))}>
                   {actionLoading === 'restart' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={12} />}
                   Neustart
@@ -200,6 +336,9 @@ export function ContainerDetail() {
                 Starten
               </button>
             )}
+            <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setEditOpen(true)} title="Konfiguration ändern">
+              <Pencil size={12} /> Bearbeiten
+            </button>
             <button className="btn btn--danger btn--sm" disabled={!!actionLoading} onClick={() => setDeleteOpen(true)}>
               <Trash2 size={12} /> Löschen
             </button>
@@ -214,6 +353,7 @@ export function ContainerDetail() {
         {/* Status row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
           {stateBadge(container.state)}
+          <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>{germanStatus(container.status)}</span>
           <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>ID: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{container.shortId}</code></span>
           {inspect?.State.Pid ? <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>PID: {inspect.State.Pid}</span> : null}
           {restartPolicy !== 'no' && <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>Restart: {restartPolicy}</span>}
@@ -346,6 +486,24 @@ export function ContainerDetail() {
         onConfirm={handleDelete}
         onCancel={() => setDeleteOpen(false)}
       />
+
+      {execOpen && (
+        <ContainerTerminal id={container.id} name={container.name} onClose={() => setExecOpen(false)} />
+      )}
+
+      {editOpen && (
+        <EditModal
+          container={container}
+          inspect={inspect}
+          onClose={() => setEditOpen(false)}
+          onDone={(newId) => {
+            setEditOpen(false);
+            // Neue Container-ID → auf die neue Detailseite wechseln
+            if (newId && newId !== container.id) navigate(`/containers/${newId}`, { replace: true });
+            else void loadInfo();
+          }}
+        />
+      )}
     </>
   );
 }
