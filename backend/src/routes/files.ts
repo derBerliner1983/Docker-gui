@@ -7,11 +7,13 @@ import crypto from 'crypto';
 import { execFileSync } from 'child_process';
 
 const MAX_READ_BYTES = 512 * 1024; // 512 KB
-const SUDO = ['sudo', '-n'] as const;
-const TO = { stdio: 'ignore' as const, timeout: 10_000 };
 
 function isEACCES(e: unknown): boolean {
   return (e as NodeJS.ErrnoException).code === 'EACCES';
+}
+
+function sudoRun(args: string[]): void {
+  execFileSync('sudo', ['-n', ...args], { stdio: 'ignore', timeout: 10_000 });
 }
 
 function safePath(p: string): string {
@@ -26,7 +28,7 @@ function privMkdir(p: string): void {
   try { fs.mkdirSync(p, { recursive: true }); }
   catch (e) {
     if (!isEACCES(e)) throw e;
-    execFileSync(...SUDO, ['mkdir', '-p', p], TO);
+    sudoRun(['mkdir', '-p', p]);
   }
 }
 
@@ -40,8 +42,8 @@ function privWrite(p: string, content: string): void {
     const tmp = path.join(os.tmpdir(), `corehub-${crypto.randomBytes(6).toString('hex')}`);
     try {
       fs.writeFileSync(tmp, content, 'utf8');
-      execFileSync(...SUDO, ['mkdir', '-p', path.dirname(p)], TO);
-      execFileSync(...SUDO, ['cp', tmp, p], TO);
+      sudoRun(['mkdir', '-p', path.dirname(p)]);
+      sudoRun(['cp', tmp, p]);
     } finally { try { fs.unlinkSync(tmp); } catch { /* */ } }
   }
 }
@@ -50,7 +52,7 @@ function privRm(p: string): void {
   try { fs.rmSync(p, { recursive: true, force: true }); }
   catch (e) {
     if (!isEACCES(e)) throw e;
-    execFileSync(...SUDO, ['rm', '-rf', p], TO);
+    sudoRun(['rm', '-rf', p]);
   }
 }
 
@@ -58,8 +60,8 @@ function privRename(from: string, to: string): void {
   try { fs.renameSync(from, to); }
   catch (e) {
     if (!isEACCES(e)) throw e;
-    execFileSync(...SUDO, ['cp', '-a', from, to], TO);
-    execFileSync(...SUDO, ['rm', '-rf', from], TO);
+    sudoRun(['cp', '-a', from, to]);
+    sudoRun(['rm', '-rf', from]);
   }
 }
 
@@ -67,7 +69,7 @@ function privChmod(p: string, mode: number): void {
   try { fs.chmodSync(p, mode); }
   catch (e) {
     if (!isEACCES(e)) throw e;
-    execFileSync(...SUDO, ['chmod', mode.toString(8), p], TO);
+    sudoRun(['chmod', mode.toString(8), p]);
   }
 }
 
