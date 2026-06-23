@@ -199,6 +199,14 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 # Caddy: HTTP→HTTPS-Weiterleitung + HTTPS-Proxy für Core-Hub
 info "Konfiguriere Caddy (HTTPS + HTTP-Redirect)..."
 CADDYFILE="/etc/caddy/Caddyfile"
+# Server-IP und Hostname ermitteln
+SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_HOST=$(hostname -s 2>/dev/null || echo "")
+# Caddy-Adressen: IP immer, Hostname zusätzlich wenn verschieden
+CADDY_ADDR="https://${SERVER_IP}"
+if [ -n "$SERVER_HOST" ] && [ "$SERVER_HOST" != "$SERVER_IP" ]; then
+  CADDY_ADDR="${CADDY_ADDR}, https://${SERVER_HOST}"
+fi
 # Bestehenden managed block (Docker-Container-Proxies) sichern
 MANAGED_BLOCK=""
 if [ -f "$CADDYFILE" ]; then
@@ -211,7 +219,7 @@ mkdir -p /etc/caddy
   echo "    redir https://{host}{uri} permanent"
   echo "}"
   echo ""
-  echo "https://:443 {"
+  echo "${CADDY_ADDR} {"
   echo "    tls internal"
   echo "    reverse_proxy localhost:${PORT}"
   echo "}"
