@@ -72,7 +72,7 @@ export function Migration() {
   const [pubkey, setPubkey] = useState('');
   const [showPubkey, setShowPubkey] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [form, setForm] = useState({ host: '', user: 'root', port: '22', appdataSrc: '/mnt/user/appdata', appdataDst: '/opt/appdata', password: '' });
+  const [form, setForm] = useState({ host: '', user: 'root', port: '22', appdataSrc: '/mnt/user/appdata', appdataDst: '/var/lib/appdata', password: '' });
   const [busyPhase, setBusyPhase] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncLog, setSyncLog] = useState<string[]>([]);
@@ -393,7 +393,7 @@ export function Migration() {
                   { label: 'SSH-Port', key: 'port', placeholder: '22', type: 'text' },
                   { label: 'SSH-Passwort (optional)', key: 'password', placeholder: 'Leer = Schlüssel-Auth', type: 'password' },
                   { label: 'Appdata-Pfad (Unraid)', key: 'appdataSrc', placeholder: '/mnt/user/appdata', type: 'text' },
-                  { label: 'Appdata-Ziel (lokal)', key: 'appdataDst', placeholder: '/opt/appdata', type: 'text' },
+                  { label: 'Appdata-Ziel (lokal)', key: 'appdataDst', placeholder: '/var/lib/appdata', type: 'text' },
                 ].map(f => (
                   <div key={f.key}>
                     <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 3 }}>{f.label}</div>

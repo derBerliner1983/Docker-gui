@@ -10,6 +10,21 @@ import Dockerode from 'dockerode';
 import { Client as Ssh2Client } from 'ssh2';
 import type { SFTPWrapper, FileEntry, ConnectConfig } from 'ssh2';
 
+// Create a directory; if it fails with EACCES, retry via sudo and chown to current user.
+function mkdirSafe(p: string): void {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code !== 'EACCES') throw e;
+    try {
+      execFileSync('sudo', ['-n', 'mkdir', '-p', p], { stdio: 'ignore', timeout: 10_000 });
+      const uid = process.getuid?.() ?? -1;
+      const gid = process.getgid?.() ?? -1;
+      if (uid >= 0) execFileSync('sudo', ['-n', 'chown', `${uid}:${gid}`, p], { stdio: 'ignore', timeout: 10_000 });
+    } catch { throw e; } // rethrow original EACCES if sudo also failed
+  }
+}
+
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const KEY_PATH = path.join(DATA_DIR, 'migration_key');
@@ -24,7 +39,7 @@ db.exec(`
     user       TEXT NOT NULL DEFAULT 'root',
     port       INTEGER NOT NULL DEFAULT 22,
     appdata_src TEXT NOT NULL DEFAULT '/mnt/user/appdata',
-    appdata_dst TEXT NOT NULL DEFAULT '/opt/appdata',
+    appdata_dst TEXT NOT NULL DEFAULT '/var/lib/appdata',
     password   TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -188,7 +203,7 @@ async function sftpCopyDir(
   cname: string, volSrc: string, send: (m: object) => void, abort: { v: boolean }
 ): Promise<boolean> {
   if (abort.v) return false;
-  fs.mkdirSync(localDst, { recursive: true });
+  mkdirSafe(localDst);
   let entries: FileEntry[] = [];
   try {
     entries = await new Promise<FileEntry[]>((res, rej) => sftp.readdir(remoteSrc, (e, l) => e ? rej(e) : res(l)));
@@ -203,7 +218,7 @@ async function sftpCopyDir(
       const fileSize = entry.attrs.size ?? 0;
       let copied = 0;
       await new Promise<void>((res, rej) => {
-        fs.mkdirSync(path.dirname(dst), { recursive: true });
+        mkdirSafe(path.dirname(dst));
         const rs = sftp.createReadStream(src);
         const ws = fs.createWriteStream(dst);
         rs.on('data', (chunk: Buffer) => {
@@ -293,7 +308,7 @@ export async function migrationRoutes(fastify: FastifyInstance) {
   // Session anlegen
   fastify.post<{ Body: { host: string; user?: string; port?: number; appdataSrc?: string; appdataDst?: string; password?: string } }>(
     '/api/migration/sessions', { preHandler: requireAdmin }, async (req, reply) => {
-      const { host, user = 'root', port = 22, appdataSrc = '/mnt/user/appdata', appdataDst = '/opt/appdata', password } = req.body ?? {};
+      const { host, user = 'root', port = 22, appdataSrc = '/mnt/user/appdata', appdataDst = '/var/lib/appdata', password } = req.body ?? {};
       if (!host) return reply.status(400).send({ error: 'Host erforderlich' });
       const sid = crypto.randomUUID();
       mq.create.run(sid, host, user, port, appdataSrc, appdataDst, password || null);
@@ -575,6 +590,17 @@ export async function migrationRoutes(fastify: FastifyInstance) {
     }
 
     mq.upsertPhase.run(req.params.sid, 'sync', 'running', null, null);
+
+    // Ensure the base appdata destination exists and is writable (may need sudo for /opt/…)
+    try {
+      mkdirSafe(s.appdata_dst);
+    } catch (e) {
+      send({ type: 'complete', errors: 1, message: `Zielverzeichnis ${s.appdata_dst} kann nicht erstellt werden: ${e instanceof Error ? e.message : 'Fehler'}` });
+      mq.upsertPhase.run(req.params.sid, 'sync', 'error', null, `Zielverzeichnis nicht schreibbar: ${s.appdata_dst}`);
+      reply.raw.end();
+      return;
+    }
+
     let syncErrors = 0;
 
     for (const mc of pending) {
