@@ -1,5 +1,6 @@
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Menu } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useLayout } from '../../lib/layoutContext';
 
 interface TopbarProps {
   title: string;
@@ -10,8 +11,12 @@ interface TopbarProps {
 }
 
 export function Topbar({ title, subtitle, actions, onRefresh, refreshing }: TopbarProps) {
+  const { openMobileMenu } = useLayout();
   return (
     <header className="topbar">
+      <button className="icon-btn topbar__menu-btn" onClick={openMobileMenu} title="Menü öffnen">
+        <Menu size={16} />
+      </button>
       <div>
         <div className="topbar__title">{title}</div>
         {subtitle && <div style={{ fontSize: 11, color: 'var(--color-subtle)', marginTop: 1 }}>{subtitle}</div>}

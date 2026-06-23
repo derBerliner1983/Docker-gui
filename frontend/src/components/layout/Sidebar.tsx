@@ -12,6 +12,8 @@ interface SidebarProps {
   onToggle: () => void;
   theme: 'light' | 'dark';
   onThemeToggle: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 const NAV = [
@@ -47,7 +49,7 @@ const NAV = [
   },
 ];
 
-export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [version, setVersion] = useState('');
@@ -64,8 +66,10 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarPr
     navigate('/login');
   };
 
+  const handleNavClick = () => { if (onMobileClose) onMobileClose(); };
+
   return (
-    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
+    <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${mobileOpen ? ' sidebar--mobile-open' : ''}`}>
       <div className="sidebar__header">
         <div className="sidebar__logo">⬡</div>
         {!collapsed && (
@@ -93,6 +97,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarPr
                 to={to}
                 className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
                 title={collapsed ? label : undefined}
+                onClick={handleNavClick}
               >
                 <Icon className="sidebar__item-icon" />
                 <span className="sidebar__item-label">{label}</span>
