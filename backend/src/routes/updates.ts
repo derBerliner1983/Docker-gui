@@ -87,10 +87,13 @@ export async function updateRoutes(fastify: FastifyInstance) {
       try {
         let cmd: string;
         if (pm === 'apt') {
-          const env = 'DEBIAN_FRONTEND=noninteractive';
-          cmd = pkgs.length
-            ? `${env} apt-get install -y --only-upgrade ${pkgs.join(' ')}`
-            : `${env} apt-get upgrade -y`;
+          // DEBIAN_FRONTEND muss innerhalb eines bash -c gesetzt werden – sonst
+          // lehnt sudo die Env-Variable als nicht erlaubt ab (/bin/bash ist in der Allowlist).
+          const dpkgOpts = '-o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold';
+          const inner = pkgs.length
+            ? `DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade ${dpkgOpts} ${pkgs.join(' ')}`
+            : `DEBIAN_FRONTEND=noninteractive apt-get upgrade -y ${dpkgOpts}`;
+          cmd = `/bin/bash -c "${inner}"`;
         } else if (pm === 'dnf') {
           cmd = pkgs.length ? `dnf -y upgrade ${pkgs.join(' ')}` : 'dnf -y upgrade';
         } else {
