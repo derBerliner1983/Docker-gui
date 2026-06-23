@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Activity, Cog, Square, Skull, Play, RotateCcw, Search } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { api } from '../lib/api';
@@ -12,6 +12,29 @@ function loadColor(pct: number): string {
   return 'var(--color-muted)';
 }
 
+type ProcSortKey = 'name' | 'pid' | 'user' | 'cpu' | 'memRss';
+
+/** Sortierbarer Spaltenkopf mit Auf-/Absteigend-Indikator. */
+function SortTh({ label, k, num, sortKey, sortDir, onSort }: {
+  label: string; k: ProcSortKey; num?: boolean;
+  sortKey: ProcSortKey; sortDir: 'asc' | 'desc'; onSort: (k: ProcSortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th
+      className={`dtable__sortable${num ? ' dtable__num' : ''}`}
+      onClick={() => onSort(k)}
+      title="Klicken zum Sortieren"
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      {label}
+      <span className="dtable__sort-ind" style={{ opacity: active ? 1 : 0.25 }}>
+        {active && sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      </span>
+    </th>
+  );
+}
+
 export function TaskManager() {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [services, setServices] = useState<SystemService[]>([]);
@@ -20,6 +43,18 @@ export function TaskManager() {
   const [svcFilter, setSvcFilter] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, string>>({});
+  const [sortKey, setSortKey] = useState<ProcSortKey>('cpu');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  const toggleSort = (key: ProcSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      // Text aufsteigend, Zahlen absteigend als sinnvoller Standard
+      setSortDir(key === 'name' || key === 'user' ? 'asc' : 'desc');
+    }
+  };
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -66,9 +101,24 @@ export function TaskManager() {
     }
   };
 
-  const filteredProcs = processes.filter(
-    (p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.command.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filteredProcs = useMemo(() => {
+    const list = processes.filter(
+      (p) => !filter || p.name.toLowerCase().includes(filter.toLowerCase()) || p.command.toLowerCase().includes(filter.toLowerCase())
+    );
+    const sorted = [...list].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'name': cmp = a.name.localeCompare(b.name); break;
+        case 'pid': cmp = a.pid - b.pid; break;
+        case 'user': cmp = a.user.localeCompare(b.user); break;
+        case 'cpu': cmp = a.cpu - b.cpu; break;
+        case 'memRss': cmp = a.memRss - b.memRss; break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sorted;
+  }, [processes, filter, sortKey, sortDir]);
+
   const filteredSvcs = services.filter((s) => !svcFilter || s.name.toLowerCase().includes(svcFilter.toLowerCase()));
 
   return (
@@ -103,11 +153,11 @@ export function TaskManager() {
             <table className="dtable">
               <thead>
                 <tr>
-                  <th>Prozess</th>
-                  <th>PID</th>
-                  <th>Benutzer</th>
-                  <th className="dtable__num">CPU %</th>
-                  <th className="dtable__num">RAM</th>
+                  <SortTh label="Prozess" k="name" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortTh label="PID" k="pid" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortTh label="Benutzer" k="user" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortTh label="CPU %" k="cpu" num sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+                  <SortTh label="RAM" k="memRss" num sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
                   <th style={{ width: 80 }}></th>
                 </tr>
               </thead>

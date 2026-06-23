@@ -376,12 +376,24 @@ body {
   letter-spacing: 0.06em; color: var(--color-faint); padding: 8px 10px;
   border-bottom: 1px solid var(--color-border); white-space: nowrap;
 }
+/* Sticky header bleibt beim Scrollen oben stehen */
+.dtable thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--color-surface);
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
 .dtable td { padding: 7px 10px; border-bottom: 1px solid var(--color-border); }
 .dtable tr:last-child td { border-bottom: none; }
 .dtable tbody tr:hover { background: var(--color-hover); }
 .dtable__num { text-align: right; font-variant-numeric: tabular-nums; }
+/* Header von Zahlenspalten ebenfalls rechtsbündig (überschreibt .dtable th) */
+.dtable th.dtable__num { text-align: right; }
 .dtable__mono { font-family: var(--font-mono); font-size: 11.5px; color: var(--color-muted); }
 .dtable__actions { display: flex; gap: 4px; justify-content: flex-end; }
+/* Sortierbare Spaltenköpfe */
+.dtable th.dtable__sortable { cursor: pointer; user-select: none; transition: color 0.15s; }
+.dtable th.dtable__sortable:hover { color: var(--color-muted); }
+.dtable__sort-ind { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 3px; }
 .table-scroll { max-height: 460px; overflow-y: auto; margin: 0 -16px; padding: 0 16px; }
 
 /* ── Toggle Switch ──────────────────────────────── */
