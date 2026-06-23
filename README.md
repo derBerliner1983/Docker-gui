@@ -47,7 +47,8 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ### 🐳 Container
 - Anlegen (Wizard: Image, Ports, Env, Volumes, Kategorie)
-- Start / Stop / Restart / Delete, Logs ansehen
+- Start / Stop / Restart / Delete
+- **Detailseite** pro Container: Live-Logs (aktualisiert alle 2,5 s), CPU-Verlaufsgraph, RAM-Anzeige, Ports, Volumes, Env-Variablen
 - **„Update verfügbar"-Erkennung** (Registry-Digest-Vergleich) + 1-Klick-Update
 
 ### 🧩 App-Vorlagen (1-Klick-Installation)
