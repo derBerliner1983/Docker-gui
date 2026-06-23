@@ -2,6 +2,69 @@ export interface User {
   id: number;
   username: string;
   role: 'admin' | 'viewer';
+  totpEnabled?: boolean;
+}
+
+export interface BackupSchedule {
+  id: number;
+  type: 'container' | 'directory' | 'vm';
+  source: string;
+  label: string;
+  schedule: string;
+  retention: number;
+  stop_container: number;
+  enabled: number;
+  last_run: string | null;
+  last_status: string | null;
+  last_message: string | null;
+  created_at: string;
+}
+
+export interface AppTemplateEnv { key: string; label: string; default?: string; required?: boolean; secret?: boolean }
+export interface AppTemplatePort { container: number; host: number; proto?: 'tcp' | 'udp' }
+
+export interface AppTemplate {
+  id: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  image: string;
+  ports: AppTemplatePort[];
+  volumes?: { name: string; path: string }[];
+  env?: AppTemplateEnv[];
+  restart?: string;
+  note?: string;
+  installed: boolean;
+}
+
+export interface NotificationItem {
+  id: number;
+  level: 'info' | 'success' | 'warning' | 'error';
+  title: string;
+  message: string | null;
+  event: string | null;
+  read: number;
+  created_at: string;
+}
+
+export interface NotificationConfig {
+  webhookUrl: string;
+  emailTo: string;
+  onBackup: boolean;
+  onSecurity: boolean;
+  onContainer: boolean;
+  onAntivirus: boolean;
+}
+
+export interface VersionInfo {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  repo: string;
+  checkedAt: string;
+  error?: string;
 }
 
 export interface Container {

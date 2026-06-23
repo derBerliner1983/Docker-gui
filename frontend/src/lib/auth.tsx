@@ -5,7 +5,7 @@ import type { User } from './types';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string, token?: string) => Promise<{ totpRequired: boolean }>;
   logout: () => Promise<void>;
 }
 
@@ -22,10 +22,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (username: string, password: string) => {
-    const { user, token } = await api.auth.login(username, password);
-    localStorage.setItem('token', token);
-    setUser(user);
+  const login = async (username: string, password: string, token?: string) => {
+    const res = await api.auth.login(username, password, token);
+    if (res.totpRequired) return { totpRequired: true };
+    if (res.user && res.token) {
+      localStorage.setItem('token', res.token);
+      setUser(res.user);
+      return { totpRequired: false };
+    }
+    throw new Error('Anmeldung fehlgeschlagen');
   };
 
   const logout = async () => {

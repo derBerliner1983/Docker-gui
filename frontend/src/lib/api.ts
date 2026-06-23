@@ -2,7 +2,7 @@ import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
   ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
-  AntivirusStatus,
+  AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -27,12 +27,18 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   auth: {
-    login: (username: string, password: string) =>
-      req<{ user: User; token: string }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) }),
+    login: (username: string, password: string, token?: string) =>
+      req<{ user?: User; token?: string; totpRequired?: boolean }>('/api/auth/login', { method: 'POST', body: JSON.stringify({ username, password, token }) }),
     logout: () => req('/api/auth/logout', { method: 'POST' }),
     me: () => req<{ user: User }>('/api/auth/me'),
     changePassword: (currentPassword: string, newPassword: string) =>
       req('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+    twoFactor: {
+      status: () => req<{ enabled: boolean }>('/api/auth/2fa/status'),
+      setup: () => req<{ secret: string; otpauth: string }>('/api/auth/2fa/setup', { method: 'POST' }),
+      enable: (token: string) => req('/api/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+      disable: (password: string) => req('/api/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) }),
+    },
   },
 
   containers: {
@@ -83,6 +89,27 @@ export const api = {
     backupVm: (vm: string) => req('/api/backups/vm', { method: 'POST', body: JSON.stringify({ vm }) }),
     remove: (id: number) => req(`/api/backups/${id}`, { method: 'DELETE' }),
     downloadUrl: (id: number) => `/api/backups/${id}/download`,
+    schedules: () => req<{ schedules: BackupSchedule[] }>('/api/backups/schedules'),
+    createSchedule: (data: { type: string; source: string; label?: string; schedule: string; retention?: number; stop?: boolean }) =>
+      req('/api/backups/schedules', { method: 'POST', body: JSON.stringify(data) }),
+    toggleSchedule: (id: number, enabled: boolean) =>
+      req(`/api/backups/schedules/${id}/toggle`, { method: 'POST', body: JSON.stringify({ enabled }) }),
+    runSchedule: (id: number) => req<{ ok: boolean; file: string }>(`/api/backups/schedules/${id}/run`, { method: 'POST' }),
+    removeSchedule: (id: number) => req(`/api/backups/schedules/${id}`, { method: 'DELETE' }),
+  },
+
+  appTemplates: {
+    list: () => req<{ templates: AppTemplate[] }>('/api/app-templates'),
+    install: (id: string, data: { name?: string; env?: Record<string, string>; ports?: Record<string, number> }) =>
+      req<{ ok: boolean; id: string; name: string }>(`/api/app-templates/${id}/install`, { method: 'POST', body: JSON.stringify(data) }),
+  },
+
+  notifications: {
+    list: () => req<{ notifications: NotificationItem[]; unread: number; config: NotificationConfig }>('/api/notifications'),
+    markRead: () => req('/api/notifications/read', { method: 'POST' }),
+    clear: () => req('/api/notifications', { method: 'DELETE' }),
+    saveConfig: (config: NotificationConfig) => req('/api/notifications/config', { method: 'POST', body: JSON.stringify(config) }),
+    test: () => req('/api/notifications/test', { method: 'POST' }),
   },
 
   shares: {
@@ -168,6 +195,7 @@ export const api = {
 
   settings: {
     info: () => req<{ version: string; hostname: string; platform: string; dataDir: string; node: string; uptime: number; features: Record<string, boolean> }>('/api/settings/info'),
+    version: () => req<VersionInfo>('/api/settings/version'),
     exportUrl: () => '/api/settings/export',
     restart: () => req<{ ok: boolean; note: string }>('/api/settings/restart', { method: 'POST' }),
     import: async (file: File) => {

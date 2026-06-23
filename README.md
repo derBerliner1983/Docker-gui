@@ -50,6 +50,12 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Start / Stop / Restart / Delete, Logs ansehen
 - **„Update verfügbar"-Erkennung** (Registry-Digest-Vergleich) + 1-Klick-Update
 
+### 🧩 App-Vorlagen (1-Klick-Installation)
+- Galerie beliebter Dienste – Nextcloud, Jellyfin, Plex, Pi-hole, AdGuard, Vaultwarden,
+  Portainer, Uptime Kuma, Grafana, Gitea, Home Assistant, qBittorrent …
+- Pro Vorlage: Image, Ports, Volumes & nötige Variablen vorausgefüllt – nur Name/Passwort setzen
+- Image wird automatisch geladen, Container erstellt, gestartet und kategorisiert
+
 ### 🖥️ Virtuelle Maschinen (libvirt/KVM)
 - VMs erstellen (RAM, CPU, Disk, ISO), starten / herunterfahren / neustarten
 - Snapshots, Autostart, Löschen
@@ -84,6 +90,13 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 💾 Backups
 - Docker-Volumes (ohne Host-Root), Verzeichnisse (tar.gz), VM-qcow2
 - Download / Löschen, Metadaten in der Datenbank
+- **Automatische Zeitpläne** (Cron-basiert) mit **Aufbewahrung** – alte Backups werden
+  automatisch aufgeräumt; „Jetzt ausführen", Aktivieren/Deaktivieren pro Plan
+
+### 🔔 Benachrichtigungen
+- **Webhook** (Discord, Slack, Mattermost oder eigener Endpunkt) und **E-Mail** (lokales Mail-System)
+- Ereignisse einzeln schaltbar: geplante Backups, Container-Abstürze, Sicherheits- & Viren-Funde
+- Verlauf in der Oberfläche, Testnachricht per Klick
 
 ### ⏰ Automatisierung
 - Cronjobs anlegen/löschen mit Zeitplan-Presets
@@ -92,9 +105,13 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 📁 SMB-Freigaben & 👥 Benutzer
 - Ordner freigeben, Samba steuern, SMB-Benutzer
 - Core-Hub-Logins (App, Rollen) + Linux-Benutzer (anlegen/löschen/Passwort/sudo)
+- **Zwei-Faktor-Authentifizierung (2FA / TOTP)**: pro Konto einrichten, beim Login wird ein
+  Einmalcode aus der Authenticator-App abgefragt (Google Authenticator, Aegis, 1Password …)
 
-### ⚙️ Einstellungen & Migration
-- Passwort ändern, System-Info, erkannte Module
+### ⚙️ Einstellungen, Version & Migration
+- Passwort & 2FA verwalten, System-Info, erkannte Module
+- **Version & Updates**: aktuelle Version sichtbar, Update-Prüfung gegen GitHub-Releases,
+  Hinweis samt Befehl, wenn eine neuere Version verfügbar ist
 - **Migration**: gesamte Konfiguration (DB + Caddy-Zertifikate inkl. Root-CA + SMB) als ein `.tar.gz`
   exportieren und per **Drag & Drop** importieren → Serverumzug mit einem Klick
 
@@ -113,6 +130,21 @@ sudo bash install.sh
 
 Der Installer legt Benutzer/Verzeichnisse unter `core-hub` an (`/opt/core-hub`, `/var/lib/core-hub`),
 installiert einen systemd-Dienst und eine sudoers-Allowlist für die benötigten Befehle.
+
+### Update auf eine neue Version
+
+Einfach die neue Version holen und denselben Installer erneut ausführen – er erkennt die
+bestehende Installation automatisch und läuft im **Update-Modus**. Deine Daten unter
+`/var/lib/core-hub` (Datenbank, Backups) bleiben dabei erhalten:
+
+```bash
+cd docker-gui
+git pull
+sudo bash install.sh        # erkennt vorhandene Installation → Update
+```
+
+Der Installer zeigt die alte und neue Version an. In der Oberfläche siehst du die laufende
+Version unter **Einstellungen → „Version & Updates"** und ob auf GitHub eine neuere Version steht.
 
 ### Optionale Abhängigkeiten (schalten weitere Module frei)
 
@@ -168,7 +200,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 |---|---|
 | Frontend | React 18, TypeScript, Vite, lucide-react |
 | Backend | Fastify, TypeScript, dockerode, systeminformation |
-| Auth | JWT, bcrypt, Rollen (Admin/Viewer) |
+| Auth | JWT, bcrypt, Rollen (Admin/Viewer), 2FA/TOTP (RFC 6238) |
 | Datenbank | SQLite (better-sqlite3) |
 | HTTPS | Caddy (interne CA / Let's Encrypt) |
 | Design | Eigenes Design-System (Design-Tokens) |
@@ -188,13 +220,9 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **6** | Einstellungen, Passwort, Migration (Export/Import) | ✅ |
 | **7** | Netzwerke & VLANs (Docker + VMs), Firewall | ✅ |
 | **8** | Sicherheits-Scan, Härtung, SSH-Steuerung | ✅ |
-| **9** | Container „Update verfügbar"-Erkennung | 🟡 begonnen |
+| **9** | Update-Erkennung, Virenschutz, **2FA**, **Backup-Zeitpläne**, **Benachrichtigungen**, **App-Vorlagen**, Update-Prüfung | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
-- ⏳ Automatische Backup-Zeitpläne (Backups × Cron) mit Aufbewahrung
-- ⏳ 2-Faktor-Authentifizierung (TOTP) für Logins
-- ⏳ Benachrichtigungen (E-Mail / Webhook) bei Events & Fehlern
-- ⏳ App-Vorlagen / 1-Klick-Installation beliebter Dienste
 - ⏳ Container-Detailseite (Live-Logs-Stream, Ressourcen-Graphen)
 - ⏳ Reverse-Proxy: Zertifikat-Export/-Import getrennt, weitere Backends (nginx/Traefik)
 - ⏳ Mehrsprachigkeit, Mobile-Optimierung

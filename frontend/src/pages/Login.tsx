@@ -8,6 +8,8 @@ export function Login() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [totpRequired, setTotpRequired] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(
@@ -26,8 +28,13 @@ export function Login() {
     setError('');
     setLoading(true);
     try {
-      await login(username, password);
-      navigate('/dashboard');
+      const res = await login(username, password, totpRequired ? otp : undefined);
+      if (res.totpRequired) {
+        setTotpRequired(true);
+        setError('');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Anmeldung fehlgeschlagen');
     } finally {
@@ -80,8 +87,29 @@ export function Login() {
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
+              disabled={totpRequired}
             />
           </div>
+
+          {totpRequired && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="otp">2FA-Code (Authenticator-App)</label>
+              <input
+                id="otp"
+                className="input"
+                type="text"
+                inputMode="numeric"
+                placeholder="000000"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={6}
+                style={{ letterSpacing: '0.3em', textAlign: 'center', fontFamily: 'var(--font-mono)' }}
+                required
+              />
+            </div>
+          )}
 
           <button
             type="submit"
@@ -90,7 +118,7 @@ export function Login() {
             disabled={loading}
           >
             {loading ? <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> : null}
-            {loading ? 'Anmelden…' : 'Anmelden'}
+            {loading ? 'Anmelden…' : totpRequired ? 'Code bestätigen' : 'Anmelden'}
           </button>
         </form>
 

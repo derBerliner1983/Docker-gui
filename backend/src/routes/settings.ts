@@ -7,7 +7,30 @@ import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary } from '../lib/privilege';
 import { auditQueries, DB_PATH } from '../db/index';
 
-export const APP_VERSION = '0.4.0';
+function readVersion(): string {
+  for (const p of [
+    path.join(__dirname, '../../../VERSION'),
+    path.join(process.cwd(), '../VERSION'),
+    path.join(process.cwd(), 'VERSION'),
+  ]) {
+    try { const v = fs.readFileSync(p, 'utf8').trim(); if (v) return v; } catch { /* try next */ }
+  }
+  return '0.5.0';
+}
+
+export const APP_VERSION = readVersion();
+const GITHUB_REPO = process.env.GITHUB_REPO || 'derberliner1983/docker-gui';
+
+/** Compare two semver-ish strings. Returns 1 if a>b, -1 if a<b, 0 if equal. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d !== 0) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
 const DATA_DIR = process.env.DATA_DIR || process.cwd();
 const DB_FILE = DB_PATH;
 const CADDYFILE = process.env.CADDYFILE || '/etc/caddy/Caddyfile';
@@ -42,8 +65,43 @@ export async function settingsRoutes(fastify: FastifyInstance) {
         libvirt: hasBinary('virsh'),
         samba: hasBinary('smbd'),
         caddy: hasBinary('caddy'),
+        clamav: hasBinary('clamscan'),
+        ufw: hasBinary('ufw'),
       },
     });
+  });
+
+  // ── Version & update check (queries the GitHub releases API) ──
+  fastify.get('/api/settings/version', { preHandler: requireAuth }, async (_req, reply) => {
+    const result: {
+      current: string; latest: string | null; updateAvailable: boolean;
+      releaseUrl: string | null; repo: string; checkedAt: string; error?: string;
+    } = {
+      current: APP_VERSION, latest: null, updateAvailable: false,
+      releaseUrl: `https://github.com/${GITHUB_REPO}`, repo: GITHUB_REPO, checkedAt: new Date().toISOString(),
+    };
+    try {
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'core-hub' },
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { tag_name?: string; name?: string; html_url?: string };
+        const tag = (data.tag_name || data.name || '').trim();
+        if (tag) {
+          result.latest = tag;
+          result.updateAvailable = compareVersions(tag, APP_VERSION) > 0;
+          if (data.html_url) result.releaseUrl = data.html_url;
+        }
+      } else if (res.status === 404) {
+        result.error = 'Noch keine Releases veröffentlicht';
+      } else {
+        result.error = `GitHub: HTTP ${res.status}`;
+      }
+    } catch (err) {
+      result.error = err instanceof Error ? err.message : 'Versionsprüfung fehlgeschlagen';
+    }
+    reply.send(result);
   });
 
   // ── Export full configuration as one .tar.gz (migration backup) ──

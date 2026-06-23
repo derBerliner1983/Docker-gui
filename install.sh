@@ -17,7 +17,24 @@ error() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 
 [ "$EUID" -ne 0 ] && error "Bitte als root ausführen: sudo bash install.sh"
 
-info "=== $APP_NAME Installation ==="
+# Version dieses Pakets (Quelle der Wahrheit: ./VERSION)
+NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
+
+# Bereits installiert? → Update-Modus (Daten bleiben erhalten)
+MODE="install"
+OLD_VERSION=""
+if [ -d "$INSTALL_DIR" ] || systemctl list-unit-files 2>/dev/null | grep -q "^${SERVICE_NAME}.service"; then
+  MODE="update"
+  OLD_VERSION="$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo 'unbekannt')"
+fi
+
+if [ "$MODE" = "update" ]; then
+  info "=== $APP_NAME Update ==="
+  info "    Installierte Version: $OLD_VERSION  →  Neue Version: $NEW_VERSION"
+  info "    Deine Daten unter $DATA_DIR (Datenbank, Backups) bleiben erhalten."
+else
+  info "=== $APP_NAME Installation (v$NEW_VERSION) ==="
+fi
 
 # Node.js prüfen / installieren
 if ! command -v node &>/dev/null; then
@@ -116,13 +133,20 @@ sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP=$(hostname -I | awk '{print $1}')
   info ""
-  info "✅ $APP_NAME erfolgreich installiert!"
+  if [ "$MODE" = "update" ]; then
+    info "✅ $APP_NAME auf v$NEW_VERSION aktualisiert!"
+  else
+    info "✅ $APP_NAME v$NEW_VERSION erfolgreich installiert!"
+  fi
   info ""
   info "   Zugriff: http://${IP}:${PORT}"
-  info "   Login:   admin / admin"
+  if [ "$MODE" != "update" ]; then
+    info "   Login:   admin / admin"
+    info ""
+    warn "   ⚠ Bitte Passwort nach erstem Login ändern!"
+  fi
   info ""
-  warn "   ⚠ Bitte Passwort nach erstem Login ändern!"
-  info ""
+  info "   Version & Update-Prüfung: Einstellungen → „Version & Updates\""
   info "   Logs:    journalctl -u $SERVICE_NAME -f"
   info "   Stop:    systemctl stop $SERVICE_NAME"
   info "   Start:   systemctl start $SERVICE_NAME"

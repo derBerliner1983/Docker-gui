@@ -153,7 +153,7 @@ Font: Inter.
 
 ---
 
-### 🟡 Phase 9 – begonnen
+### ✅ Phase 9 – abgeschlossen
 
 | Feature | Status |
 |---|---|
@@ -162,11 +162,20 @@ Font: Inter.
 | SSH ein-/ausschaltbar + 1-Klick-Härtung (Firewall/fail2ban/Auto-Updates/SSH) | ✅ |
 | **Virenschutz (ClamAV): installieren, Signaturen updaten, scannen** | ✅ |
 | Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, Zeit, AV) | ✅ |
-| 2FA (TOTP) für Logins | ⏳ |
-| Automatische Backup-Zeitpläne (Backups × Cron, Aufbewahrung) | ⏳ |
-| Benachrichtigungen (E-Mail/Webhook bei Events) | ⏳ |
-| App-Vorlagen / 1-Klick-Install beliebter Dienste | ⏳ |
-| Mobile-Optimierung, Mehrsprachigkeit, `.deb`-Paket | ⏳ |
+| **2FA (TOTP)** für Logins (einrichten/aktivieren/deaktivieren, Abfrage beim Login) | ✅ |
+| **Automatische Backup-Zeitpläne** (Cron-basiert, Aufbewahrung, „jetzt ausführen") | ✅ |
+| **Benachrichtigungen** (Webhook für Discord/Slack/eigene + E-Mail, je Ereignis) | ✅ |
+| **App-Vorlagen / 1-Klick-Install** beliebter Dienste (Nextcloud, Jellyfin, …) | ✅ |
+| **Versionsanzeige + Update-Prüfung** gegen GitHub-Releases | ✅ |
+| **Installer-Update-Modus**: erkennt bestehende Installation, aktualisiert datenschonend | ✅ |
+
+### ⏳ Geplant / Ideen (kommende Phasen)
+
+| Feature | Status |
+|---|---|
+| Mobile-Optimierung, Mehrsprachigkeit | ⏳ |
+| `.deb`-Paket für noch einfachere Installation | ⏳ |
+| Container-Detailseite (Live-Logs-Stream, Ressourcen-Graphen) | ⏳ |
 
 ---
 

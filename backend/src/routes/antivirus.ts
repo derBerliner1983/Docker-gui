@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { safeExec, privExec, hasBinary, isRoot } from '../lib/privilege';
 import { auditQueries } from '../db/index';
+import { notify } from '../lib/notify';
 
 interface Infected {
   file: string;
@@ -128,6 +129,9 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
       scan.running = false;
       scan.finishedAt = new Date().toISOString();
       auditQueries.log.run(req.user.id, 'antivirus.scan', `${path} (${scan.infected.length} Funde)`);
+      if (scan.infected.length > 0) {
+        void notify('error', `Virenscan: ${scan.infected.length} Fund(e)`, `Bedrohungen in ${path} gefunden, z. B. ${scan.infected[0].virus}.`, 'antivirus');
+      }
     });
 
     reply.send({ ok: true, started: true });

@@ -1,9 +1,11 @@
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
+import { api } from '../../lib/api';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -24,6 +26,7 @@ const NAV = [
     label: 'Workloads',
     items: [
       { to: '/containers', icon: Container, label: 'Container' },
+      { to: '/apps', icon: LayoutGrid, label: 'App-Vorlagen' },
       { to: '/vms', icon: MonitorPlay, label: 'Virtuelle Maschinen' },
       { to: '/networks', icon: Network, label: 'Netzwerke & VLANs' },
       { to: '/proxy', icon: ShieldCheck, label: 'HTTPS & Proxy' },
@@ -47,6 +50,14 @@ const NAV = [
 export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarProps) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [version, setVersion] = useState('');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  useEffect(() => {
+    api.settings.version()
+      .then((v) => { setVersion(v.current); setUpdateAvailable(v.updateAvailable); })
+      .catch(() => {});
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -57,7 +68,16 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle }: SidebarPr
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar__header">
         <div className="sidebar__logo">⬡</div>
-        {!collapsed && <span className="sidebar__title">Core-Hub</span>}
+        {!collapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+            <span className="sidebar__title">Core-Hub</span>
+            {version && (
+              <NavLink to="/settings" style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)', textDecoration: 'none' }} title={updateAvailable ? 'Update verfügbar' : undefined}>
+                v{version}{updateAvailable ? ' · Update ▲' : ''}
+              </NavLink>
+            )}
+          </div>
+        )}
         <button className="sidebar__collapse" onClick={onToggle} title={collapsed ? 'Ausklappen' : 'Einklappen'}>
           {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>

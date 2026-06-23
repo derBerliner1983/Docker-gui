@@ -1,11 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
-import { HardDrive, Plus, Trash2, Download, Container, FolderArchive, MonitorPlay } from 'lucide-react';
+import { HardDrive, Plus, Trash2, Download, Container, FolderArchive, MonitorPlay, Play, CalendarClock } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
+import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { formatBytes, timeAgo } from '../lib/utils';
-import type { Backup, BackupSource, VM } from '../lib/types';
+import type { Backup, BackupSource, BackupSchedule, VM } from '../lib/types';
+
+const CRON_PRESETS: { label: string; value: string }[] = [
+  { label: 'Täglich 03:00', value: '0 3 * * *' },
+  { label: 'Täglich 12:00', value: '0 12 * * *' },
+  { label: 'Wöchentlich (So 03:00)', value: '0 3 * * 0' },
+  { label: 'Stündlich', value: '0 * * * *' },
+  { label: 'Monatlich (1. um 03:00)', value: '0 3 1 * *' },
+];
 
 const TYPE_ICON: Record<string, React.ElementType> = {
   container: Container,
@@ -108,6 +117,179 @@ function NewBackupModal({ open, onClose, onDone }: { open: boolean; onClose: () 
   );
 }
 
+function NewScheduleModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [type, setType] = useState<'container' | 'directory' | 'vm'>('container');
+  const [sources, setSources] = useState<BackupSource[]>([]);
+  const [vms, setVms] = useState<VM[]>([]);
+  const [containerId, setContainerId] = useState('');
+  const [dir, setDir] = useState('');
+  const [vm, setVm] = useState('');
+  const [schedule, setSchedule] = useState('0 3 * * *');
+  const [retention, setRetention] = useState(7);
+  const [stopFirst, setStopFirst] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    api.backups.sources().then((r) => { setSources(r.containers); if (r.containers[0]) setContainerId(r.containers[0].id); }).catch(() => {});
+    api.vms.list().then((r) => { setVms(r.vms); if (r.vms[0]) setVm(r.vms[0].name); }).catch(() => {});
+  }, [open]);
+
+  const save = async () => {
+    setLoading(true); setError('');
+    try {
+      let source = '';
+      let label = '';
+      if (type === 'container') {
+        if (!containerId) throw new Error('Container wählen');
+        source = containerId; label = sources.find((s) => s.id === containerId)?.name || 'Container';
+      } else if (type === 'directory') {
+        if (!dir.startsWith('/')) throw new Error('Absoluter Pfad erforderlich');
+        source = dir; label = dir;
+      } else {
+        if (!vm) throw new Error('VM wählen');
+        source = vm; label = vm;
+      }
+      await api.backups.createSchedule({ type, source, label, schedule, retention, stop: stopFirst });
+      onDone(); onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} title="Automatischer Backup-Zeitplan" onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Zeitplan anlegen
+        </button>
+      </>}
+    >
+      {error && <div className="login-error">{error}</div>}
+      <div className="filter-tabs" style={{ marginBottom: 4 }}>
+        <button className={`filter-tab${type === 'container' ? ' filter-tab--active' : ''}`} onClick={() => setType('container')}>Container</button>
+        <button className={`filter-tab${type === 'directory' ? ' filter-tab--active' : ''}`} onClick={() => setType('directory')}>Verzeichnis</button>
+        <button className={`filter-tab${type === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setType('vm')}>VM</button>
+      </div>
+
+      {type === 'container' && (
+        <div className="form-group">
+          <label className="form-label">Container (mit Volumes)</label>
+          <select className="input input--rect" value={containerId} onChange={(e) => setContainerId(e.target.value)} style={{ cursor: 'pointer' }}>
+            {sources.length === 0 && <option value="">Keine Container mit Volumes</option>}
+            {sources.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.volumes} Volume{s.volumes !== 1 ? 's' : ''})</option>)}
+          </select>
+          <label className="legend__item" style={{ cursor: 'pointer', marginTop: 8 }}>
+            <input type="checkbox" checked={stopFirst} onChange={(e) => setStopFirst(e.target.checked)} />
+            <span>Container während des Backups stoppen</span>
+          </label>
+        </div>
+      )}
+      {type === 'directory' && (
+        <div className="form-group">
+          <label className="form-label">Verzeichnis-Pfad</label>
+          <input className="input input--rect" placeholder="/opt/appdata" value={dir} onChange={(e) => setDir(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        </div>
+      )}
+      {type === 'vm' && (
+        <div className="form-group">
+          <label className="form-label">Virtuelle Maschine</label>
+          <select className="input input--rect" value={vm} onChange={(e) => setVm(e.target.value)} style={{ cursor: 'pointer' }}>
+            {vms.length === 0 && <option value="">Keine VMs</option>}
+            {vms.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="form-group">
+        <label className="form-label">Zeitplan</label>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+          {CRON_PRESETS.map((p) => (
+            <button key={p.value} className={`btn btn--xs ${schedule === p.value ? 'btn--primary' : 'btn--outline'}`} onClick={() => setSchedule(p.value)}>{p.label}</button>
+          ))}
+        </div>
+        <input className="input input--rect" value={schedule} onChange={(e) => setSchedule(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        <div className="form-hint">Cron-Format: Minute Stunde Tag Monat Wochentag</div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Aufbewahrung (Anzahl Backups behalten)</label>
+        <input className="input input--rect" type="number" min={1} max={365} value={retention} onChange={(e) => setRetention(Math.max(1, parseInt(e.target.value) || 1))} style={{ maxWidth: 140 }} />
+        <div className="form-hint">Ältere Backups dieses Ziels werden automatisch gelöscht.</div>
+      </div>
+    </Modal>
+  );
+}
+
+function SchedulesPanel() {
+  const [schedules, setSchedules] = useState<BackupSchedule[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [busy, setBusy] = useState<Record<number, boolean>>({});
+
+  const load = useCallback(async () => {
+    try { setSchedules((await api.backups.schedules()).schedules); } catch { /* */ }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const withBusy = async (id: number, fn: () => Promise<unknown>) => {
+    setBusy((b) => ({ ...b, [id]: true }));
+    try { await fn(); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setBusy((b) => { const n = { ...b }; delete n[id]; return n; }); }
+  };
+
+  return (
+    <Panel title="Automatische Zeitpläne" icon={<CalendarClock size={15} />} subtitle={`${schedules.length} Zeitplan/e`} storageKey="backup-schedules"
+      actions={<button className="btn btn--primary btn--sm" onClick={() => setModalOpen(true)}><Plus size={13} /> Neuer Zeitplan</button>}
+    >
+      {schedules.length === 0 ? (
+        <div className="empty-state" style={{ padding: '32px 20px' }}>
+          <div className="empty-state__desc">Noch keine Zeitpläne. Lege automatische Backups mit Aufbewahrung an.</div>
+        </div>
+      ) : (
+        <div className="table-scroll" style={{ marginTop: 6 }}>
+          <table className="dtable">
+            <thead>
+              <tr><th>Aktiv</th><th>Typ</th><th>Ziel</th><th>Zeitplan</th><th className="dtable__num">Behalten</th><th>Letzter Lauf</th><th style={{ width: 90 }}></th></tr>
+            </thead>
+            <tbody>
+              {schedules.map((s) => (
+                <tr key={s.id}>
+                  <td><Switch checked={s.enabled === 1} disabled={busy[s.id]} onChange={(v) => withBusy(s.id, () => api.backups.toggleSchedule(s.id, v))} /></td>
+                  <td><span className="badge badge--paused">{s.type}</span></td>
+                  <td style={{ fontWeight: 600, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</td>
+                  <td className="dtable__mono">{s.schedule}</td>
+                  <td className="dtable__num">{s.retention}</td>
+                  <td className="text-muted">
+                    {s.last_run ? (
+                      <span className={s.last_status === 'error' ? 'text-error' : undefined} title={s.last_message ?? ''}>
+                        {timeAgo(new Date(s.last_run).getTime() / 1000)} · {s.last_status === 'error' ? 'Fehler' : 'ok'}
+                      </span>
+                    ) : '—'}
+                  </td>
+                  <td>
+                    <div className="dtable__actions">
+                      <button className="btn btn--ghost btn--icon btn--sm" title="Jetzt ausführen" disabled={busy[s.id]} onClick={() => withBusy(s.id, () => api.backups.runSchedule(s.id))}>
+                        {busy[s.id] ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />}
+                      </button>
+                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={busy[s.id]} onClick={() => { if (confirm('Zeitplan löschen?')) void withBusy(s.id, () => api.backups.removeSchedule(s.id)); }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <NewScheduleModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={load} />
+    </Panel>
+  );
+}
+
 export function Backups() {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [dir, setDir] = useState('');
@@ -152,6 +334,7 @@ export function Backups() {
         }
       />
       <main className="page">
+        <SchedulesPanel />
         <Panel title="Backups" icon={<HardDrive size={15} />} subtitle={formatBytes(totalSize)} storageKey="backups">
           {backups.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 20px' }}>

@@ -24,6 +24,10 @@ import { securityRoutes } from './routes/security';
 import { vmNetworkRoutes } from './routes/vmnetworks';
 import { imageUpdateRoutes } from './routes/imageupdates';
 import { antivirusRoutes } from './routes/antivirus';
+import { notificationRoutes } from './routes/notifications';
+import { appTemplateRoutes } from './routes/apptemplates';
+import { runDueSchedules } from './routes/backups';
+import { startDockerWatcher } from './lib/dockerwatch';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -67,6 +71,8 @@ async function main() {
   await fastify.register(vmNetworkRoutes);
   await fastify.register(imageUpdateRoutes);
   await fastify.register(antivirusRoutes);
+  await fastify.register(notificationRoutes);
+  await fastify.register(appTemplateRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {
@@ -82,6 +88,12 @@ async function main() {
 
   await fastify.listen({ port: PORT, host: HOST });
   console.log(`\n⬡ Core-Hub running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}\n`);
+
+  // Backup scheduler – check every 30s for due cron-based schedules
+  setInterval(() => { void runDueSchedules(); }, 30_000);
+
+  // Watch Docker for unexpected container deaths and notify
+  startDockerWatcher();
 }
 
 main().catch((err) => {

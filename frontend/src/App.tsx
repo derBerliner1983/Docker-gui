@@ -15,6 +15,7 @@ import { Proxy } from './pages/Proxy';
 import { Networks } from './pages/Networks';
 import { Security } from './pages/Security';
 import { Antivirus } from './pages/Antivirus';
+import { AppTemplates } from './pages/AppTemplates';
 import { Settings } from './pages/Settings';
 
 function Protected({ children }: { children: React.ReactNode }) {
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/taskmanager" element={<Protected><TaskManager /></Protected>} />
       <Route path="/containers" element={<Protected><Containers /></Protected>} />
+      <Route path="/apps" element={<Protected><AppTemplates /></Protected>} />
       <Route path="/vms" element={<Protected><VMs /></Protected>} />
       <Route path="/automation" element={<Protected><Automation /></Protected>} />
       <Route path="/updates" element={<Protected><Updates /></Protected>} />

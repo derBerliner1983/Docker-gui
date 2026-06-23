@@ -9,6 +9,8 @@ export interface DbUser {
   username: string;
   password_hash: string;
   role: 'admin' | 'viewer';
+  totp_secret: string | null;
+  totp_enabled: number;
   created_at: string;
 }
 
