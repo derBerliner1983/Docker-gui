@@ -22,6 +22,7 @@ db.exec(`
     port       INTEGER NOT NULL DEFAULT 22,
     appdata_src TEXT NOT NULL DEFAULT '/mnt/user/appdata',
     appdata_dst TEXT NOT NULL DEFAULT '/opt/appdata',
+    password   TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
   CREATE TABLE IF NOT EXISTS migration_phases (
@@ -49,10 +50,13 @@ db.exec(`
   );
 `);
 
+// Add password column to existing sessions tables (idempotent)
+try { db.exec(`ALTER TABLE migration_sessions ADD COLUMN password TEXT`); } catch { /* column exists */ }
+
 // ── Queries ────────────────────────────────────────────────────────────────────
 
 const mq = {
-  create:    db.prepare(`INSERT INTO migration_sessions (session_id,host,user,port,appdata_src,appdata_dst) VALUES (?,?,?,?,?,?)`),
+  create:    db.prepare(`INSERT INTO migration_sessions (session_id,host,user,port,appdata_src,appdata_dst,password) VALUES (?,?,?,?,?,?,?)`),
   get:       db.prepare(`SELECT * FROM migration_sessions WHERE session_id = ?`),
   list:      db.prepare(`SELECT * FROM migration_sessions ORDER BY created_at DESC LIMIT 20`),
   del:       db.prepare(`DELETE FROM migration_sessions WHERE session_id = ?`),
@@ -86,7 +90,7 @@ const mq = {
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface MigSession { session_id: string; host: string; user: string; port: number; appdata_src: string; appdata_dst: string; created_at: string }
+interface MigSession { session_id: string; host: string; user: string; port: number; appdata_src: string; appdata_dst: string; password: string | null; created_at: string }
 interface MigContainer { session_id: string; cname: string; image: string; config_json: string; volumes_json: string; total_bytes: number; selected: number; sync_status: string; local_id: string | null; error: string | null }
 interface VolumeInfo { type: string; source: string; target: string; bytes: number }
 
@@ -100,17 +104,25 @@ function ensureKeypair(): string {
   return fs.readFileSync(KEY_PUB_PATH, 'utf8').trim();
 }
 
-function sshBaseArgs(s: { host: string; user: string; port: number }): string[] {
-  return ['-i', KEY_PATH, '-o', 'StrictHostKeyChecking=no', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-p', String(s.port)];
+// Returns the core SSH options (key, no host-key checking, timeout, port).
+// BatchMode=yes (no password prompts) is added only when NOT using sshpass.
+function sshBaseArgs(s: { port: number; password?: string | null }): string[] {
+  const args = ['-i', KEY_PATH, '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10', '-p', String(s.port)];
+  if (!s.password) args.push('-o', 'BatchMode=yes');
+  return args;
 }
 
-function sshArgs(s: { host: string; user: string; port: number }): string[] {
-  return [...sshBaseArgs(s), `${s.user}@${s.host}`];
-}
+function sshTarget(s: { user: string; host: string }): string { return `${s.user}@${s.host}`; }
 
-function execSSH(s: { host: string; user: string; port: number }, cmd: string, timeoutMs = 60_000): Promise<string> {
+// Spawns an SSH or sshpass+ssh command. When a password is stored on the
+// session it is passed via the SSHPASS env var (never on the command line).
+function execSSH(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const proc = spawn('ssh', [...sshArgs(s), cmd], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const env = s.password ? { ...process.env, SSHPASS: s.password } : process.env;
+    const [prog, args] = s.password
+      ? ['sshpass', ['-e', 'ssh', ...sshBaseArgs(s), sshTarget(s), cmd]]
+      : ['ssh', [...sshBaseArgs(s), sshTarget(s), cmd]];
+    const proc = spawn(prog, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
     let out = '', err = '';
     proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
@@ -134,26 +146,28 @@ export async function migrationRoutes(fastify: FastifyInstance) {
   });
 
   // Session anlegen
-  fastify.post<{ Body: { host: string; user?: string; port?: number; appdataSrc?: string; appdataDst?: string } }>(
+  fastify.post<{ Body: { host: string; user?: string; port?: number; appdataSrc?: string; appdataDst?: string; password?: string } }>(
     '/api/migration/sessions', { preHandler: requireAdmin }, async (req, reply) => {
-      const { host, user = 'root', port = 22, appdataSrc = '/mnt/user/appdata', appdataDst = '/opt/appdata' } = req.body ?? {};
+      const { host, user = 'root', port = 22, appdataSrc = '/mnt/user/appdata', appdataDst = '/opt/appdata', password } = req.body ?? {};
       if (!host) return reply.status(400).send({ error: 'Host erforderlich' });
       const sid = crypto.randomUUID();
-      mq.create.run(sid, host, user, port, appdataSrc, appdataDst);
+      mq.create.run(sid, host, user, port, appdataSrc, appdataDst, password || null);
       reply.status(201).send({ sessionId: sid });
     }
   );
 
-  // Alle Sessions auflisten
+  // Alle Sessions auflisten (password stripped from response)
   fastify.get('/api/migration/sessions', { preHandler: requireAdmin }, async (_req, reply) => {
-    reply.send({ sessions: mq.list.all() });
+    const sessions = (mq.list.all() as MigSession[]).map(({ password, ...s }) => ({ ...s, hasPassword: !!password }));
+    reply.send({ sessions });
   });
 
-  // Session-Details (Phasen + Container)
+  // Session-Details (Phasen + Container; password stripped)
   fastify.get<{ Params: { sid: string } }>('/api/migration/sessions/:sid', { preHandler: requireAdmin }, async (req, reply) => {
     const session = mq.get.get(req.params.sid) as MigSession | undefined;
     if (!session) return reply.status(404).send({ error: 'Session nicht gefunden' });
-    reply.send({ session, phases: mq.listPhases.all(req.params.sid), containers: mq.listContainers.all(req.params.sid) });
+    const { password, ...sessionPublic } = session;
+    reply.send({ session: { ...sessionPublic, hasPassword: !!password }, phases: mq.listPhases.all(req.params.sid), containers: mq.listContainers.all(req.params.sid) });
   });
 
   // Session löschen
@@ -434,13 +448,16 @@ export async function migrationRoutes(fastify: FastifyInstance) {
         try { fs.mkdirSync(localDst, { recursive: true }); } catch { /* exists */ }
 
         const ok = await new Promise<boolean>((resolve) => {
-          const sshStr = `ssh ${sshBaseArgs(s).join(' ')}`;
+          const sshStr = s.password
+            ? `sshpass -e ssh ${sshBaseArgs(s).join(' ')}`
+            : `ssh ${sshBaseArgs(s).join(' ')}`;
+          const rsyncEnv = s.password ? { ...process.env, SSHPASS: s.password } : process.env;
           const proc = spawn('rsync', [
             '-az', '--partial', '--info=progress2', '--no-human-readable',
             '-e', sshStr,
             `${s.user}@${s.host}:${vol.source}/`,
             `${localDst}/`,
-          ], { stdio: ['ignore', 'pipe', 'pipe'] });
+          ], { stdio: ['ignore', 'pipe', 'pipe'], env: rsyncEnv });
 
           let errBuf = '';
           proc.stdout.on('data', (d: Buffer) => {

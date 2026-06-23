@@ -8,7 +8,7 @@ import { formatBytes } from '../lib/utils';
 
 interface MigSession {
   session_id: string; host: string; user: string; port: number;
-  appdata_src: string; appdata_dst: string; created_at: string;
+  appdata_src: string; appdata_dst: string; created_at: string; hasPassword?: boolean;
 }
 interface MigPhase {
   session_id: string; phase: string;
@@ -72,7 +72,7 @@ export function Migration() {
   const [pubkey, setPubkey] = useState('');
   const [showPubkey, setShowPubkey] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
-  const [form, setForm] = useState({ host: '', user: 'root', port: '22', appdataSrc: '/mnt/user/appdata', appdataDst: '/opt/appdata' });
+  const [form, setForm] = useState({ host: '', user: 'root', port: '22', appdataSrc: '/mnt/user/appdata', appdataDst: '/opt/appdata', password: '' });
   const [busyPhase, setBusyPhase] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncLog, setSyncLog] = useState<string[]>([]);
@@ -134,7 +134,7 @@ export function Migration() {
     try {
       const data = await mreq<{ sessionId: string }>('/api/migration/sessions', {
         method: 'POST',
-        body: JSON.stringify({ host: form.host, user: form.user, port: parseInt(form.port), appdataSrc: form.appdataSrc, appdataDst: form.appdataDst }),
+        body: JSON.stringify({ host: form.host, user: form.user, port: parseInt(form.port), appdataSrc: form.appdataSrc, appdataDst: form.appdataDst, password: form.password || undefined }),
       });
       await loadSessions();
       setSid(data.sessionId);
@@ -381,18 +381,23 @@ export function Migration() {
           {/* New session form */}
           {showNewForm && (
             <div style={{ background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+              <div style={{ background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.25)', borderRadius: 6, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: 'var(--color-muted)' }}>
+                <b>Authentifizierung:</b> Entweder SSH-Schlüssel auf Unraid eintragen (empfohlen) <em>oder</em> unten ein Passwort eingeben. Bei Passwort muss <code>sshpass</code> installiert sein (<code>apt install sshpass</code> / <code>yum install sshpass</code>).
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
                 {[
-                  { label: 'Unraid Host/IP', key: 'host', placeholder: '192.168.1.100' },
-                  { label: 'SSH-Benutzer', key: 'user', placeholder: 'root' },
-                  { label: 'SSH-Port', key: 'port', placeholder: '22' },
-                  { label: 'Appdata-Pfad (Unraid)', key: 'appdataSrc', placeholder: '/mnt/user/appdata' },
-                  { label: 'Appdata-Ziel (lokal)', key: 'appdataDst', placeholder: '/opt/appdata' },
+                  { label: 'Unraid Host/IP', key: 'host', placeholder: '192.168.1.100', type: 'text' },
+                  { label: 'SSH-Benutzer', key: 'user', placeholder: 'root', type: 'text' },
+                  { label: 'SSH-Port', key: 'port', placeholder: '22', type: 'text' },
+                  { label: 'SSH-Passwort (optional)', key: 'password', placeholder: 'Leer = Schlüssel-Auth', type: 'password' },
+                  { label: 'Appdata-Pfad (Unraid)', key: 'appdataSrc', placeholder: '/mnt/user/appdata', type: 'text' },
+                  { label: 'Appdata-Ziel (lokal)', key: 'appdataDst', placeholder: '/opt/appdata', type: 'text' },
                 ].map(f => (
                   <div key={f.key}>
                     <div style={{ fontSize: 11, color: 'var(--color-muted)', marginBottom: 3 }}>{f.label}</div>
                     <input
                       className="input input--rect"
+                      type={f.type}
                       placeholder={f.placeholder}
                       value={form[f.key as keyof typeof form]}
                       onChange={(e) => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
@@ -419,7 +424,7 @@ export function Migration() {
                   <ArrowRightLeft size={16} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{s.host}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>{s.appdata_src} → {s.appdata_dst} · {s.user}@{s.host}:{s.port}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-muted)' }}>{s.appdata_src} → {s.appdata_dst} · {s.user}@{s.host}:{s.port} · {s.hasPassword ? '🔑 Passwort' : '🗝 SSH-Key'}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--color-faint)' }}>{new Date(s.created_at).toLocaleString('de-DE')}</div>
                   <button className="btn btn--ghost btn--icon btn--sm" title="Session löschen"
