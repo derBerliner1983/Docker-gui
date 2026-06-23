@@ -90,8 +90,9 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR" "$DATA_DIR"
 # Abhängigkeiten installieren & bauen
 info "Installiere Backend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/backend"
-npm install --omit=dev
+npm install
 npm run build
+npm prune --omit=dev
 
 info "Installiere Frontend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/frontend"
