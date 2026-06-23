@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -13,10 +13,12 @@ import type { Container, CreateContainerData } from '../lib/types';
 /** Container-Avatar: App-Icon (aus dem Store) mit Buchstaben-Fallback. */
 function ContainerAvatar({ container }: { container: Container }) {
   const [err, setErr] = useState(false);
-  if (container.icon && !err) {
+  // Upgrade HTTP → HTTPS to avoid mixed-content blocking on HTTPS pages
+  const iconSrc = container.icon?.replace(/^http:\/\//i, 'https://') || null;
+  if (iconSrc && !err) {
     return (
       <div className="container-avatar" style={{ background: '#fff', padding: 4 }}>
-        <img src={container.icon} alt={container.name} onError={() => setErr(true)}
+        <img src={iconSrc} alt={container.name} onError={() => setErr(true)}
           style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 4 }} />
       </div>
     );
@@ -312,7 +314,18 @@ export function Containers() {
 
                   {c.ports.length > 0 && (
                     <div className="container-card__ports">
-                      {c.ports.map((p) => <span className="port-chip" key={p}>{p}</span>)}
+                      {c.ports.map((p) => {
+                        const [hostPort] = p.split(':');
+                        const href = `http://${window.location.hostname}:${hostPort}`;
+                        return (
+                          <a key={p} href={href} target="_blank" rel="noreferrer"
+                            className="port-chip"
+                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                            title={`Öffnen: ${href}`}>
+                            {p} <ExternalLink size={8} style={{ opacity: 0.6, flexShrink: 0 }} />
+                          </a>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -322,6 +335,24 @@ export function Containers() {
                       <div><span style={{ color: 'var(--color-faint)' }}>Erstellt: </span>{timeAgo(c.created)}</div>
                       {c.category && <div><span style={{ color: 'var(--color-faint)' }}>Kategorie: </span>{c.category}</div>}
                       <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{germanStatus(c.status)}</div>
+                      {c.ports.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                          {c.ports.map((p) => {
+                            const [hostPort, containerPort] = p.split(':');
+                            const href = `http://${window.location.hostname}:${hostPort}`;
+                            return (
+                              <div key={p}>
+                                <span style={{ color: 'var(--color-faint)' }}>Port: </span>
+                                <a href={href} target="_blank" rel="noreferrer"
+                                  style={{ color: 'var(--color-accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                                  {window.location.hostname}:{hostPort}
+                                </a>
+                                <span style={{ color: 'var(--color-faint)' }}> → Container {containerPort}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -383,6 +414,13 @@ export function Containers() {
                         {busy === 'pull' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={12} />}
                       </button>
                     )}
+                    <Link
+                      to={`/containers/${c.id}`}
+                      className="btn btn--ghost btn--icon btn--sm"
+                      title="Konfiguration bearbeiten"
+                    >
+                      <Pencil size={12} />
+                    </Link>
                     <button
                       className="btn btn--danger btn--icon btn--sm"
                       title="Löschen"

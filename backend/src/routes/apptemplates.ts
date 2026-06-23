@@ -122,7 +122,7 @@ async function warmUnraidCache(): Promise<void> {
         id,
         name: String(app.Name),
         image: String(app.Repository),
-        icon: String(app.Icon ?? ''),
+        icon: String(app.Icon ?? '').replace(/^http:\/\//i, 'https://'),
         description: stripHtml(String(app.Overview ?? '')).slice(0, 500),
         category: primaryCategory(String(app.Category ?? ''), catMap),
         ports,

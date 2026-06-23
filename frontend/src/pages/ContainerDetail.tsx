@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil } from 'lucide-react';
+import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
@@ -299,8 +299,15 @@ export function ContainerDetail() {
   );
 
   const isRunning = container.state === 'running';
-  const ports = Object.entries(inspect?.NetworkSettings.Ports ?? {}).flatMap(([key, bindings]) =>
-    (bindings ?? []).map((b) => `${b.HostPort}:${key.replace('/tcp', '')}`)
+  const portLinks = Object.entries(inspect?.NetworkSettings.Ports ?? {}).flatMap(([key, bindings]) =>
+    (bindings ?? []).filter((b) => b.HostPort).map((b) => {
+      const ip = (!b.HostIp || b.HostIp === '0.0.0.0') ? window.location.hostname : b.HostIp;
+      return {
+        display: `${b.HostPort}:${key.split('/')[0]}`,
+        proto: key.split('/')[1] ?? 'tcp',
+        url: `http://${ip}:${b.HostPort}`,
+      };
+    })
   );
   const envVars = (inspect?.Config.Env ?? []).filter((e) => !e.startsWith('PATH=') && !e.startsWith('HOME='));
   const binds = inspect?.HostConfig.Binds ?? [];
@@ -409,11 +416,31 @@ export function ContainerDetail() {
                 <div className="form-label" style={{ marginBottom: 4 }}>Erstellt</div>
                 <span style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>{inspect ? new Date(inspect.Created).toLocaleString('de-DE') : '—'}</span>
               </div>
-              {ports.length > 0 && (
+              {portLinks.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
                   <div className="form-label" style={{ marginBottom: 6 }}>Ports</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                    {ports.map((p) => <span key={p} className="port-chip">{p}</span>)}
+                    {portLinks.map((p) => (
+                      <a key={p.display} href={p.url} target="_blank" rel="noreferrer"
+                        className="port-chip"
+                        style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        title={`Öffnen: ${p.url}`}>
+                        {p.display} <ExternalLink size={9} style={{ opacity: 0.7, flexShrink: 0 }} />
+                      </a>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {portLinks.map((p) => (
+                      <div key={p.display} style={{ fontSize: 11.5, color: 'var(--color-subtle)' }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-faint)' }}>
+                          {p.proto.toUpperCase()}{' '}
+                        </span>
+                        <a href={p.url} target="_blank" rel="noreferrer"
+                          style={{ color: 'var(--color-accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>
+                          {p.url}
+                        </a>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
