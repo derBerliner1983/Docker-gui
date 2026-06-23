@@ -63,9 +63,12 @@ export async function systemRoutes(fastify: FastifyInstance) {
       ]);
 
       const vmMem = vmMemoryUsage();
-      const dockerMemClamped = Math.min(dockerMem, mem.used);
-      const vmMemClamped = Math.min(vmMem, Math.max(0, mem.used - dockerMemClamped));
-      const systemMem = Math.max(0, mem.used - dockerMemClamped - vmMemClamped);
+      // mem.used enthält Buffers/Cache (Linux nutzt freien RAM als Cache).
+      // mem.active = tatsächlich belegter RAM (wie htop ihn anzeigt).
+      const realUsed = (mem.active && mem.active > 0) ? mem.active : mem.used;
+      const dockerMemClamped = Math.min(dockerMem, realUsed);
+      const vmMemClamped = Math.min(vmMem, Math.max(0, realUsed - dockerMemClamped));
+      const systemMem = Math.max(0, realUsed - dockerMemClamped - vmMemClamped);
 
       reply.send({
         cpu: {
@@ -77,15 +80,15 @@ export async function systemRoutes(fastify: FastifyInstance) {
         },
         memory: {
           total: mem.total,
-          used: mem.used,
+          used: realUsed,
           free: mem.free,
           available: mem.available,
-          percent: Math.round((mem.used / mem.total) * 100),
+          percent: Math.round((realUsed / mem.total) * 100),
           breakdown: {
             system: systemMem,
             docker: dockerMemClamped,
             vm: vmMemClamped,
-            free: mem.total - mem.used,
+            free: mem.total - realUsed,
           },
         },
         disk: fsSizes
