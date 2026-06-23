@@ -6,102 +6,168 @@ import { notify } from '../lib/notify';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 
-interface TemplateEnv { key: string; label: string; default?: string; required?: boolean; secret?: boolean }
-interface TemplatePort { container: number; host: number; proto?: 'tcp' | 'udp' }
-interface TemplateVol { name: string; path: string }
-interface AppTemplate {
+// ─── Shared types ────────────────────────────────────────────────────────────
+
+interface StorePort { container: number; host: number; proto: 'tcp' | 'udp' }
+interface StoreVol  { name: string; path: string }
+interface StoreEnv  { key: string; label: string; default: string; required: boolean; secret: boolean }
+
+export interface StoreItem {
   id: string;
   name: string;
-  category: string;
+  image: string;
   icon: string;
   description: string;
-  image: string;
-  ports: TemplatePort[];
-  volumes?: TemplateVol[];
-  env?: TemplateEnv[];
-  restart?: string;
-  note?: string;
+  category: string;
+  ports: StorePort[];
+  volumes: StoreVol[];
+  env: StoreEnv[];
+  restart: string;
+  source: 'unraid' | 'dockerhub';
+  stars?: number;
+  installed?: boolean;
 }
 
-// Curated catalog of popular self-hosted services (1-click install).
-const TEMPLATES: AppTemplate[] = [
-  {
-    id: 'nextcloud', name: 'Nextcloud', category: 'Cloud', icon: '☁️',
-    description: 'Eigene Cloud für Dateien, Kalender & Kontakte.',
-    image: 'nextcloud:latest', ports: [{ container: 80, host: 8080 }],
-    volumes: [{ name: 'data', path: '/var/www/html' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'jellyfin', name: 'Jellyfin', category: 'Medien', icon: '🎬',
-    description: 'Freier Media-Server für Filme, Serien & Musik.',
-    image: 'jellyfin/jellyfin:latest', ports: [{ container: 8096, host: 8096 }],
-    volumes: [{ name: 'config', path: '/config' }, { name: 'media', path: '/media' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'plex', name: 'Plex', category: 'Medien', icon: '🍿',
-    description: 'Beliebter Media-Server mit Apps für alle Geräte.',
-    image: 'plexinc/pms-docker:latest', ports: [{ container: 32400, host: 32400 }],
-    volumes: [{ name: 'config', path: '/config' }, { name: 'media', path: '/data' }],
-    env: [{ key: 'PLEX_CLAIM', label: 'Claim-Token (plex.tv/claim)', required: false }], restart: 'unless-stopped',
-  },
-  {
-    id: 'portainer', name: 'Portainer', category: 'Verwaltung', icon: '🐳',
-    description: 'Docker-Management-Oberfläche.',
-    image: 'portainer/portainer-ce:latest', ports: [{ container: 9000, host: 9000 }],
-    volumes: [{ name: 'data', path: '/data' }], restart: 'unless-stopped',
-    note: 'Benötigt Zugriff auf den Docker-Socket – nach Installation ggf. /var/run/docker.sock einbinden.',
-  },
-  {
-    id: 'pihole', name: 'Pi-hole', category: 'Netzwerk', icon: '🛡️',
-    description: 'Netzwerkweiter Werbe- & Tracker-Blocker (DNS).',
-    image: 'pihole/pihole:latest', ports: [{ container: 53, host: 53, proto: 'tcp' }, { container: 53, host: 53, proto: 'udp' }, { container: 80, host: 8081 }],
-    volumes: [{ name: 'etc', path: '/etc/pihole' }, { name: 'dnsmasq', path: '/etc/dnsmasq.d' }],
-    env: [{ key: 'WEBPASSWORD', label: 'Web-Passwort', required: true, secret: true }, { key: 'TZ', label: 'Zeitzone', default: 'Europe/Berlin' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'adguard', name: 'AdGuard Home', category: 'Netzwerk', icon: '🚫',
-    description: 'DNS-basierter Werbeblocker mit moderner Oberfläche.',
-    image: 'adguard/adguardhome:latest', ports: [{ container: 53, host: 53, proto: 'udp' }, { container: 3000, host: 3001 }],
-    volumes: [{ name: 'work', path: '/opt/adguardhome/work' }, { name: 'conf', path: '/opt/adguardhome/conf' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'vaultwarden', name: 'Vaultwarden', category: 'Sicherheit', icon: '🔐',
-    description: 'Leichtgewichtiger Bitwarden-kompatibler Passwort-Manager.',
-    image: 'vaultwarden/server:latest', ports: [{ container: 80, host: 8082 }],
-    volumes: [{ name: 'data', path: '/data' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'uptimekuma', name: 'Uptime Kuma', category: 'Monitoring', icon: '📈',
-    description: 'Self-hosted Monitoring & Status-Seite.',
-    image: 'louislam/uptime-kuma:latest', ports: [{ container: 3001, host: 3002 }],
-    volumes: [{ name: 'data', path: '/app/data' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'grafana', name: 'Grafana', category: 'Monitoring', icon: '📊',
-    description: 'Dashboards & Visualisierung für Metriken.',
-    image: 'grafana/grafana:latest', ports: [{ container: 3000, host: 3003 }],
-    volumes: [{ name: 'data', path: '/var/lib/grafana' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'gitea', name: 'Gitea', category: 'Entwicklung', icon: '🍵',
-    description: 'Leichtgewichtiger, self-hosted Git-Server.',
-    image: 'gitea/gitea:latest', ports: [{ container: 3000, host: 3004 }, { container: 22, host: 2222 }],
-    volumes: [{ name: 'data', path: '/data' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'homeassistant', name: 'Home Assistant', category: 'Smart Home', icon: '🏠',
-    description: 'Zentrale für Smart-Home-Automatisierung.',
-    image: 'ghcr.io/home-assistant/home-assistant:stable', ports: [{ container: 8123, host: 8123 }],
-    volumes: [{ name: 'config', path: '/config' }], restart: 'unless-stopped',
-  },
-  {
-    id: 'qbittorrent', name: 'qBittorrent', category: 'Downloads', icon: '⬇️',
-    description: 'BitTorrent-Client mit Web-Oberfläche.',
-    image: 'lscr.io/linuxserver/qbittorrent:latest', ports: [{ container: 8080, host: 8083 }],
-    volumes: [{ name: 'config', path: '/config' }, { name: 'downloads', path: '/downloads' }],
-    env: [{ key: 'TZ', label: 'Zeitzone', default: 'Europe/Berlin' }, { key: 'WEBUI_PORT', label: 'WebUI-Port', default: '8080' }], restart: 'unless-stopped',
-  },
-];
+// ─── Unraid CA feed cache ─────────────────────────────────────────────────────
+
+let unraidApps: StoreItem[] = [];
+let unraidFetchedAt = 0;
+let unraidWarming = false;
+const UNRAID_FEED = 'https://assets.ca.unraid.net/feed/applicationFeed.json';
+const CACHE_TTL  = 30 * 60 * 1000; // 30 min
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]*>/g, '').replace(/\r?\n\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+}
+
+function primaryCategory(catString: string, catMap: Record<string, string>): string {
+  // Category field looks like "GameServers: MediaApp:Other" – space-separated tokens
+  // where each "Word:" is a category key and "Word:Sub" a sub-category.
+  if (!catString) return 'Sonstige';
+  const first = catString.trim().split(/\s+/)[0];
+  const key = first.replace(/:.*$/, ''); // strip ":Sub" or trailing ":"
+  return catMap[key] || key || 'Sonstige';
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseConfig(raw: any): { ports: StorePort[]; volumes: StoreVol[]; env: StoreEnv[] } {
+  const items: unknown[] = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+  const ports: StorePort[] = [];
+  const volumes: StoreVol[] = [];
+  const env: StoreEnv[] = [];
+
+  for (const c of items) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const item = c as any;
+    const attr: Record<string, string> = item['@attributes'] ?? {};
+    const type = attr.Type ?? '';
+    const target = attr.Target ?? '';
+    const def = (attr.Default ?? String(item.value ?? '')).trim();
+    const label = attr.Name ?? target ?? 'config';
+    const required = attr.Required === 'true';
+    const mask = attr.Mask === 'true';
+
+    if (type === 'Port') {
+      const cn = parseInt(target, 10);
+      if (cn > 0) {
+        const hn = parseInt(def, 10) || cn;
+        const proto: 'tcp' | 'udp' = attr.Mode?.toLowerCase() === 'udp' ? 'udp' : 'tcp';
+        ports.push({ container: cn, host: hn, proto });
+      }
+    } else if (type === 'Path') {
+      if (target) volumes.push({ name: label, path: target });
+    } else if (type === 'Variable') {
+      if (target) env.push({ key: target, label, default: def, required, secret: mask });
+    }
+  }
+  return { ports, volumes, env };
+}
+
+async function warmUnraidCache(): Promise<void> {
+  if (unraidWarming) return;
+  unraidWarming = true;
+  try {
+    const res = await fetch(UNRAID_FEED, {
+      headers: { 'User-Agent': 'core-hub/1.0', Accept: 'application/json' },
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await res.json()) as any;
+
+    // Build human-readable category map from d.categories
+    const catMap: Record<string, string> = {};
+    for (const c of data.categories ?? []) {
+      const key = String(c.Cat ?? '').replace(/:$/, '');
+      if (key) catMap[key] = c.Des;
+      for (const sub of c.Sub ?? []) {
+        const sk = String(sub.Cat ?? '').replace(/:$/, '');
+        if (sk) catMap[sk] = sub.Des;
+      }
+    }
+
+    const seen = new Set<string>();
+    const apps: StoreItem[] = [];
+    for (const app of data.applist ?? []) {
+      if (!app.Name || !app.Repository) continue;
+      let id = slugify(String(app.Name));
+      if (seen.has(id)) id = `${id}-${seen.size}`;
+      seen.add(id);
+      const { ports, volumes, env } = parseConfig(app.Config);
+      apps.push({
+        id,
+        name: String(app.Name),
+        image: String(app.Repository),
+        icon: String(app.Icon ?? ''),
+        description: stripHtml(String(app.Overview ?? '')).slice(0, 500),
+        category: primaryCategory(String(app.Category ?? ''), catMap),
+        ports,
+        volumes,
+        env,
+        restart: 'unless-stopped',
+        source: 'unraid',
+      });
+    }
+    unraidApps = apps;
+    unraidFetchedAt = Date.now();
+  } finally {
+    unraidWarming = false;
+  }
+}
+
+// ─── Docker Hub proxy ─────────────────────────────────────────────────────────
+
+async function searchDockerHub(q: string, page: number): Promise<{ results: StoreItem[]; total: number }> {
+  const url = `https://hub.docker.com/v2/search/repositories/?query=${encodeURIComponent(q)}&page_size=24&page=${page}`;
+  const res = await fetch(url, {
+    headers: { Accept: 'application/json', 'User-Agent': 'core-hub/1.0' },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await res.json()) as any;
+  const results: StoreItem[] = (data.results ?? []).map((r: any) => ({
+    id: slugify(r.repo_name),
+    name: r.repo_name,
+    image: `${r.repo_name}:latest`,
+    icon: '',
+    description: r.short_description ?? '',
+    category: r.is_official ? 'Official' : 'Community',
+    ports: [],
+    volumes: [],
+    env: [],
+    restart: 'unless-stopped',
+    source: 'dockerhub' as const,
+    stars: r.star_count ?? 0,
+  }));
+  return { results, total: data.count ?? results.length };
+}
+
+// ─── Container install (shared) ───────────────────────────────────────────────
 
 async function pullImage(image: string): Promise<void> {
   const stream = await docker.pull(image);
@@ -110,75 +176,161 @@ async function pullImage(image: string): Promise<void> {
   });
 }
 
+interface InstallBody {
+  name?: string;
+  image: string;
+  ports?: { container: number; host: number; proto?: string }[];
+  volumes?: { name: string; path: string }[];
+  env?: Record<string, string>;
+  restart?: string;
+  templateId?: string;
+  category?: string;
+}
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
+
 export async function appTemplateRoutes(fastify: FastifyInstance) {
+  // Legacy endpoint (curated list replaced by store – kept for compat)
   fastify.get('/api/app-templates', { preHandler: requireAuth }, async (_req, reply) => {
-    let installedImages = new Set<string>();
-    let installedNames = new Set<string>();
-    try {
-      const containers = await docker.listContainers({ all: true });
-      installedImages = new Set(containers.map((c) => c.Image));
-      installedNames = new Set(containers.flatMap((c) => c.Names.map((n) => n.replace(/^\//, ''))));
-    } catch { /* docker unavailable */ }
-    const templates = TEMPLATES.map((t) => ({
-      ...t,
-      installed: installedImages.has(t.image) || installedNames.has(t.id),
-    }));
-    reply.send({ templates });
+    reply.send({ templates: [] });
   });
 
-  fastify.post<{ Params: { id: string }; Body: { name?: string; env?: Record<string, string>; ports?: Record<string, number> } }>(
-    '/api/app-templates/:id/install',
-    { preHandler: requireAdmin },
-    async (req, reply) => {
-      const tpl = TEMPLATES.find((t) => t.id === req.params.id);
-      if (!tpl) return reply.status(404).send({ error: 'Vorlage nicht gefunden' });
-      const body = req.body ?? {};
-      const name = (body.name || tpl.id).replace(/[^a-zA-Z0-9._-]/g, '_');
+  // ── Store: cache status ──
+  fastify.get('/api/app-templates/store/status', { preHandler: requireAuth }, async (_req, reply) => {
+    reply.send({
+      cached: unraidFetchedAt > 0,
+      warming: unraidWarming,
+      appCount: unraidApps.length,
+      fetchedAt: unraidFetchedAt > 0 ? new Date(unraidFetchedAt).toISOString() : null,
+    });
+  });
 
-      // Validate required env
-      for (const e of tpl.env ?? []) {
-        if (e.required && !(body.env?.[e.key] || e.default)) {
-          return reply.status(400).send({ error: `Feld „${e.label}" ist erforderlich` });
+  // ── Store: trigger cache warm (admin) ──
+  fastify.post('/api/app-templates/store/warm', { preHandler: requireAdmin }, async (_req, reply) => {
+    if (!unraidWarming) void warmUnraidCache();
+    reply.send({ ok: true, warming: true });
+  });
+
+  // ── Store: search ──
+  fastify.get<{ Querystring: { q?: string; source?: string; page?: string; category?: string } }>(
+    '/api/app-templates/store/search',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const q      = (req.query.q ?? '').trim().toLowerCase();
+      const source = req.query.source === 'dockerhub' ? 'dockerhub' : 'unraid';
+      const page   = Math.max(1, parseInt(req.query.page ?? '1', 10));
+      const cat    = (req.query.category ?? '').trim();
+      const limit  = 24;
+
+      // ── Docker Hub ──
+      if (source === 'dockerhub') {
+        if (q.length < 2) return reply.send({ results: [], total: 0, source, cached: true });
+        try {
+          const { results, total } = await searchDockerHub(q, page);
+          return reply.send({ results, total, source, cached: true, page, limit });
+        } catch (err) {
+          return reply.status(502).send({ error: `Docker Hub nicht erreichbar: ${err instanceof Error ? err.message : ''}` });
         }
       }
 
+      // ── Unraid ──
+      const stale = Date.now() - unraidFetchedAt > CACHE_TTL;
+      if ((stale || unraidApps.length === 0) && !unraidWarming) void warmUnraidCache();
+      if (unraidApps.length === 0) {
+        return reply.send({ results: [], total: 0, source, cached: false, warming: unraidWarming });
+      }
+
+      // Determine installed images
+      let installedImages = new Set<string>();
       try {
-        await pullImage(tpl.image);
+        const cs = await docker.listContainers({ all: true });
+        installedImages = new Set(cs.map((c) => c.Image));
+      } catch { /* docker unavailable */ }
+
+      let filtered = unraidApps;
+      if (cat) filtered = filtered.filter((a) => a.category.toLowerCase() === cat.toLowerCase());
+      if (q.length >= 2) {
+        filtered = filtered.filter((a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q) ||
+          a.image.toLowerCase().includes(q),
+        );
+      }
+
+      const total = filtered.length;
+      const results = filtered.slice((page - 1) * limit, page * limit)
+        .map((a) => ({ ...a, installed: installedImages.has(a.image) }));
+
+      // Distinct categories from current (unfiltered) list for sidebar
+      const categories = [...new Set(unraidApps.map((a) => a.category))].sort();
+
+      return reply.send({ results, total, source, cached: true, page, limit, categories });
+    },
+  );
+
+  // ── Store: install ──
+  fastify.post<{ Body: InstallBody }>(
+    '/api/app-templates/store/install',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const body = req.body ?? {} as InstallBody;
+      if (!body.image) return reply.status(400).send({ error: 'Image erforderlich' });
+
+      const name = (body.name || body.image.split('/').pop()?.replace(/:.*$/, '') || 'container')
+        .replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
+
+      try {
+        await pullImage(body.image);
 
         const exposedPorts: Record<string, object> = {};
         const portBindings: Record<string, { HostPort: string }[]> = {};
-        for (const p of tpl.ports) {
-          const proto = p.proto ?? 'tcp';
-          const hostPort = body.ports?.[`${p.container}/${proto}`] ?? p.host;
+        for (const p of body.ports ?? []) {
+          const proto = (p.proto === 'udp' ? 'udp' : 'tcp') as string;
           const key = `${p.container}/${proto}`;
           exposedPorts[key] = {};
-          portBindings[key] = [{ HostPort: String(hostPort) }];
+          portBindings[key] = [{ HostPort: String(p.host) }];
         }
 
-        const env = (tpl.env ?? []).map((e) => `${e.key}=${body.env?.[e.key] ?? e.default ?? ''}`);
-        const binds = (tpl.volumes ?? []).map((v) => `${tpl.id}_${v.name}:${v.path}`);
+        const env = Object.entries(body.env ?? {}).map(([k, v]) => `${k}=${v}`);
+        const binds = (body.volumes ?? []).map((v) => {
+          const safe = v.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'vol';
+          return `${name}_${safe}:${v.path}`;
+        });
 
         const container = await docker.createContainer({
-          Image: tpl.image,
+          Image: body.image,
           name,
           Env: env,
           ExposedPorts: exposedPorts,
           HostConfig: {
             PortBindings: portBindings,
             Binds: binds,
-            RestartPolicy: { Name: tpl.restart ?? 'unless-stopped' },
+            RestartPolicy: { Name: body.restart ?? 'unless-stopped' },
           },
-          Labels: { 'core-hub.template': tpl.id },
+          Labels: {
+            'core-hub.template': body.templateId ?? name,
+            'core-hub.source': body.templateId ? 'unraid' : 'dockerhub',
+          },
         });
         await container.start();
-        try { categoryQueries.set.run(container.id, tpl.category); } catch { /* */ }
-
-        auditQueries.log.run(req.user.id, 'apptemplate.install', tpl.id);
-        void notify('success', `App „${tpl.name}" installiert`, `Container „${name}" wurde aus der Vorlage gestartet.`, 'container');
+        if (body.category) {
+          try { categoryQueries.set.run(container.id, body.category); } catch { /* */ }
+        }
+        auditQueries.log.run(req.user.id, 'store.install', body.image);
+        void notify('success', `App „${name}" installiert`, `Container „${name}" wurde aus dem Store gestartet.`, 'container');
         reply.status(201).send({ ok: true, id: container.id, name });
       } catch (err: unknown) {
         reply.status(500).send({ error: err instanceof Error ? err.message : 'Installation fehlgeschlagen' });
       }
-    }
+    },
+  );
+
+  // Legacy per-id install (no-op – curated list removed)
+  fastify.post<{ Params: { id: string } }>(
+    '/api/app-templates/:id/install',
+    { preHandler: requireAdmin },
+    async (_req, reply) => {
+      reply.status(404).send({ error: 'Kuratierte Vorlagen wurden durch den App-Store ersetzt. Bitte nutze /api/app-templates/store/install.' });
+    },
   );
 }

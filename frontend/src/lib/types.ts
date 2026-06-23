@@ -38,6 +38,40 @@ export interface AppTemplate {
   installed: boolean;
 }
 
+export interface StoreItem {
+  id: string;
+  name: string;
+  image: string;
+  icon: string;
+  description: string;
+  category: string;
+  ports: { container: number; host: number; proto: 'tcp' | 'udp' }[];
+  volumes: { name: string; path: string }[];
+  env: { key: string; label: string; default: string; required: boolean; secret: boolean }[];
+  restart: string;
+  source: 'unraid' | 'dockerhub';
+  stars?: number;
+  installed?: boolean;
+}
+
+export interface StoreSearchResult {
+  results: StoreItem[];
+  total: number;
+  source: string;
+  cached: boolean;
+  warming?: boolean;
+  page?: number;
+  limit?: number;
+  categories?: string[];
+}
+
+export interface StoreStatus {
+  cached: boolean;
+  warming: boolean;
+  appCount: number;
+  fetchedAt: string | null;
+}
+
 export interface NotificationItem {
   id: number;
   level: 'info' | 'success' | 'warning' | 'error';

@@ -5,6 +5,7 @@ import type {
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
+  StoreSearchResult, StoreStatus,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -118,6 +119,23 @@ export const api = {
     list: () => req<{ templates: AppTemplate[] }>('/api/app-templates'),
     install: (id: string, data: { name?: string; env?: Record<string, string>; ports?: Record<string, number> }) =>
       req<{ ok: boolean; id: string; name: string }>(`/api/app-templates/${id}/install`, { method: 'POST', body: JSON.stringify(data) }),
+  },
+
+  store: {
+    status: () => req<StoreStatus>('/api/app-templates/store/status'),
+    warm: () => req<{ ok: boolean }>('/api/app-templates/store/warm', { method: 'POST' }),
+    search: (q: string, source: 'unraid' | 'dockerhub', page = 1, category = '') =>
+      req<StoreSearchResult>(
+        `/api/app-templates/store/search?q=${encodeURIComponent(q)}&source=${source}&page=${page}` +
+        (category ? `&category=${encodeURIComponent(category)}` : ''),
+      ),
+    install: (data: {
+      name?: string; image: string;
+      ports?: { container: number; host: number; proto?: string }[];
+      volumes?: { name: string; path: string }[];
+      env?: Record<string, string>;
+      restart?: string; templateId?: string; category?: string;
+    }) => req<{ ok: boolean; id: string; name: string }>('/api/app-templates/store/install', { method: 'POST', body: JSON.stringify(data) }),
   },
 
   notifications: {
