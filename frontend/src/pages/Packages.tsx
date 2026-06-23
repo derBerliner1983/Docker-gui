@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle } from 'lucide-react';
+import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle, FileDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -93,6 +93,39 @@ export function Packages() {
     }
   };
 
+  // Paketliste als Textdatei exportieren (ein Paketname pro Zeile → direkt
+  // wieder installierbar via `xargs apt-get install -y < datei`).
+  const exportPackages = (list: InstalledPackage[], scope: string) => {
+    if (!list.length) return;
+    const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name));
+    const header = [
+      `# Core-Hub Paket-Export (${scope})`,
+      `# Paketmanager: ${manager ?? 'unbekannt'}`,
+      `# Exportiert: ${new Date().toLocaleString('de-DE')}`,
+      `# Anzahl: ${sorted.length}`,
+      `# Wiederherstellen (apt): grep -v '^#' DATEI | xargs sudo apt-get install -y`,
+      '',
+    ].join('\n');
+    // Nur Paketnamen (eine pro Zeile) – Kommentarzeilen oben werden beim
+    // Wiederherstellen per `grep -v '^#'` herausgefiltert.
+    const body = sorted.map((p) => p.name).join('\n');
+    const blob = new Blob([header + body + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `pakete-${scope}-${stamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportSelected = () => {
+    const list = packages.filter((p) => selected.has(p.name));
+    exportPackages(list, 'auswahl');
+  };
+
   const runSearch = (q: string) => {
     setQuery(q);
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -132,9 +165,14 @@ export function Packages() {
         refreshing={loading}
         actions={
           available && (
-            <button className="btn btn--primary btn--sm" onClick={() => setInstallOpen(true)} disabled={busy}>
-              <Download size={13} /> Paket installieren
-            </button>
+            <>
+              <button className="btn btn--outline btn--sm" onClick={() => exportPackages(packages, 'alle')} disabled={!packages.length} title="Alle installierten Pakete exportieren">
+                <FileDown size={13} /> Alle exportieren
+              </button>
+              <button className="btn btn--primary btn--sm" onClick={() => setInstallOpen(true)} disabled={busy}>
+                <Download size={13} /> Paket installieren
+              </button>
+            </>
           )
         }
       />
@@ -173,6 +211,9 @@ export function Packages() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', marginBottom: 10, background: 'var(--color-accent-soft)', borderRadius: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{selCount} ausgewählt</span>
                 <div style={{ flex: 1 }} />
+                <button className="btn btn--outline btn--sm" onClick={exportSelected} title="Auswahl als Textdatei exportieren">
+                  <FileDown size={12} /> Exportieren
+                </button>
                 <button className="btn btn--danger btn--sm" disabled={busy} onClick={() => remove([...selected], false)}>
                   <Trash2 size={12} /> Entfernen
                 </button>
