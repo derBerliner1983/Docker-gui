@@ -194,6 +194,7 @@ Font: Inter.
 | **Empfänger pro Regel** (mehrere E-Mail-Adressen, sonst globale Adresse) | ✅ |
 | **Hintergrund-Monitor** (prüft alle 60 s, Anti-Spam-Cooldown 1 h) | ✅ |
 | **Optimierungs-Panel** im Dashboard (RAM-/CPU-Fresser, gestoppte Container, Swap, volle Platten) | ✅ |
+| **Web-Terminal** (interaktive Root-Shell per xterm.js + WebSocket, node-pty mit `script`-Fallback) | ✅ |
 | **Echter RAM-Wert** wie htop (aus /proc/meminfo) + Live-Updates alle 2 s | ✅ |
 | **CPU-Gesamtlast als Tortendiagramm**, Einzelkerne einklappbar | ✅ |
 | **HTTPS überall** (Caddy: HTTP→HTTPS-Redirect, Core-Hub nur auf localhost) | ✅ |

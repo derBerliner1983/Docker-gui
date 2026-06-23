@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Containers } from './pages/Containers';
 import { ContainerDetail } from './pages/ContainerDetail';
 import { TaskManager } from './pages/TaskManager';
+import { Terminal } from './pages/Terminal';
 import { Automation } from './pages/Automation';
 import { VMs } from './pages/VMs';
 import { Updates } from './pages/Updates';
@@ -41,6 +42,7 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/taskmanager" element={<Protected><TaskManager /></Protected>} />
+      <Route path="/terminal" element={<Protected><Terminal /></Protected>} />
       <Route path="/containers" element={<Protected><Containers /></Protected>} />
       <Route path="/containers/:id" element={<Protected><ContainerDetail /></Protected>} />
       <Route path="/apps" element={<Protected><AppTemplates /></Protected>} />

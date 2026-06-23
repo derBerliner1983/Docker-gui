@@ -4,6 +4,7 @@ import fastifyJwt from '@fastify/jwt';
 import fastifyCookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import fastifyMultipart from '@fastify/multipart';
+import fastifyWebsocket from '@fastify/websocket';
 import path from 'path';
 import fs from 'fs';
 import './types';
@@ -29,6 +30,7 @@ import { antivirusRoutes } from './routes/antivirus';
 import { notificationRoutes } from './routes/notifications';
 import { appTemplateRoutes } from './routes/apptemplates';
 import { alertRoutes } from './routes/alerts';
+import { terminalRoutes } from './routes/terminal';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
@@ -47,6 +49,7 @@ const fastify = Fastify({
 async function main() {
   await fastify.register(fastifyCookie);
   await fastify.register(fastifyMultipart, { limits: { fileSize: 2 * 1024 * 1024 * 1024 } });
+  await fastify.register(fastifyWebsocket);
 
   await fastify.register(fastifyJwt, {
     secret: JWT_SECRET,
@@ -83,6 +86,7 @@ async function main() {
   await fastify.register(notificationRoutes);
   await fastify.register(appTemplateRoutes);
   await fastify.register(alertRoutes);
+  await fastify.register(terminalRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

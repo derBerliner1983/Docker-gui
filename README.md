@@ -46,6 +46,10 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Prozesse auflisten, beenden (TERM) oder hart killen (KILL)
 - systemd-Dienste starten / stoppen / neustarten
 
+### 🖥️ Terminal (Web-Konsole)
+- Interaktive **Root-Shell direkt im Browser** (xterm.js + WebSocket) – falls du mal nicht per SSH rankommst
+- Nur für Admins, Authentifizierung über das Login-Cookie, läuft über die bestehende sudoers-Allowlist
+
 ### 🐳 Container
 - Anlegen (Wizard: Image, Ports, Env, Volumes, Kategorie)
 - Start / Stop / Restart / Delete
@@ -229,7 +233,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **8** | Sicherheits-Scan, Härtung, SSH-Steuerung | ✅ |
 | **9** | Update-Erkennung, Virenschutz, **2FA**, **Backup-Zeitpläne**, **Benachrichtigungen**, **App-Vorlagen**, Update-Prüfung | ✅ |
 | **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
-| **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
+| **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, **Web-Terminal**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
 - ⏳ Mehrsprachigkeit (EN/DE)
