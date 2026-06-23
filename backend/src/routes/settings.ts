@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { privExec, safeExec, hasBinary } from '../lib/privilege';
+import { privExec, safeExec, hasBinary, isRoot } from '../lib/privilege';
 import { auditQueries, DB_PATH } from '../db/index';
 
 function readVersion(): string {
@@ -252,6 +252,63 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     } finally {
       try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
     }
+  });
+
+  // ── In-app update via git pull + install.sh --update (SSE stream) ──
+  fastify.get('/api/settings/update/stream', async (req, reply) => {
+    try { await req.jwtVerify(); if ((req.user as { role: string }).role !== 'admin') { reply.status(403).send(); return; } }
+    catch { reply.status(401).send(); return; }
+
+    // Locate the repo root (production: /opt/core-hub; dev: walk up from __dirname)
+    const candidates = [
+      '/opt/core-hub',
+      path.resolve(__dirname, '../../..'),
+      path.resolve(__dirname, '../..'),
+      process.cwd(),
+    ];
+    const repoRoot = candidates.find(d => fs.existsSync(path.join(d, 'install.sh'))) ?? '/opt/core-hub';
+
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const send = (line: string) => {
+      try { reply.raw.write(`data: ${JSON.stringify({ line })}\n\n`); } catch { /* closed */ }
+    };
+
+    const runStream = (cmd: string, args: string[], cwd: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        const proc = spawn(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+        const handle = (d: Buffer) => { for (const l of d.toString().split('\n')) { if (l.trim()) send(l); } };
+        proc.stdout.on('data', handle);
+        proc.stderr.on('data', handle);
+        proc.on('error', (e) => { send(`[Fehler] ${e.message}`); resolve(false); });
+        proc.on('close', (code) => resolve(code === 0));
+      });
+
+    try {
+      send(`[Core-Hub] Repository: ${repoRoot}`);
+      send('[1/2] git pull …');
+      // git pull: run as root (via sudo) if not already root
+      const gitOk = isRoot
+        ? await runStream('git', ['-C', repoRoot, 'pull'], repoRoot)
+        : await runStream('sudo', ['-n', 'git', '-C', repoRoot, 'pull'], repoRoot);
+      if (!gitOk) { send('[!] git pull fehlgeschlagen – fahre trotzdem fort'); }
+
+      send('[2/2] install.sh --update …');
+      const installOk = isRoot
+        ? await runStream('bash', ['install.sh', '--update'], repoRoot)
+        : await runStream('sudo', ['-n', 'bash', 'install.sh', '--update'], repoRoot);
+
+      if (installOk) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
+      else { send('[!] Installer beendet mit Fehler. Bitte Log prüfen.'); }
+    } catch (e) {
+      send(`[Fehler] ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
+    }
+    reply.raw.end();
   });
 
   // Restart the Core-Hub service (applies an imported DB)

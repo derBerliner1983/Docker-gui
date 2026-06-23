@@ -75,7 +75,14 @@ NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
 
 # --update: explizit erzwungener Update-Lauf (installiert auch neue Abhängigkeiten)
 FORCE_UPDATE=0
-[ "${1:-}" = "--update" ] && FORCE_UPDATE=1
+if [ "${1:-}" = "--update" ]; then
+  FORCE_UPDATE=1
+  # Neueste Quelle von GitHub holen (sofern git verfügbar und Verzeichnis ein Repo ist)
+  if command -v git &>/dev/null && [ -d "$INSTALL_DIR/.git" ]; then
+    info "Hole neueste Version von GitHub (git pull)..."
+    git -C "$INSTALL_DIR" pull --ff-only 2>&1 || warn "git pull fehlgeschlagen – fahre mit vorhandenem Stand fort"
+  fi
+fi
 
 # Bereits installiert? → Update-Modus (Daten bleiben erhalten)
 MODE="install"
@@ -189,7 +196,8 @@ $SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf,
   /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, \\
   /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
   /usr/bin/sed, /usr/bin/chown, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
-  /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan
+  /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
+  /usr/bin/git
 EOF
 chmod 0440 /etc/sudoers.d/core-hub
 visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }

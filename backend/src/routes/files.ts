@@ -7,8 +7,8 @@ import { execFileSync } from 'child_process';
 const MAX_READ_BYTES = 512 * 1024; // 512 KB
 
 function safePath(p: string): string {
-  const resolved = path.resolve(p);
-  if (!resolved || resolved.length < 2) throw new Error('Ungültiger Pfad');
+  const resolved = path.resolve(p || '/');
+  if (!resolved) throw new Error('Ungültiger Pfad');
   return resolved;
 }
 

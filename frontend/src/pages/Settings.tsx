@@ -358,6 +358,10 @@ function NotificationsPanel() {
 function VersionPanel({ installCmd }: { installCmd: string }) {
   const [ver, setVer] = useState<VersionInfo | null>(null);
   const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [updateLog, setUpdateLog] = useState<string[]>([]);
+  const [updateDone, setUpdateDone] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
 
   const check = useCallback(async () => {
     setChecking(true);
@@ -365,6 +369,30 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
     finally { setChecking(false); }
   }, []);
   useEffect(() => { void check(); }, [check]);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [updateLog]);
+
+  const startUpdate = () => {
+    if (!confirm('Core-Hub jetzt aktualisieren? Der Dienst wird kurz neu gestartet.')) return;
+    setUpdating(true);
+    setUpdateDone(false);
+    setUpdateLog(['▶ Update gestartet…']);
+    const es = new EventSource('/api/settings/update/stream');
+    es.onmessage = (evt) => {
+      try {
+        const d = JSON.parse(evt.data) as { line: string };
+        setUpdateLog(l => [...l, d.line]);
+      } catch { /* */ }
+    };
+    es.onerror = () => {
+      es.close();
+      setUpdating(false);
+      setUpdateDone(true);
+      setUpdateLog(l => [...l, '', '— Verbindung unterbrochen (Dienst wird neu gestartet) —']);
+    };
+  };
 
   return (
     <Panel title="Version & Updates" icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
@@ -391,21 +419,42 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
 
         {ver?.error && <div style={{ fontSize: 12.5, color: 'var(--color-warning)', marginTop: 10 }}>Versionsprüfung: {ver.error}</div>}
 
-        {ver?.updateAvailable && (
+        {ver?.updateAvailable && !updating && !updateDone && (
           <div className="card" style={{ marginTop: 14, borderColor: 'var(--color-warning)' }}>
             <div className="card-body">
               <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Neue Version {ver.latest} verfügbar</div>
               <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 10 }}>
-                So aktualisierst du Core-Hub – aktuelle Version holen und Installer erneut ausführen.
-                Deine Daten (Datenbank, Zertifikate) bleiben erhalten:
+                Core-Hub automatisch aktualisieren: neuen Code holen, Abhängigkeiten installieren und Dienst neu starten.
+                Deine Daten (Datenbank, Zertifikate) bleiben erhalten.
               </div>
-              <pre style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--color-surface-sunken)', padding: '10px 12px', borderRadius: 6, overflowX: 'auto', margin: 0 }}>{installCmd}</pre>
-              {ver.releaseUrl && (
-                <a className="btn btn--outline btn--sm" style={{ marginTop: 10 }} href={ver.releaseUrl} target="_blank" rel="noreferrer">
-                  Release-Notes auf GitHub ansehen
-                </a>
-              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn--primary btn--sm" onClick={startUpdate}>
+                  <ArrowUpCircle size={13} /> Jetzt aktualisieren
+                </button>
+                {ver.releaseUrl && (
+                  <a className="btn btn--outline btn--sm" href={ver.releaseUrl} target="_blank" rel="noreferrer">
+                    Release-Notes ansehen
+                  </a>
+                )}
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 8 }}>
+                Manuell: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--color-surface-sunken)', padding: '1px 6px', borderRadius: 4 }}>{installCmd}</code>
+              </div>
             </div>
+          </div>
+        )}
+
+        {(updating || updateDone) && updateLog.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div ref={logRef} style={{ fontFamily: 'monospace', fontSize: 12, background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+              {updateLog.join('\n')}
+              {updating && <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block', marginLeft: 6 }}>⟳</span>}
+            </div>
+            {updateDone && (
+              <button className="btn btn--primary btn--sm" style={{ marginTop: 10 }} onClick={() => location.reload()}>
+                <RotateCw size={13} /> Seite neu laden
+              </button>
+            )}
           </div>
         )}
 
