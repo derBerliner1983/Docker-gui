@@ -16,6 +16,7 @@ import { systemRoutes } from './routes/system';
 import { cronRoutes } from './routes/cron';
 import { vmRoutes } from './routes/vms';
 import { updateRoutes } from './routes/updates';
+import { packageRoutes } from './routes/packages';
 import { backupRoutes } from './routes/backups';
 import { shareRoutes } from './routes/shares';
 import { linuxUserRoutes } from './routes/linuxusers';
@@ -72,6 +73,7 @@ async function main() {
   await fastify.register(cronRoutes);
   await fastify.register(vmRoutes);
   await fastify.register(updateRoutes);
+  await fastify.register(packageRoutes);
   await fastify.register(backupRoutes);
   await fastify.register(shareRoutes);
   await fastify.register(linuxUserRoutes);

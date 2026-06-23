@@ -187,6 +187,20 @@ export interface PackageUpdate {
   repo: string;
 }
 
+export interface InstalledPackage {
+  name: string;
+  version: string;
+  size: number;
+  summary: string;
+  auto: boolean;
+}
+
+export interface PackageSearchResult {
+  name: string;
+  summary: string;
+  installed: boolean;
+}
+
 export interface Backup {
   id: number;
   type: string;

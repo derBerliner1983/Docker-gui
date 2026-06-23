@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
@@ -41,6 +41,7 @@ const NAV = [
       { to: '/security', icon: ShieldAlert, label: 'Sicherheit' },
       { to: '/antivirus', icon: Bug, label: 'Virenschutz' },
       { to: '/updates', icon: RefreshCw, label: 'System-Updates' },
+      { to: '/packages', icon: Boxes, label: 'Paketverwaltung' },
       { to: '/automation', icon: Clock, label: 'Automatisierung' },
       { to: '/backups', icon: HardDrive, label: 'Backups' },
       { to: '/shares', icon: FolderOpen, label: 'SMB-Freigaben' },

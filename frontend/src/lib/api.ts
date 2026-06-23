@@ -4,6 +4,7 @@ import type {
   ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
+  InstalledPackage, PackageSearchResult,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -83,6 +84,15 @@ export const api = {
     applyUpdates: (packages?: string[]) =>
       req<{ ok: boolean; output: string }>('/api/system/updates/apply', { method: 'POST', body: JSON.stringify({ packages }) }),
     optimize: () => req<{ suggestions: OptimizeSuggestion[]; checkedAt: string }>('/api/system/optimize'),
+  },
+
+  packages: {
+    list: () => req<{ available: boolean; manager: string | null; packages: InstalledPackage[]; count: number }>('/api/system/packages'),
+    search: (q: string) => req<{ results: PackageSearchResult[] }>(`/api/system/packages/search?q=${encodeURIComponent(q)}`),
+    install: (packages: string[]) =>
+      req<{ ok: boolean; output: string }>('/api/system/packages/install', { method: 'POST', body: JSON.stringify({ packages }) }),
+    remove: (packages: string[], purge = false) =>
+      req<{ ok: boolean; output: string }>('/api/system/packages/remove', { method: 'POST', body: JSON.stringify({ packages, purge }) }),
   },
 
   backups: {

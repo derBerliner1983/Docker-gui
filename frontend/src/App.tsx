@@ -10,6 +10,7 @@ import { Terminal } from './pages/Terminal';
 import { Automation } from './pages/Automation';
 import { VMs } from './pages/VMs';
 import { Updates } from './pages/Updates';
+import { Packages } from './pages/Packages';
 import { Backups } from './pages/Backups';
 import { Shares } from './pages/Shares';
 import { Users } from './pages/Users';
@@ -49,6 +50,7 @@ function AppRoutes() {
       <Route path="/vms" element={<Protected><VMs /></Protected>} />
       <Route path="/automation" element={<Protected><Automation /></Protected>} />
       <Route path="/updates" element={<Protected><Updates /></Protected>} />
+      <Route path="/packages" element={<Protected><Packages /></Protected>} />
       <Route path="/backups" element={<Protected><Backups /></Protected>} />
       <Route path="/shares" element={<Protected><Shares /></Protected>} />
       <Route path="/proxy" element={<Protected><Proxy /></Protected>} />
