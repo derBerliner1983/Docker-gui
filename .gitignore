@@ -5,3 +5,6 @@ dist/
 data/
 *.db
 .DS_Store
+
+# Deploy-generierte Build-Kennung (install.sh)
+BUILD

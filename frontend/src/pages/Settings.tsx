@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import qrcode from 'qrcode-generator';
 import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
@@ -131,6 +132,33 @@ function MigrationPanel() {
   );
 }
 
+/** Render an otpauth:// URI as a scannable QR code (SVG, white background). */
+function QrCode({ value, size = 168 }: { value: string; size?: number }) {
+  const svg = useMemo(() => {
+    try {
+      // typeNumber 0 = automatische Größe, Fehlerkorrektur 'M' (gut für Scannen)
+      const qr = qrcode(0, 'M');
+      qr.addData(value);
+      qr.make();
+      return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+    } catch {
+      return '';
+    }
+  }, [value]);
+
+  if (!svg) return null;
+  return (
+    <div
+      style={{
+        width: size, height: size, padding: 10, background: '#fff',
+        borderRadius: 10, boxShadow: '0 0 0 1px var(--color-border)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
 function TwoFactorPanel() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [setup, setSetup] = useState<{ secret: string; otpauth: string } | null>(null);
@@ -193,9 +221,12 @@ function TwoFactorPanel() {
           </>
         ) : setup ? (
           <>
-            <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 10 }}>
-              <Smartphone size={13} style={{ verticalAlign: -2 }} /> Füge dieses Konto in deiner Authenticator-App hinzu
-              (Google Authenticator, Aegis, 1Password …) – per Scan des Links oder manueller Eingabe des Schlüssels.
+            <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 12 }}>
+              <Smartphone size={13} style={{ verticalAlign: -2 }} /> Scanne den QR-Code mit deiner Authenticator-App
+              (Google Authenticator, Aegis, 1Password …) – oder gib den geheimen Schlüssel manuell ein.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+              <QrCode value={setup.otpauth} />
             </div>
             <div style={{ marginBottom: 8 }}>
               <label className="form-label">Geheimer Schlüssel</label>
@@ -205,7 +236,7 @@ function TwoFactorPanel() {
               </div>
             </div>
             <div style={{ marginBottom: 12 }}>
-              <label className="form-label">otpauth-Link (für QR-Generatoren)</label>
+              <label className="form-label">otpauth-Link (Fallback / manuelles Hinzufügen)</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <code style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--color-surface-sunken)', padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all', maxHeight: 56, overflow: 'auto' }}>{setup.otpauth}</code>
                 <button className="btn btn--outline btn--icon btn--sm" title="Kopieren" onClick={() => navigator.clipboard?.writeText(setup.otpauth)}><Copy size={13} /></button>

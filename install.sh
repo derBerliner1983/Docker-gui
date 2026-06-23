@@ -194,10 +194,23 @@ EOF
 chmod 0440 /etc/sudoers.d/core-hub
 visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }
 
+# Eindeutige Build-Kennung aus Git ableiten (kurzer Hash) – so ist jeder
+# ausgelieferte Stand exakt identifizierbar, auch ohne VERSION-Erhöhung.
+GIT_HASH="$(git rev-parse --short=7 HEAD 2>/dev/null || true)"
+if [ -n "$GIT_HASH" ]; then
+  info "Build-Kennung: ${NEW_VERSION}+${GIT_HASH}"
+fi
+
 # Dateien kopieren
 info "Kopiere Dateien nach $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
 cp -r . "$INSTALL_DIR/"
+# Build-Datei schreiben (vom Backend für die angezeigte Version gelesen)
+if [ -n "$GIT_HASH" ]; then
+  echo "$GIT_HASH" > "$INSTALL_DIR/BUILD"
+else
+  rm -f "$INSTALL_DIR/BUILD"
+fi
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR" "$DATA_DIR"
 
 # Abhängigkeiten installieren & bauen

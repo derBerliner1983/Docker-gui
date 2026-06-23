@@ -18,7 +18,33 @@ function readVersion(): string {
   return '0.5.0';
 }
 
-export const APP_VERSION = readVersion();
+/**
+ * Eindeutige Build-Kennung (kurzer Git-Hash). Wird beim Deploy von install.sh
+ * in die Datei BUILD geschrieben; als Fallback (z. B. im Dev-Modus) fragen wir
+ * Git direkt. So lässt sich jeder ausgelieferte Stand exakt zuordnen, auch wenn
+ * die VERSION-Datei zwischen zwei Builds gleich bleibt.
+ */
+function readBuild(): string {
+  for (const p of [
+    path.join(__dirname, '../../../BUILD'),
+    path.join(process.cwd(), '../BUILD'),
+    path.join(process.cwd(), 'BUILD'),
+  ]) {
+    try { const v = fs.readFileSync(p, 'utf8').trim(); if (v) return v.replace(/[^a-zA-Z0-9.]/g, ''); } catch { /* try next */ }
+  }
+  try {
+    const h = execSync('git rev-parse --short=7 HEAD', {
+      cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
+    }).toString().trim();
+    if (/^[0-9a-f]{4,}$/.test(h)) return h;
+  } catch { /* git nicht verfügbar */ }
+  return '';
+}
+
+const BASE_VERSION = readVersion();
+const BUILD_ID = readBuild();
+/** Vollständige Version inkl. Build-Metadaten (SemVer „+build"). */
+export const APP_VERSION = BUILD_ID ? `${BASE_VERSION}+${BUILD_ID}` : BASE_VERSION;
 const GITHUB_REPO = process.env.GITHUB_REPO || 'derberliner1983/docker-gui';
 
 /** Compare two semver-ish strings. Returns 1 if a>b, -1 if a<b, 0 if equal. */
