@@ -143,12 +143,41 @@ npm run build
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
+# Caddy: HTTP→HTTPS-Weiterleitung + HTTPS-Proxy für Core-Hub
+info "Konfiguriere Caddy (HTTPS + HTTP-Redirect)..."
+CADDYFILE="/etc/caddy/Caddyfile"
+# Bestehenden managed block (Docker-Container-Proxies) sichern
+MANAGED_BLOCK=""
+if [ -f "$CADDYFILE" ]; then
+  MANAGED_BLOCK=$(awk '/# >>> core-hub managed/,/# <<< core-hub managed <<</{ print }' "$CADDYFILE" 2>/dev/null || true)
+fi
+mkdir -p /etc/caddy
+{
+  echo "# core-hub-base – HTTP→HTTPS + Core-Hub-Proxy (vom Installer verwaltet)"
+  echo ":80 {"
+  echo "    redir https://{host}{uri} permanent"
+  echo "}"
+  echo ""
+  echo ":443 {"
+  echo "    tls internal"
+  echo "    reverse_proxy localhost:${PORT}"
+  echo "}"
+  if [ -n "$MANAGED_BLOCK" ]; then
+    echo ""
+    echo "$MANAGED_BLOCK"
+  fi
+} > "$CADDYFILE"
+chmod 644 "$CADDYFILE"
+systemctl enable caddy 2>/dev/null || true
+systemctl restart caddy 2>/dev/null || true
+sleep 1
+
 # Systemd-Service
 info "Installiere systemd-Service..."
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=$APP_NAME – Linux Server Management
-After=network.target docker.service
+After=network.target caddy.service docker.service
 Wants=docker.service
 
 [Service]
@@ -158,6 +187,7 @@ Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR/backend
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
+Environment=HOST=127.0.0.1
 Environment=DATA_DIR=$DATA_DIR
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
@@ -182,7 +212,7 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     info "✅ $APP_NAME v$NEW_VERSION erfolgreich installiert!"
   fi
   info ""
-  info "   Zugriff: http://${IP}:${PORT}"
+  info "   Zugriff: https://${IP}  (HTTP :80 leitet automatisch um)"
   if [ "$MODE" != "update" ]; then
     info "   Login:   admin / admin"
     info ""

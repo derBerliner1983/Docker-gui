@@ -94,7 +94,7 @@ async function main() {
   }
 
   await fastify.listen({ port: PORT, host: HOST });
-  console.log(`\n⬡ Core-Hub running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}\n`);
+  console.log(`\n⬡ Core-Hub running at http://localhost:${PORT} (proxied via Caddy → https)\n`);
 
   // Backup scheduler – check every 30s for due cron-based schedules
   setInterval(() => { void runDueSchedules(); }, 30_000);
