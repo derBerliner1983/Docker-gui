@@ -59,7 +59,7 @@ export function Dashboard() {
 
   useEffect(() => {
     void load();
-    const id = setInterval(() => void load(), 5000);
+    const id = setInterval(() => void load(), 2000);
     return () => clearInterval(id);
   }, [load]);
 

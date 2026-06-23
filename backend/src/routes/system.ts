@@ -36,6 +36,26 @@ async function dockerMemoryUsage(): Promise<number> {
   }
 }
 
+/**
+ * Echter RAM-Verbrauch wie htop ihn anzeigt – direkt aus /proc/meminfo.
+ * used = MemTotal - MemFree - Buffers - (Cached + SReclaimable - Shmem)
+ * Gibt null zurück, wenn /proc/meminfo nicht verfügbar ist (Nicht-Linux).
+ */
+function htopUsedMemory(): number | null {
+  const raw = safeExec('cat /proc/meminfo 2>/dev/null');
+  if (!raw) return null;
+  const vals: Record<string, number> = {};
+  for (const line of raw.split('\n')) {
+    const m = line.match(/^(\w+):\s+(\d+)\s*kB/);
+    if (m) vals[m[1]] = parseInt(m[2]) * 1024; // kB → Bytes
+  }
+  if (vals.MemTotal === undefined || vals.MemFree === undefined) return null;
+  const buffers = vals.Buffers ?? 0;
+  const cached = (vals.Cached ?? 0) + (vals.SReclaimable ?? 0) - (vals.Shmem ?? 0);
+  const used = vals.MemTotal - vals.MemFree - buffers - cached;
+  return Math.max(0, used);
+}
+
 /** Approximate RAM used by KVM/QEMU virtual machines (bytes). */
 function vmMemoryUsage(): number {
   const out = safeExec("ps -eo rss,comm --no-headers | grep -iE 'qemu|kvm' || true");
@@ -63,9 +83,9 @@ export async function systemRoutes(fastify: FastifyInstance) {
       ]);
 
       const vmMem = vmMemoryUsage();
-      // mem.used enthält Buffers/Cache (Linux nutzt freien RAM als Cache).
-      // mem.active = tatsächlich belegter RAM (wie htop ihn anzeigt).
-      const realUsed = (mem.active && mem.active > 0) ? mem.active : mem.used;
+      // Echter RAM-Verbrauch wie htop: zuerst /proc/meminfo, sonst Fallback.
+      const procUsed = htopUsedMemory();
+      const realUsed = procUsed ?? ((mem.active && mem.active > 0) ? mem.active : mem.used);
       const dockerMemClamped = Math.min(dockerMem, realUsed);
       const vmMemClamped = Math.min(vmMem, Math.max(0, realUsed - dockerMemClamped));
       const systemMem = Math.max(0, realUsed - dockerMemClamped - vmMemClamped);
