@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import { requireAdmin } from '../middleware/auth';
 import { spawn, execFileSync } from 'child_process';
 import crypto from 'crypto';
+import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../db/index';
 import Dockerode from 'dockerode';
+import { Client as Ssh2Client } from 'ssh2';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -104,25 +106,41 @@ function ensureKeypair(): string {
   return fs.readFileSync(KEY_PUB_PATH, 'utf8').trim();
 }
 
-// Returns the core SSH options (key, no host-key checking, timeout, port).
-// BatchMode=yes (no password prompts) is added only when NOT using sshpass.
-function sshBaseArgs(s: { port: number; password?: string | null }): string[] {
-  const args = ['-i', KEY_PATH, '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10', '-p', String(s.port)];
-  if (!s.password) args.push('-o', 'BatchMode=yes');
-  return args;
+// Key-based: core ssh CLI args (BatchMode=yes prevents interactive prompts)
+function sshKeyArgs(s: { port: number }): string[] {
+  return ['-i', KEY_PATH, '-o', 'StrictHostKeyChecking=no', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-p', String(s.port)];
 }
 
-function sshTarget(s: { user: string; host: string }): string { return `${s.user}@${s.host}`; }
-
-// Spawns an SSH or sshpass+ssh command. When a password is stored on the
-// session it is passed via the SSHPASS env var (never on the command line).
-function execSSH(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string> {
+// Password-based: run a remote command via the ssh2 library (no sshpass needed)
+function execSSH2(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const env = s.password ? { ...process.env, SSHPASS: s.password } : process.env;
-    const [prog, args] = s.password
-      ? ['sshpass', ['-e', 'ssh', ...sshBaseArgs(s), sshTarget(s), cmd]]
-      : ['ssh', [...sshBaseArgs(s), sshTarget(s), cmd]];
-    const proc = spawn(prog, args, { stdio: ['ignore', 'pipe', 'pipe'], env });
+    const client = new Ssh2Client();
+    let settled = false;
+    const finish = (err?: Error, result?: string) => {
+      if (settled) return; settled = true;
+      client.end();
+      if (err) reject(err); else resolve(result ?? '');
+    };
+    const t = setTimeout(() => finish(new Error('SSH-Timeout')), timeoutMs);
+    client
+      .on('ready', () => {
+        client.exec(cmd, (err, stream) => {
+          if (err) { clearTimeout(t); finish(err); return; }
+          let out = '', errOut = '';
+          stream.on('data', (d: Buffer) => { out += d.toString(); });
+          stream.stderr.on('data', (d: Buffer) => { errOut += d.toString(); });
+          stream.on('close', (code: number) => { clearTimeout(t); code === 0 ? finish(undefined, out) : finish(new Error(errOut.trim() || `SSH exit ${code}`)); });
+        });
+      })
+      .on('error', (err) => { clearTimeout(t); finish(err); })
+      .connect({ host: s.host, port: s.port, username: s.user, password: s.password! });
+  });
+}
+
+// Key-based: run a remote command via system ssh binary
+function execSSHKey(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('ssh', [...sshKeyArgs(s), `${s.user}@${s.host}`, cmd], { stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '', err = '';
     proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
     proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
@@ -130,6 +148,22 @@ function execSSH(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string
     proc.on('close', (code) => { clearTimeout(t); code === 0 ? resolve(out) : reject(new Error(err.trim() || `SSH exit ${code}`)); });
     proc.on('error', (e) => { clearTimeout(t); reject(e); });
   });
+}
+
+function execSSH(s: MigSession, cmd: string, timeoutMs = 60_000): Promise<string> {
+  return s.password ? execSSH2(s, cmd, timeoutMs) : execSSHKey(s, cmd, timeoutMs);
+}
+
+// For rsync with password: write a temp SSH_ASKPASS script (no sshpass needed).
+// SSH uses askpass automatically when there is no controlling TTY.
+function makeAskpassEnv(password: string): { env: NodeJS.ProcessEnv; cleanup: () => void } {
+  const scriptPath = path.join(os.tmpdir(), `ssh-askpass-${crypto.randomBytes(6).toString('hex')}.sh`);
+  const escaped = password.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
+  fs.writeFileSync(scriptPath, `#!/bin/sh\nprintf '%s' '${escaped}'\n`, { mode: 0o700 });
+  return {
+    env: { ...process.env, SSH_ASKPASS: scriptPath, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: '' },
+    cleanup: () => { try { fs.unlinkSync(scriptPath); } catch { /* already gone */ } },
+  };
 }
 
 // ── Routes ─────────────────────────────────────────────────────────────────────
@@ -448,16 +482,14 @@ export async function migrationRoutes(fastify: FastifyInstance) {
         try { fs.mkdirSync(localDst, { recursive: true }); } catch { /* exists */ }
 
         const ok = await new Promise<boolean>((resolve) => {
-          const sshStr = s.password
-            ? `sshpass -e ssh ${sshBaseArgs(s).join(' ')}`
-            : `ssh ${sshBaseArgs(s).join(' ')}`;
-          const rsyncEnv = s.password ? { ...process.env, SSHPASS: s.password } : process.env;
+          const askpass = s.password ? makeAskpassEnv(s.password) : null;
+          const sshStr = `ssh ${sshKeyArgs(s).join(' ')}${s.password ? ' -o PasswordAuthentication=yes -o BatchMode=no' : ''}`;
           const proc = spawn('rsync', [
             '-az', '--partial', '--info=progress2', '--no-human-readable',
             '-e', sshStr,
             `${s.user}@${s.host}:${vol.source}/`,
             `${localDst}/`,
-          ], { stdio: ['ignore', 'pipe', 'pipe'], env: rsyncEnv });
+          ], { stdio: ['ignore', 'pipe', 'pipe'], env: askpass?.env ?? process.env });
 
           let errBuf = '';
           proc.stdout.on('data', (d: Buffer) => {
@@ -467,8 +499,9 @@ export async function migrationRoutes(fastify: FastifyInstance) {
             }
           });
           proc.stderr.on('data', (d: Buffer) => { errBuf += d.toString(); });
-          proc.on('error', (e) => { send({ type: 'volume-error', container: mc.cname, volume: vol.source, error: e.message }); resolve(false); });
+          proc.on('error', (e) => { askpass?.cleanup(); send({ type: 'volume-error', container: mc.cname, volume: vol.source, error: e.message }); resolve(false); });
           proc.on('close', (code) => {
+            askpass?.cleanup();
             if (code === 0) { send({ type: 'volume-done', container: mc.cname, volume: vol.source }); resolve(true); }
             else { send({ type: 'volume-error', container: mc.cname, volume: vol.source, error: errBuf.trim().slice(0, 300) }); resolve(false); }
           });
