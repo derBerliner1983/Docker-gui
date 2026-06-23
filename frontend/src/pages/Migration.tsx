@@ -311,7 +311,10 @@ export function Migration() {
           {(r.results ?? []).map((res: { name: string; status: string; error?: string }) => (
             <div key={res.name} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span style={{ minWidth: 160 }}>{res.name}</span>
-              <StatusBadge status={res.status === 'created' ? 'done' : res.status === 'exists' || res.status === 'skipped' ? 'paused' : 'error'} />
+              <StatusBadge status={res.status === 'created' || res.status === 'pulled+created' ? 'done' : res.status === 'exists' || res.status === 'skipped' ? 'paused' : 'error'} />
+              <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>
+                {res.status === 'pulled+created' ? 'Image geladen + erstellt' : res.status === 'exists' ? 'bereits vorhanden' : res.status === 'skipped' ? 'übersprungen' : ''}
+              </span>
               {res.error && <span style={{ color: 'var(--color-error)', fontSize: 11 }}>{res.error}</span>}
             </div>
           ))}

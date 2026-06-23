@@ -166,6 +166,18 @@ function makeAskpassEnv(password: string): { env: NodeJS.ProcessEnv; cleanup: ()
   };
 }
 
+// Pull a Docker image; resolves when fully downloaded.
+function pullImage(image: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    docker.pull(image, (err: Error | null, stream: any) => {
+      if (err) return reject(err);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      docker.modem.followProgress(stream, (err: Error | null) => { if (err) reject(err); else resolve(); });
+    });
+  });
+}
+
 // ── Routes ─────────────────────────────────────────────────────────────────────
 
 export async function migrationRoutes(fastify: FastifyInstance) {
@@ -395,6 +407,11 @@ export async function migrationRoutes(fastify: FastifyInstance) {
             results.push({ name: mc.cname, status: 'exists' });
             continue;
           }
+          // Pull image if not already present locally
+          let pulled = false;
+          try { await docker.getImage(cfg.image).inspect(); }
+          catch { await pullImage(cfg.image); pulled = true; }
+
           const portBindings: Record<string, { HostPort: string }[]> = {};
           const exposedPorts: Record<string, Record<string, never>> = {};
           for (const p of cfg.ports ?? []) {
@@ -408,7 +425,7 @@ export async function migrationRoutes(fastify: FastifyInstance) {
             HostConfig: { PortBindings: portBindings, RestartPolicy: { Name: cfg.restart || 'unless-stopped' } },
           });
           mq.updateSync.run('config-done', container.id, null, req.params.sid, mc.cname);
-          results.push({ name: mc.cname, status: 'created' });
+          results.push({ name: mc.cname, status: pulled ? 'pulled+created' : 'created' });
         } catch (e) {
           const msg = e instanceof Error ? e.message : 'Fehler';
           mq.updateSync.run('config-error', null, msg, req.params.sid, mc.cname);
