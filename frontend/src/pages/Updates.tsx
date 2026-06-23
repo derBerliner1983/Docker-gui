@@ -49,7 +49,15 @@ export function Updates() {
       const res = await api.system.applyUpdates(packages);
       setOutput(res.output || 'Fertig.');
       setOutputOpen(true);
-      await load();
+      // Optimistically clear the installed packages immediately so the UI
+      // reflects the new state without waiting for apt's cache to settle.
+      if (packages) {
+        setUpdates((prev) => prev.filter((u) => !packages.includes(u.name)));
+      } else {
+        setUpdates([]);
+      }
+      // Re-sync with the real apt state after a short delay.
+      setTimeout(() => { void load(); }, 3000);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Fehler');
     } finally {
