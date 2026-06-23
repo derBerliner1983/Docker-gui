@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp } from 'lucide-react';
+import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut, donutColor } from '../components/ui/Donut';
@@ -32,7 +32,15 @@ export function Dashboard() {
   const [dockerVersion, setDockerVersion] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [history, setHistory] = useState<number[]>([]);
+  const [coresOpen, setCoresOpen] = useState(() => localStorage.getItem('cpu-cores-open') === '1');
   const histRef = useRef<number[]>([]);
+
+  const toggleCores = () => {
+    setCoresOpen((v) => {
+      localStorage.setItem('cpu-cores-open', v ? '0' : '1');
+      return !v;
+    });
+  };
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -80,26 +88,54 @@ export function Dashboard() {
         >
           {stats && (
             <>
-              <div className="loadbar-row" style={{ marginTop: 10 }}>
-                <span className="loadbar-label" style={{ fontWeight: 600 }}>Gesamtlast</span>
-                <span className="loadbar-pct">{stats.cpu.usage}%</span>
-                <div className="loadbar-track">
-                  <div className={`loadbar-fill ${loadClass(stats.cpu.usage)}`} style={{ width: `${stats.cpu.usage}%` }} />
+              {/* Gesamtlast als Tortendiagramm + Verlauf */}
+              <div className="donut-group" style={{ marginTop: 12, alignItems: 'center' }}>
+                <div className="donut-item">
+                  <Donut
+                    size={140}
+                    thickness={15}
+                    segments={[
+                      { value: stats.cpu.usage, color: donutColor(stats.cpu.usage) },
+                      { value: 100 - stats.cpu.usage, color: 'var(--color-border-strong)' },
+                    ]}
+                    centerLabel={`${stats.cpu.usage}%`}
+                    centerSub="Last"
+                    centerColor={donutColor(stats.cpu.usage)}
+                  />
+                  <div className="donut-item__caption">Gesamtlast</div>
                 </div>
-              </div>
-              <div style={{ borderTop: '1px solid var(--color-border)', margin: '10px 0', paddingTop: 4 }} />
-              {stats.cpu.perCore.map((load, i) => (
-                <div className="loadbar-row" key={i}>
-                  <span className="loadbar-label">CPU {i}</span>
-                  <span className="loadbar-pct">{load}%</span>
-                  <div className="loadbar-track">
-                    <div className={`loadbar-fill ${loadClass(load)}`} style={{ width: `${load}%` }} />
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 6 }}>Verlauf (letzte ~3 Min)</div>
+                  <Sparkline data={history} max={100} height={90} />
+                  <div style={{ fontSize: 11, color: 'var(--color-subtle)', marginTop: 8 }}>
+                    {stats.cpu.cores} Kerne · {stats.cpu.speed} GHz
                   </div>
                 </div>
-              ))}
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 6 }}>Verlauf (letzte ~3 Min)</div>
-                <Sparkline data={history} max={100} height={90} />
+              </div>
+
+              {/* Einzelkerne – einklappbar */}
+              <div style={{ borderTop: '1px solid var(--color-border)', marginTop: 14, paddingTop: 6 }}>
+                <button
+                  className="cpu-cores-toggle"
+                  onClick={toggleCores}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+                    background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0',
+                    color: 'var(--color-subtle)', fontSize: 12, fontWeight: 600,
+                  }}
+                >
+                  {coresOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  Einzelne Kerne ({stats.cpu.perCore.length})
+                </button>
+                {coresOpen && stats.cpu.perCore.map((load, i) => (
+                  <div className="loadbar-row" key={i}>
+                    <span className="loadbar-label">CPU {i}</span>
+                    <span className="loadbar-pct">{load}%</span>
+                    <div className="loadbar-track">
+                      <div className={`loadbar-fill ${loadClass(load)}`} style={{ width: `${load}%` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           )}

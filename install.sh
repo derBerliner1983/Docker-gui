@@ -73,6 +73,10 @@ fi
 # Version dieses Pakets (Quelle der Wahrheit: ./VERSION)
 NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
 
+# --update: explizit erzwungener Update-Lauf (installiert auch neue Abhängigkeiten)
+FORCE_UPDATE=0
+[ "${1:-}" = "--update" ] && FORCE_UPDATE=1
+
 # Bereits installiert? → Update-Modus (Daten bleiben erhalten)
 MODE="install"
 OLD_VERSION=""
@@ -88,6 +92,10 @@ if [ "$MODE" = "update" ]; then
 else
   info "=== $APP_NAME Installation (v$NEW_VERSION) ==="
 fi
+
+# Paketlisten aktualisieren, damit neue/zusätzliche Abhängigkeiten gefunden werden
+info "Aktualisiere Paketlisten..."
+apt-get update -qq 2>/dev/null || true
 
 # Node.js prüfen / installieren
 if ! command -v node &>/dev/null; then
@@ -150,6 +158,16 @@ fi
 if ! dpkg -l unattended-upgrades &>/dev/null 2>&1; then
   info "Installiere unattended-upgrades..."
   apt-get install -y unattended-upgrades
+fi
+
+# Bei --update: bereits installierte Abhängigkeiten auf neueste Version bringen
+if [ "$FORCE_UPDATE" = "1" ]; then
+  info "Aktualisiere installierte Abhängigkeiten (--update)..."
+  UPD_PKGS=""
+  for pkg in docker.io qemu-system-x86 libvirt-daemon-system virtinst samba caddy clamav clamav-daemon ufw fail2ban unattended-upgrades; do
+    dpkg -l "$pkg" &>/dev/null 2>&1 && UPD_PKGS="$UPD_PKGS $pkg"
+  done
+  [ -n "$UPD_PKGS" ] && apt-get install -y --only-upgrade $UPD_PKGS 2>/dev/null || true
 fi
 
 # Benutzer anlegen
