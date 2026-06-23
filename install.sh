@@ -50,12 +50,54 @@ info "Node.js $(node -v) OK"
 info "Installiere Build-Tools..."
 apt-get install -y --no-install-recommends build-essential python3 2>/dev/null || true
 
-# Optionale Abhängigkeiten (für volle Funktionalität)
-command -v docker  &>/dev/null || warn "Docker nicht gefunden – Container-Verwaltung deaktiviert"
-command -v virsh   &>/dev/null || warn "libvirt/virsh nicht gefunden – VM-Verwaltung deaktiviert (apt install qemu-kvm libvirt-daemon-system virtinst)"
-command -v smbd    &>/dev/null || warn "Samba nicht gefunden – SMB-Freigaben deaktiviert (apt install samba)"
-command -v caddy   &>/dev/null || warn "Caddy nicht gefunden – automatisches HTTPS deaktiviert (apt install caddy)"
-command -v clamscan &>/dev/null || warn "ClamAV nicht gefunden – Virenschutz deaktiviert (apt install clamav clamav-daemon)"
+# Abhängigkeiten installieren (alle Module)
+info "Installiere System-Abhängigkeiten..."
+
+if ! command -v docker &>/dev/null; then
+  info "Installiere Docker..."
+  apt-get install -y docker.io
+fi
+
+if ! command -v virsh &>/dev/null; then
+  info "Installiere libvirt/KVM..."
+  apt-get install -y qemu-kvm libvirt-daemon-system virtinst
+fi
+
+if ! command -v smbd &>/dev/null; then
+  info "Installiere Samba..."
+  apt-get install -y samba
+fi
+
+if ! command -v caddy &>/dev/null; then
+  info "Installiere Caddy..."
+  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https 2>/dev/null || true
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null || true
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+  apt-get update -qq
+  apt-get install -y caddy
+fi
+
+if ! command -v clamscan &>/dev/null; then
+  info "Installiere ClamAV..."
+  apt-get install -y clamav clamav-daemon
+fi
+
+if ! command -v ufw &>/dev/null; then
+  info "Installiere UFW (Firewall)..."
+  apt-get install -y ufw
+fi
+
+if ! command -v fail2ban-client &>/dev/null; then
+  info "Installiere fail2ban..."
+  apt-get install -y fail2ban
+fi
+
+if ! dpkg -l unattended-upgrades &>/dev/null 2>&1; then
+  info "Installiere unattended-upgrades..."
+  apt-get install -y unattended-upgrades
+fi
 
 # Benutzer anlegen
 if ! id "$SERVICE_USER" &>/dev/null; then
