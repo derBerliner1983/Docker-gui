@@ -8,6 +8,7 @@ import fs from 'fs';
 import { db } from '../db/index';
 import Dockerode from 'dockerode';
 import { Client as Ssh2Client } from 'ssh2';
+import type { SFTPWrapper, FileEntry, ConnectConfig } from 'ssh2';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -164,6 +165,103 @@ function makeAskpassEnv(password: string): { env: NodeJS.ProcessEnv; cleanup: ()
     env: { ...process.env, SSH_ASKPASS: scriptPath, SSH_ASKPASS_REQUIRE: 'force', DISPLAY: '' },
     cleanup: () => { try { fs.unlinkSync(scriptPath); } catch { /* already gone */ } },
   };
+}
+
+// Check rsync availability once at startup
+let RSYNC_AVAILABLE = false;
+try { execFileSync('rsync', ['--version'], { stdio: 'ignore' }); RSYNC_AVAILABLE = true; } catch { /* not installed */ }
+
+// Open an ssh2 Client connection (supports both key and password auth)
+function ssh2Connect(s: MigSession): Promise<Ssh2Client> {
+  return new Promise((resolve, reject) => {
+    const client = new Ssh2Client();
+    const cfg: ConnectConfig = { host: s.host, port: s.port, username: s.user, readyTimeout: 20_000 };
+    if (s.password) { cfg.password = s.password; }
+    else { try { cfg.privateKey = fs.readFileSync(KEY_PATH); } catch (e) { reject(e); return; } }
+    client.on('ready', () => resolve(client)).on('error', reject).connect(cfg);
+  });
+}
+
+// Recursively copy a remote directory tree to local via SFTP.
+async function sftpCopyDir(
+  sftp: SFTPWrapper, remoteSrc: string, localDst: string,
+  cname: string, volSrc: string, send: (m: object) => void, abort: { v: boolean }
+): Promise<boolean> {
+  if (abort.v) return false;
+  try { fs.mkdirSync(localDst, { recursive: true }); } catch { /* exists */ }
+  let entries: FileEntry[] = [];
+  try {
+    entries = await new Promise<FileEntry[]>((res, rej) => sftp.readdir(remoteSrc, (e, l) => e ? rej(e) : res(l)));
+  } catch { return true; } // empty or unreadable dir
+  for (const entry of entries) {
+    if (abort.v) return false;
+    const src = `${remoteSrc}/${entry.filename}`;
+    const dst = path.join(localDst, entry.filename);
+    if ((entry.attrs.mode ?? 0) & 0o040000) {
+      if (!await sftpCopyDir(sftp, src, dst, cname, volSrc, send, abort)) return false;
+    } else {
+      const fileSize = entry.attrs.size ?? 0;
+      let copied = 0;
+      await new Promise<void>((res, rej) => {
+        const rs = sftp.createReadStream(src);
+        const ws = fs.createWriteStream(dst);
+        rs.on('data', (chunk: Buffer) => {
+          copied += chunk.length;
+          const pct = fileSize > 0 ? Math.min(99, Math.floor(copied * 100 / fileSize)) : 0;
+          send({ type: 'progress', container: cname, volume: volSrc, pct, speed: '–', eta: entry.filename });
+        });
+        rs.pipe(ws);
+        ws.on('finish', res);
+        rs.on('error', rej);
+        ws.on('error', rej);
+      });
+    }
+  }
+  return true;
+}
+
+// Sync a single volume: rsync if available, otherwise SFTP via ssh2
+async function syncVolume(
+  s: MigSession, vol: VolumeInfo, localDst: string,
+  cname: string, send: (m: object) => void, abort: { v: boolean },
+  onKill: (cb: () => void) => void
+): Promise<boolean> {
+  if (RSYNC_AVAILABLE) {
+    return new Promise<boolean>((resolve) => {
+      const askpass = s.password ? makeAskpassEnv(s.password) : null;
+      const sshStr = `ssh ${sshKeyArgs(s).join(' ')}${s.password ? ' -o PasswordAuthentication=yes -o BatchMode=no' : ''}`;
+      const proc = spawn('rsync', ['-az', '--partial', '--info=progress2', '--no-human-readable', '-e', sshStr, `${s.user}@${s.host}:${vol.source}/`, `${localDst}/`],
+        { stdio: ['ignore', 'pipe', 'pipe'], env: askpass?.env ?? process.env });
+      let errBuf = '';
+      proc.stdout.on('data', (d: Buffer) => {
+        for (const line of d.toString().split('\r').filter(Boolean)) {
+          const m = line.match(/^\s*([\d,]+)\s+(\d+)%\s+([\d.]+\S+)\s+([\d:]+)/);
+          if (m) send({ type: 'progress', container: cname, volume: vol.source, pct: parseInt(m[2]), speed: m[3], eta: m[4] });
+        }
+      });
+      proc.stderr.on('data', (d: Buffer) => { errBuf += d.toString(); });
+      proc.on('error', (e) => { askpass?.cleanup(); send({ type: 'volume-error', container: cname, volume: vol.source, error: e.message }); resolve(false); });
+      proc.on('close', (code) => { askpass?.cleanup(); if (code === 0) { send({ type: 'volume-done', container: cname, volume: vol.source }); resolve(true); } else { send({ type: 'volume-error', container: cname, volume: vol.source, error: errBuf.trim().slice(0, 300) }); resolve(false); } });
+      onKill(() => proc.kill());
+    });
+  }
+
+  // SFTP fallback (no rsync installed)
+  send({ type: 'progress', container: cname, volume: vol.source, pct: 0, speed: 'SFTP', eta: '…' });
+  let client: Ssh2Client | null = null;
+  try {
+    client = await ssh2Connect(s);
+    const sftp = await new Promise<SFTPWrapper>((res, rej) => client!.sftp((e, s) => e ? rej(e) : res(s)));
+    const ok = await sftpCopyDir(sftp, vol.source, localDst, cname, vol.source, send, abort);
+    if (ok) send({ type: 'volume-done', container: cname, volume: vol.source });
+    else send({ type: 'volume-error', container: cname, volume: vol.source, error: 'Abgebrochen' });
+    return ok;
+  } catch (e) {
+    send({ type: 'volume-error', container: cname, volume: vol.source, error: e instanceof Error ? e.message : 'SFTP-Fehler' });
+    return false;
+  } finally {
+    client?.end();
+  }
 }
 
 // Pull a Docker image; resolves when fully downloaded.
@@ -490,40 +588,16 @@ export async function migrationRoutes(fastify: FastifyInstance) {
         continue;
       }
 
+      const abortRef = { v: false };
+      req.raw.once('close', () => { abortRef.v = true; });
+
       let containerOk = true;
       for (const vol of vols) {
-        if (aborted) break;
+        if (aborted || abortRef.v) break;
         const relPath = vol.source.startsWith(s.appdata_src) ? vol.source.slice(s.appdata_src.length) : `/${mc.cname}`;
         const localDst = path.join(s.appdata_dst, relPath);
         send({ type: 'volume-start', container: mc.cname, source: vol.source, dest: localDst, bytes: vol.bytes });
-        try { fs.mkdirSync(localDst, { recursive: true }); } catch { /* exists */ }
-
-        const ok = await new Promise<boolean>((resolve) => {
-          const askpass = s.password ? makeAskpassEnv(s.password) : null;
-          const sshStr = `ssh ${sshKeyArgs(s).join(' ')}${s.password ? ' -o PasswordAuthentication=yes -o BatchMode=no' : ''}`;
-          const proc = spawn('rsync', [
-            '-az', '--partial', '--info=progress2', '--no-human-readable',
-            '-e', sshStr,
-            `${s.user}@${s.host}:${vol.source}/`,
-            `${localDst}/`,
-          ], { stdio: ['ignore', 'pipe', 'pipe'], env: askpass?.env ?? process.env });
-
-          let errBuf = '';
-          proc.stdout.on('data', (d: Buffer) => {
-            for (const line of d.toString().split('\r').filter(Boolean)) {
-              const m = line.match(/^\s*([\d,]+)\s+(\d+)%\s+([\d.]+\S+)\s+([\d:]+)/);
-              if (m) send({ type: 'progress', container: mc.cname, volume: vol.source, pct: parseInt(m[2]), speed: m[3], eta: m[4] });
-            }
-          });
-          proc.stderr.on('data', (d: Buffer) => { errBuf += d.toString(); });
-          proc.on('error', (e) => { askpass?.cleanup(); send({ type: 'volume-error', container: mc.cname, volume: vol.source, error: e.message }); resolve(false); });
-          proc.on('close', (code) => {
-            askpass?.cleanup();
-            if (code === 0) { send({ type: 'volume-done', container: mc.cname, volume: vol.source }); resolve(true); }
-            else { send({ type: 'volume-error', container: mc.cname, volume: vol.source, error: errBuf.trim().slice(0, 300) }); resolve(false); }
-          });
-          req.raw.on('close', () => proc.kill());
-        });
+        const ok = await syncVolume(s, vol, localDst, mc.cname, send, abortRef, (cb) => req.raw.once('close', cb));
         if (!ok) { containerOk = false; break; }
       }
 

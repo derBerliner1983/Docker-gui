@@ -33,6 +33,7 @@ import { appTemplateRoutes } from './routes/apptemplates';
 import { alertRoutes } from './routes/alerts';
 import { terminalRoutes } from './routes/terminal';
 import { migrationRoutes } from './routes/migration';
+import { fileRoutes } from './routes/files';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
@@ -91,6 +92,7 @@ async function main() {
   await fastify.register(alertRoutes);
   await fastify.register(terminalRoutes);
   await fastify.register(migrationRoutes);
+  await fastify.register(fileRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {
