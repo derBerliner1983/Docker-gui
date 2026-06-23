@@ -188,7 +188,7 @@ async function sftpCopyDir(
   cname: string, volSrc: string, send: (m: object) => void, abort: { v: boolean }
 ): Promise<boolean> {
   if (abort.v) return false;
-  try { fs.mkdirSync(localDst, { recursive: true }); } catch { /* exists */ }
+  fs.mkdirSync(localDst, { recursive: true });
   let entries: FileEntry[] = [];
   try {
     entries = await new Promise<FileEntry[]>((res, rej) => sftp.readdir(remoteSrc, (e, l) => e ? rej(e) : res(l)));
@@ -203,6 +203,7 @@ async function sftpCopyDir(
       const fileSize = entry.attrs.size ?? 0;
       let copied = 0;
       await new Promise<void>((res, rej) => {
+        fs.mkdirSync(path.dirname(dst), { recursive: true });
         const rs = sftp.createReadStream(src);
         const ws = fs.createWriteStream(dst);
         rs.on('data', (chunk: Buffer) => {

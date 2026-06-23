@@ -257,10 +257,9 @@ export function Migration() {
     return phaseReady(key) && s !== 'running' && !busyPhase && !syncing && s !== 'done';
   };
 
-  // Phase can be re-run if it errored or paused (except connect/discover which always re-run)
   const phaseReRunnable = (key: string) => {
     const s = phaseStatus(key);
-    return phaseReady(key) && !busyPhase && !syncing && (s === 'error' || s === 'paused' || (s === 'done' && (key === 'connect' || key === 'discover')));
+    return phaseReady(key) && !busyPhase && !syncing && (s === 'error' || s === 'paused' || s === 'done');
   };
 
   // ── Phase Result Renderers ────────────────────────────────────────────────────
