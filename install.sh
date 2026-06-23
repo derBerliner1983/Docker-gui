@@ -207,11 +207,11 @@ fi
 mkdir -p /etc/caddy
 {
   echo "# core-hub-base – HTTP→HTTPS + Core-Hub-Proxy (vom Installer verwaltet)"
-  echo ":80 {"
+  echo "http://:80 {"
   echo "    redir https://{host}{uri} permanent"
   echo "}"
   echo ""
-  echo ":443 {"
+  echo "https://:443 {"
   echo "    tls internal"
   echo "    reverse_proxy localhost:${PORT}"
   echo "}"
