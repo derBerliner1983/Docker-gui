@@ -10,13 +10,16 @@ const getToken = () => localStorage.getItem('token');
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
+  const headers: Record<string, string> = {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  // Content-Type nur setzen, wenn ein Body mitgeschickt wird – sonst lehnt
+  // Fastify einen leeren JSON-Body mit 400 "Bad Request" ab.
+  if (init?.body != null) headers['Content-Type'] = 'application/json';
   const res = await fetch(path, {
     ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
+    headers,
     credentials: 'include',
   });
   if (!res.ok) {
@@ -187,7 +190,9 @@ export const api = {
     status: () => req<AntivirusStatus>('/api/antivirus'),
     install: () => req('/api/antivirus/install', { method: 'POST' }),
     update: () => req<{ ok: boolean; defsAgeDays: number | null }>('/api/antivirus/update', { method: 'POST' }),
-    scan: (path: string) => req('/api/antivirus/scan', { method: 'POST', body: JSON.stringify({ path }) }),
+    scan: (path: string, exclude?: string) => req('/api/antivirus/scan', { method: 'POST', body: JSON.stringify({ path, exclude }) }),
+    daemon: (service: 'daemon' | 'freshclam', enable: boolean) =>
+      req('/api/antivirus/daemon', { method: 'POST', body: JSON.stringify({ service, enable }) }),
   },
 
   vmNetworks: {

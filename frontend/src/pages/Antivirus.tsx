@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Bug, Download, RefreshCw, Play, Search, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import type { AntivirusStatus } from '../lib/types';
 
@@ -10,6 +11,7 @@ export function Antivirus() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState('');
   const [scanPath, setScanPath] = useState('/home');
+  const [scanExclude, setScanExclude] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -42,7 +44,7 @@ export function Antivirus() {
 
   const startScan = async () => {
     if (!scanPath.startsWith('/')) { alert('Absoluter Pfad erforderlich'); return; }
-    await act('scan', () => api.antivirus.scan(scanPath));
+    await act('scan', () => api.antivirus.scan(scanPath, scanExclude.trim() || undefined));
   };
 
   const s = av?.scan;
@@ -85,17 +87,28 @@ export function Antivirus() {
                 </div>
               }
             >
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 10 }}>
-                <span className={`badge badge--${av.daemonActive ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
-                  <span className="badge__dot" /> Daemon {av.daemonActive ? 'aktiv' : 'inaktiv'}
-                </span>
-                <span className={`badge badge--${av.freshclamActive ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
-                  <span className="badge__dot" /> Auto-Updates {av.freshclamActive ? 'aktiv' : 'inaktiv'}
-                </span>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Switch checked={av.daemonActive} disabled={busy === 'daemon'} onChange={(v) => act('daemon', () => api.antivirus.daemon('daemon', v))} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scan-Daemon</span>
+                  <span className={`badge badge--${av.daemonActive ? 'running' : 'stopped'}`}><span className="badge__dot" />{av.daemonActive ? 'aktiv' : 'inaktiv'}</span>
+                  {busy === 'daemon' && <span className="spinner" style={{ width: 12, height: 12 }} />}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <Switch checked={av.freshclamActive} disabled={busy === 'freshclam'} onChange={(v) => act('freshclam', () => api.antivirus.daemon('freshclam', v))} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>Auto-Updates</span>
+                  <span className={`badge badge--${av.freshclamActive ? 'running' : 'stopped'}`}><span className="badge__dot" />{av.freshclamActive ? 'aktiv' : 'inaktiv'}</span>
+                  {busy === 'freshclam' && <span className="spinner" style={{ width: 12, height: 12 }} />}
+                </div>
                 <span className={`badge badge--${av.defsAgeDays !== null && av.defsAgeDays <= 7 ? 'running' : 'restarting'}`} style={{ height: 24, padding: '0 10px' }}>
                   Signaturen: {av.defsAgeDays === null ? 'unbekannt' : av.defsAgeDays === 0 ? 'heute' : `${av.defsAgeDays} Tage alt`}
                 </span>
               </div>
+              {!av.daemonActive && av.defsAgeDays === null && (
+                <div className="form-hint" style={{ marginTop: 10, color: 'var(--color-warning)' }}>
+                  Hinweis: Der Daemon startet erst, wenn Viren-Signaturen vorhanden sind. Klicke zuerst auf „Signaturen aktualisieren".
+                </div>
+              )}
             </Panel>
 
             {/* Scan */}
@@ -110,6 +123,18 @@ export function Antivirus() {
                 {['/home', '/opt', '/var/www', '/tmp', '/'].map((p) => (
                   <button key={p} className="btn btn--outline btn--xs" disabled={s?.running} onClick={() => setScanPath(p)}>{p}</button>
                 ))}
+              </div>
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label className="form-label">Ordner ausschließen (optional, mehrere mit Komma)</label>
+                <input
+                  className="input input--rect"
+                  value={scanExclude}
+                  onChange={(e) => setScanExclude(e.target.value)}
+                  placeholder="/home/dirk/Downloads, /var/lib/docker"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                  disabled={s?.running}
+                />
+                <div className="form-hint">Ausgeschlossene Ordner werden beim Scan übersprungen (nutzt clamscan statt Daemon).</div>
               </div>
 
               {s?.running && (

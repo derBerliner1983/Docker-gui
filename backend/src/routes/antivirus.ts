@@ -85,9 +85,11 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
   fastify.post('/api/antivirus/update', { preHandler: requireAdmin }, async (req, reply) => {
     if (!hasBinary('freshclam')) return reply.status(503).send({ error: 'freshclam nicht installiert' });
     try {
-      // freshclam can fail if the daemon-driven updater holds a lock – that's fine
-      safeExec('systemctl stop clamav-freshclam 2>/dev/null', 8000) || privExec('systemctl stop clamav-freshclam', { timeout: 8000 }).slice(0, 0);
-      try { privExec('freshclam', { timeout: 180000 }); } finally {
+      // freshclam scheitert, wenn der Auto-Updater (clamav-freshclam) die DB sperrt → vorher stoppen
+      try { privExec('systemctl stop clamav-freshclam', { timeout: 8000 }); } catch { /* Dienst evtl. nicht aktiv */ }
+      try {
+        privExec('freshclam', { timeout: 180000 });
+      } finally {
         try { privExec('systemctl start clamav-freshclam', { timeout: 8000 }); } catch { /* */ }
       }
       auditQueries.log.run(req.user.id, 'antivirus.update', null);
@@ -97,17 +99,54 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Daemon / Auto-Updates aktivieren oder deaktivieren
+  fastify.post<{ Body: { service: 'daemon' | 'freshclam'; enable: boolean } }>(
+    '/api/antivirus/daemon',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const service = req.body?.service;
+      const unit = service === 'freshclam' ? 'clamav-freshclam' : 'clamav-daemon';
+      if (service !== 'daemon' && service !== 'freshclam') return reply.status(400).send({ error: 'Ungültiger Dienst' });
+      try {
+        if (req.body?.enable) {
+          // Vor dem Start sicherstellen, dass Signaturen vorhanden sind (Daemon startet sonst nicht)
+          if (service === 'daemon' && defsAgeDays() === null && hasBinary('freshclam')) {
+            try { privExec('freshclam', { timeout: 180000 }); } catch { /* weiter versuchen */ }
+          }
+          privExec(`systemctl enable --now ${unit}`, { timeout: 30000 });
+        } else {
+          privExec(`systemctl disable --now ${unit}`, { timeout: 15000 });
+        }
+        auditQueries.log.run(req.user.id, `antivirus.${service}`, req.body?.enable ? 'on' : 'off');
+        // kurz warten, damit systemctl-Status aktuell ist
+        const active = safeExec(`systemctl is-active ${unit} 2>/dev/null`).trim() === 'active';
+        reply.send({ ok: true, active });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : `${unit} ließ sich nicht ${req.body?.enable ? 'starten' : 'stoppen'} – evtl. fehlen die Signaturen (erst „Signaturen aktualisieren").` });
+      }
+    }
+  );
+
   // Start a background scan of a path
-  fastify.post<{ Body: { path: string } }>('/api/antivirus/scan', { preHandler: requireAdmin }, async (req, reply) => {
+  fastify.post<{ Body: { path: string; exclude?: string } }>('/api/antivirus/scan', { preHandler: requireAdmin }, async (req, reply) => {
     if (!hasBinary('clamscan') && !hasBinary('clamdscan')) return reply.status(503).send({ error: 'ClamAV nicht installiert' });
     if (scan.running) return reply.status(409).send({ error: 'Es läuft bereits ein Scan' });
     const path = (req.body?.path ?? '').trim();
     if (!path.startsWith('/')) return reply.status(400).send({ error: 'Absoluter Pfad erforderlich' });
 
+    // Auszuschließende Ordner (Komma-getrennt) → nur absolute Pfade
+    const excludeDirs = (req.body?.exclude ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.startsWith('/'));
+
     scan = { running: true, path, startedAt: new Date().toISOString(), scanned: 0, infected: [] };
-    const useDaemon = hasBinary('clamdscan') && avStatus().daemonActive;
+    // Bei Ausschlüssen clamscan erzwingen (clamdscan unterstützt --exclude-dir nicht)
+    const useDaemon = hasBinary('clamdscan') && avStatus().daemonActive && excludeDirs.length === 0;
     const bin = useDaemon ? 'clamdscan' : 'clamscan';
-    const args = useDaemon ? ['-m', '--fdpass', '-i', path] : ['-r', '-i', path];
+    const excludeArgs = excludeDirs.map((d) => `--exclude-dir=^${d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
+    const args = useDaemon ? ['-m', '--fdpass', '-i', path] : ['-r', ...excludeArgs, '-i', path];
 
     const child = spawnPriv(bin, args);
     let buf = '';
