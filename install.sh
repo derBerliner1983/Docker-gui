@@ -17,6 +17,59 @@ error() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 
 [ "$EUID" -ne 0 ] && error "Bitte als root ausführen: sudo bash install.sh"
 
+# ── Deinstallation ────────────────────────────────────────────────────────────
+if [ "${1:-}" = "--deinstall" ]; then
+  info "=== $APP_NAME Deinstallation ==="
+  if [ "${2:-}" = "--purge" ]; then
+    warn "PURGE-Modus: Programm UND alle Daten (Datenbank, Backups) werden gelöscht!"
+  else
+    info "Programmdateien werden entfernt. Daten unter $DATA_DIR bleiben erhalten."
+    info "Alles löschen inkl. Daten: sudo bash install.sh --deinstall --purge"
+  fi
+
+  # Service stoppen & deaktivieren
+  systemctl stop  "$SERVICE_NAME" 2>/dev/null || true
+  systemctl disable "$SERVICE_NAME" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  systemctl daemon-reload
+  info "systemd-Service entfernt."
+
+  # Caddy-Konfiguration zurücksetzen
+  CADDYFILE="/etc/caddy/Caddyfile"
+  if [ -f "$CADDYFILE" ] && grep -q "core-hub-base" "$CADDYFILE" 2>/dev/null; then
+    rm -f "$CADDYFILE"
+    systemctl reload caddy 2>/dev/null || systemctl restart caddy 2>/dev/null || true
+    info "Caddy-Konfiguration entfernt."
+  fi
+
+  # sudoers entfernen
+  rm -f /etc/sudoers.d/core-hub
+  info "sudoers-Allowlist entfernt."
+
+  # Installations-Verzeichnis löschen
+  rm -rf "$INSTALL_DIR"
+  info "Installationsverzeichnis $INSTALL_DIR gelöscht."
+
+  # System-Benutzer entfernen
+  userdel "$SERVICE_USER" 2>/dev/null || true
+  info "Benutzer '$SERVICE_USER' entfernt."
+
+  # Daten löschen (nur bei --purge)
+  if [ "${2:-}" = "--purge" ]; then
+    rm -rf "$DATA_DIR"
+    info "Daten unter $DATA_DIR gelöscht."
+  else
+    info ""
+    info "Daten unter $DATA_DIR sind noch vorhanden."
+    info "Manuell löschen mit:  sudo rm -rf $DATA_DIR"
+  fi
+
+  info ""
+  info "✅ $APP_NAME wurde vollständig deinstalliert."
+  exit 0
+fi
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Version dieses Pakets (Quelle der Wahrheit: ./VERSION)
 NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
 
