@@ -19,6 +19,9 @@ interface Finding {
   fix?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
   port?: string;
+  lan?: boolean;       // aktuell aus dem LAN erreichbar?
+  internet?: boolean;  // aktuell aus dem Internet erreichbar?
+  subnet?: string;     // erkanntes LAN-Subnetz
 }
 
 function sshServiceUnit(): string {
@@ -187,7 +190,78 @@ function detectLanSubnet(): string {
   return '192.168.0.0/16';
 }
 
-/** Öffentlich gebundene Ports mit LAN/Internet-Klassifikation. */
+// ── ufw-Zustandsanalyse: ist ein Port aktuell aus LAN/Internet erreichbar? ──
+interface UfwRule { num: number; to: string; action: string; dir: string; from: string }
+
+function parseUfwNumbered(): UfwRule[] {
+  const out = safeExec('ufw status numbered 2>/dev/null') || privSafe('ufw status numbered');
+  const rules: UfwRule[] = [];
+  for (const line of out.split('\n')) {
+    const m = line.match(/^\[\s*(\d+)\]\s+(.+?)\s{2,}(ALLOW|DENY|REJECT|LIMIT)(?:\s+(IN|OUT))?\s+(.+?)(?:\s+#.*)?$/i);
+    if (m) rules.push({ num: parseInt(m[1]), to: m[2].trim(), action: m[3].toUpperCase(), dir: (m[4] ?? '').toUpperCase(), from: m[5].trim() });
+  }
+  return rules;
+}
+
+function ufwInfo(): { active: boolean; defaultIncoming: 'allow' | 'deny' } {
+  const v = safeExec('ufw status verbose 2>/dev/null') || privSafe('ufw status verbose');
+  return { active: /Status:\s*active/i.test(v), defaultIncoming: /Default:\s*allow\s*\(incoming\)/i.test(v) ? 'allow' : 'deny' };
+}
+
+function ipToInt(ip: string): number | null {
+  const o = ip.split('.');
+  if (o.length !== 4) return null;
+  let n = 0;
+  for (const part of o) { const v = parseInt(part); if (isNaN(v) || v < 0 || v > 255) return null; n = (n << 8) | v; }
+  return n >>> 0;
+}
+
+/** Liegt eine IPv4 in einem CIDR? Nicht-parsebar (z.B. IPv6/Anywhere) → true (nicht ausschließen). */
+function ipInCidr(ip: string, cidr: string): boolean {
+  if (!cidr || /anywhere/i.test(cidr)) return true;
+  const [base, bitsStr] = cidr.split('/');
+  const bits = bitsStr === undefined ? 32 : parseInt(bitsStr);
+  const ipN = ipToInt(ip), baseN = ipToInt(base);
+  if (ipN === null || baseN === null) return true;
+  if (bits <= 0) return true;
+  const mask = bits >= 32 ? 0xffffffff : (~((1 << (32 - bits)) - 1)) >>> 0;
+  return (ipN & mask) === (baseN & mask);
+}
+
+function ruleToPort(to: string): string | null {
+  const m = to.match(/^(\d+)(?:\/(?:tcp|udp))?/i);
+  return m ? m[1] : null;
+}
+
+/** Würde ein eingehendes Paket von srcIp an port durchgelassen? (ufw: erste passende Regel gewinnt) */
+function simulateIncoming(rules: UfwRule[], srcIp: string, port: string, defaultIncoming: 'allow' | 'deny'): boolean {
+  for (const r of rules) {
+    if (r.dir === 'OUT') continue;
+    if (!/anywhere/i.test(r.to) && ruleToPort(r.to) !== port) continue;
+    const fromCidr = /anywhere/i.test(r.from) ? '' : r.from.replace(/\s*\(v6\)/i, '').trim();
+    if (!ipInCidr(srcIp, fromCidr)) continue;
+    return r.action === 'ALLOW' || r.action === 'LIMIT';
+  }
+  return defaultIncoming === 'allow';
+}
+
+function serverIp(): string {
+  const out = safeExec("ip -4 addr show scope global 2>/dev/null | grep 'inet '").trim();
+  const m = out.match(/inet\s+(\d+\.\d+\.\d+\.\d+)/);
+  return m ? m[1] : '192.168.1.100';
+}
+
+/** Alle ufw-Regeln zu einem Port entfernen (Nummern verschieben sich → einzeln + neu parsen). */
+function clearPortRules(port: string): void {
+  for (let i = 0; i < 50; i++) {
+    const rules = parseUfwNumbered();
+    const target = rules.find((r) => r.dir !== 'OUT' && ruleToPort(r.to) === port);
+    if (!target) break;
+    privExec(`bash -c "yes | ufw delete ${target.num}"`, { timeout: 8000 });
+  }
+}
+
+/** Öffentlich gebundene Ports mit echter LAN/Internet-Erreichbarkeit (aus ufw). */
 function networkAccessCheck(): Finding[] {
   const out = safeExec('ss -tlnH 2>/dev/null');
   const publicPorts = out.split('\n')
@@ -199,23 +273,43 @@ function networkAccessCheck(): Finding[] {
   const subnet = detectLanSubnet();
   if (unique.length === 0) return [{ id: 'ports-none', category: 'Netzwerkzugang', title: 'Keine öffentlich gebundenen Ports', status: 'ok', detail: '', recommendation: '' }];
 
+  const hasUfw = hasBinary('ufw');
+  const { active, defaultIncoming } = hasUfw ? ufwInfo() : { active: false, defaultIncoming: 'allow' as const };
+  const rules = hasUfw && active ? parseUfwNumbered() : [];
+  const lanProbe = serverIp();
+
   return unique.map((port) => {
     const info = PORT_DB[port];
-    const fixId = info?.zone !== 'internet-ok' ? `port-lan-only:${port}:${subnet}` : undefined;
+    const zone = info?.zone ?? 'internet-conditional';
+    // Echter Zustand: ohne aktive Firewall ist alles erreichbar
+    const lan = (!hasUfw || !active) ? true : simulateIncoming(rules, lanProbe, port, defaultIncoming);
+    const internet = (!hasUfw || !active) ? true : simulateIncoming(rules, '1.1.1.1', port, defaultIncoming);
+
+    // Status aus Empfehlung + tatsächlichem Zustand ableiten
+    let status: Status;
+    if (zone === 'lan-only') status = internet ? 'critical' : (lan ? 'ok' : 'info');
+    else if (zone === 'internet-ok') status = 'ok';
+    else status = internet ? 'warn' : 'ok';
+
+    const stateTxt = (!hasUfw || !active) ? 'Firewall inaktiv – aktuell für ALLE erreichbar'
+      : lan && internet ? 'Aktuell: LAN + Internet erreichbar'
+      : lan && !internet ? 'Aktuell: nur LAN (Internet gesperrt) ✓'
+      : !lan && internet ? 'Aktuell: nur Internet (LAN gesperrt)'
+      : 'Aktuell: komplett gesperrt';
+
     return {
       id: `port-${port}`,
       category: 'Netzwerkzugang',
       title: `Port ${port}${info ? ' – ' + info.name : ''}`,
-      status: (info?.risk ?? 'info') as Status,
-      detail: info?.note ?? `Unbekannter Dienst – prüfen ob öffentlich notwendig`,
-      recommendation: info?.zone === 'lan-only'
-        ? `Dringend auf LAN (${subnet}) beschränken – dieser Port ist im Internet gefährlich.`
-        : info?.zone === 'internet-ok'
+      status,
+      detail: `${info?.note ?? 'Unbekannter Dienst – prüfen ob öffentlich notwendig'} · ${stateTxt}`,
+      recommendation: zone === 'lan-only'
+        ? `Empfehlung: nur LAN (${subnet}). Schalte „Internet" unten aus.`
+        : zone === 'internet-ok'
         ? 'Internet-Zugriff für diesen Dienst ist vertretbar.'
-        : `Prüfen ob Internet-Zugriff nötig; ggf. auf LAN (${subnet}) beschränken.`,
-      fix: fixId,
-      accessZone: (info?.zone ?? 'internet-conditional') as Finding['accessZone'],
-      port,
+        : `Empfehlung: prüfen ob Internet nötig; sonst auf LAN (${subnet}) beschränken.`,
+      accessZone: zone as Finding['accessZone'],
+      port, lan, internet, subnet,
     };
   });
 }
@@ -275,7 +369,8 @@ export async function securityRoutes(fastify: FastifyInstance) {
     score = Math.max(0, Math.min(100, score));
     const grade = score >= 85 ? 'Sehr gut' : score >= 65 ? 'Gut' : score >= 40 ? 'Verbesserungswürdig' : 'Kritisch';
 
-    reply.send({ score, grade, counts, findings, scannedAt: new Date().toISOString() });
+    const firewallActive = hasBinary('ufw') && ufwInfo().active;
+    reply.send({ score, grade, counts, findings, scannedAt: new Date().toISOString(), firewallActive });
   });
 
   // ── SSH service status & control ──
@@ -316,19 +411,35 @@ export async function securityRoutes(fastify: FastifyInstance) {
       const unit = sshServiceUnit();
       try {
         let output = '';
-        // Port auf LAN-only beschränken: allow von LAN, deny von überall sonst
-        if (action?.startsWith('port-lan-only:')) {
+        // Port-Zugang setzen: LAN und/oder Internet getrennt an/aus
+        if (action?.startsWith('port-access:')) {
           const parts = action.split(':');
           const port = (parts[1] ?? '').replace(/[^0-9]/g, '');
-          const subnet = parts.slice(2).join(':').replace(/[^0-9a-fA-F:.\/]/g, '');
-          if (!port || !subnet) return reply.status(400).send({ error: 'Ungültige Aktion' });
+          const wantLan = parts[2] === '1';
+          const wantNet = parts[3] === '1';
+          const subnet = (parts.slice(4).join(':') || detectLanSubnet()).replace(/[^0-9a-fA-F:.\/]/g, '');
+          if (!port) return reply.status(400).send({ error: 'Ungültige Aktion' });
           if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert – Firewall zuerst einrichten' });
-          // LAN-Zugriff explizit erlauben (vor der Deny-Regel)
-          privExec(`ufw allow in from ${subnet} to any port ${port}`, { timeout: 8000 });
-          // Internet-Zugriff sperren
-          privExec(`ufw deny in to any port ${port}`, { timeout: 8000 });
-          auditQueries.log.run(req.user.id, 'security.fix', `lan-only:${port} subnet:${subnet}`);
-          return reply.send({ ok: true, output: `Port ${port} auf LAN (${subnet}) beschränkt` });
+          // Bestehende Regeln für diesen Port entfernen (saubere Basis)
+          clearPortRules(port);
+          if (wantLan && wantNet) {
+            privExec(`ufw allow in to any port ${port}`, { timeout: 8000 });
+            output = `Port ${port}: LAN + Internet erlaubt`;
+          } else if (wantLan && !wantNet) {
+            privExec(`ufw allow in from ${subnet} to any port ${port}`, { timeout: 8000 });
+            privExec(`ufw deny in to any port ${port}`, { timeout: 8000 });
+            output = `Port ${port}: nur LAN (${subnet}) – Internet gesperrt`;
+          } else if (!wantLan && wantNet) {
+            privExec(`ufw deny in from ${subnet} to any port ${port}`, { timeout: 8000 });
+            privExec(`ufw allow in to any port ${port}`, { timeout: 8000 });
+            output = `Port ${port}: nur Internet – LAN gesperrt`;
+          } else {
+            privExec(`ufw deny in to any port ${port}`, { timeout: 8000 });
+            output = `Port ${port}: komplett gesperrt`;
+          }
+          auditQueries.log.run(req.user.id, 'security.fix', `port-access:${port} lan=${wantLan} net=${wantNet}`);
+          const active = /Status:\s*active/i.test(safeExec('ufw status 2>/dev/null') || privSafe('ufw status'));
+          return reply.send({ ok: true, output: output + (active ? '' : ' (Firewall ist inaktiv – Regeln greifen erst nach Aktivierung!)') });
         }
         switch (action) {
           case 'ssh-disable-root':

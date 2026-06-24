@@ -368,6 +368,9 @@ export interface SecurityFinding {
   fix?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
   port?: string;
+  lan?: boolean;
+  internet?: boolean;
+  subnet?: string;
 }
 
 export interface SecurityScan {
@@ -376,6 +379,7 @@ export interface SecurityScan {
   counts: { ok: number; warn: number; critical: number; info: number };
   findings: SecurityFinding[];
   scannedAt: string;
+  firewallActive?: boolean;
 }
 
 export interface SshStatus {

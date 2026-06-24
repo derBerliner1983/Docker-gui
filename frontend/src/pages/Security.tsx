@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Lock, Globe, Home } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut } from '../components/ui/Donut';
@@ -28,11 +28,24 @@ function scoreColor(score: number): string {
   return 'var(--color-error)';
 }
 
+function AccessToggle({ label, Icon, on, disabled, onChange }: { label: string; Icon: React.ElementType; on: boolean; disabled: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 64 }}>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, color: on ? 'var(--color-fg)' : 'var(--color-faint)' }}>
+        <Icon size={11} /> {label}
+      </span>
+      <Switch checked={on} disabled={disabled} onChange={onChange} />
+      <span style={{ fontSize: 9.5, color: on ? 'var(--color-success)' : 'var(--color-faint)' }}>{on ? 'erlaubt' : 'gesperrt'}</span>
+    </div>
+  );
+}
+
 function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean }) {
   const meta = STATUS_META[f.status];
   const Icon = meta.icon;
   const zone = f.accessZone ? ZONE_META[f.accessZone] : null;
-  const isLanAction = f.fix?.startsWith('port-lan-only:');
+  const isNetwork = !!f.accessZone && !!f.port;
+  const sn = f.subnet ?? '';
   return (
     <div style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--color-border)' }}>
       <Icon size={18} color={meta.color} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -41,8 +54,8 @@ function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: 
           <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.title}</span>
           <span className="badge badge--paused" style={{ fontSize: 10 }}>{f.category}</span>
           {zone && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }}>
-              <zone.Icon size={10} /> {zone.label}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }} title="Empfehlung für diesen Dienst">
+              <zone.Icon size={10} /> Empf.: {zone.label}
             </span>
           )}
         </div>
@@ -54,18 +67,19 @@ function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: 
           </div>
         )}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, alignSelf: 'center' }}>
-        {isLanAction && (
-          <button className="btn btn--danger btn--sm" style={{ whiteSpace: 'nowrap' }} disabled={fixing} onClick={() => onFix(f.fix!)} title="Firewall-Regeln anlegen: LAN erlauben, Internet sperren">
-            {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Lock size={12} />} Nur LAN
-          </button>
-        )}
-        {f.fix && !isLanAction && (
-          <button className="btn btn--outline btn--sm" disabled={fixing} onClick={() => onFix(f.fix!)}>
-            {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
-          </button>
-        )}
-      </div>
+      {isNetwork ? (
+        <div style={{ display: 'flex', gap: 14, flexShrink: 0, alignSelf: 'center', alignItems: 'flex-start' }}>
+          <AccessToggle label="LAN" Icon={Home} on={!!f.lan} disabled={fixing}
+            onChange={(v) => onFix(`port-access:${f.port}:${v ? 1 : 0}:${f.internet ? 1 : 0}:${sn}`)} />
+          <AccessToggle label="Internet" Icon={Globe} on={!!f.internet} disabled={fixing}
+            onChange={(v) => onFix(`port-access:${f.port}:${f.lan ? 1 : 0}:${v ? 1 : 0}:${sn}`)} />
+          {fixing && <span className="spinner" style={{ width: 14, height: 14, alignSelf: 'center' }} />}
+        </div>
+      ) : f.fix ? (
+        <button className="btn btn--outline btn--sm" style={{ flexShrink: 0, alignSelf: 'center' }} disabled={fixing} onClick={() => onFix(f.fix!)}>
+          {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -203,12 +217,23 @@ export function Security() {
   useEffect(() => { void run(); }, [run]);
 
   const fix = async (action: string) => {
-    if (!confirm(`Sicherheits-Maßnahme „${action}" jetzt anwenden?`)) return;
+    if (action.startsWith('port-access:')) {
+      const [, port, lan, net] = action.split(':');
+      // Aussperr-Schutz: Web-UI/SSH nicht versehentlich komplett dichtmachen
+      if (['22', '80', '443', '4200'].includes(port) && lan === '0' && net === '0') {
+        if (!confirm(`Achtung: Port ${port} für LAN UND Internet zu sperren kann den Zugriff auf Core-Hub/SSH kappen. Wirklich komplett sperren?`)) return;
+      } else if (['22', '80', '443', '4200'].includes(port) && lan === '0') {
+        if (!confirm(`Achtung: LAN-Zugriff auf Port ${port} sperren? Du könntest dich aus dem lokalen Netz aussperren.`)) return;
+      }
+    } else if (!confirm('Sicherheits-Maßnahme jetzt anwenden?')) return;
     setFixing(action);
     try { await api.security.fix(action); await run(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
     finally { setFixing(null); }
   };
+
+  const isFixing = (f: SecurityFinding) =>
+    f.port ? (!!fixing && fixing.startsWith(`port-access:${f.port}:`)) : (fixing === f.fix);
 
   const sorted = scan ? [...scan.findings].sort((a, b) => STATUS_META[a.status].order - STATUS_META[b.status].order) : [];
   const networkFindings = sorted.filter((f) => f.category === 'Netzwerkzugang');
@@ -282,7 +307,7 @@ export function Security() {
                 </div>
               ) : (
                 <div style={{ marginTop: 2 }}>
-                  {actionable.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
+                  {actionable.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
                 </div>
               )}
             </Panel>
@@ -293,14 +318,19 @@ export function Security() {
             <Panel
               title="Netzwerkzugang"
               icon={<Globe size={15} />}
-              subtitle={`${networkFindings.filter((f) => f.accessZone === 'lan-only' && f.fix).length} LAN-only empfohlen`}
+              subtitle={`${networkFindings.filter((f) => f.internet && f.accessZone === 'lan-only').length} kritisch im Internet`}
               storageKey="sec-network"
             >
               <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, marginTop: 4, lineHeight: 1.6 }}>
-                <b>LAN-Zugang:</b> Nur aus deinem lokalen Netzwerk erreichbar (z. B. 192.168.x.x).
-                {' '}<b>Internet-Zugang:</b> Jeder im Internet kann eine Verbindung aufbauen.
-                {' '}Mit <b>Pangolin/Newt</b> werden externe Dienste über einen sicheren Tunnel geleitet – alle direkten Internet-Ports können auf <em>Nur LAN</em> gesetzt werden.
+                Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>Internet</b> (von überall erreichbar).
+                {' '}Die Schalter zeigen den <b>echten Firewall-Zustand</b> und ändern ihn sofort.
+                {' '}Mit <b>Pangolin/Newt</b> laufen externe Dienste über den Tunnel – direkte Internet-Ports kannst du gefahrlos abschalten.
               </div>
+              {scan.firewallActive === false && (
+                <div style={{ background: 'rgba(234,179,8,.12)', border: '1px solid var(--color-warning)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12.5, color: 'var(--color-warning)' }}>
+                  ⚠ Die <b>Firewall (ufw) ist inaktiv</b> – aktuell ist alles erreichbar. Die Schalter legen zwar Regeln an, diese greifen aber erst, wenn die Firewall aktiviert ist (oben „Handlungsbedarf" → Firewall aktivieren oder im Netzwerk-Tab).
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
                 {Object.entries(ZONE_META).map(([key, z]) => (
                   <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: z.color }}>
@@ -313,7 +343,7 @@ export function Security() {
                 <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
               ) : (
                 <div style={{ marginTop: 2 }}>
-                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
+                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
                 </div>
               )}
             </Panel>
@@ -330,7 +360,7 @@ export function Security() {
               defaultCollapsed
             >
               <div style={{ marginTop: 2 }}>
-                {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
+                {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
               </div>
             </Panel>
           </>
