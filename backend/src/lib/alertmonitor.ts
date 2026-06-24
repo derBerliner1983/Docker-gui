@@ -1,7 +1,7 @@
 import si from 'systeminformation';
 import Dockerode from 'dockerode';
 import { alertQueries, notifyConfigQueries, notificationQueries, type AlertRuleRow } from '../db/index';
-import { safeExec } from './privilege';
+import { safeExec, privExec } from './privilege';
 import { sendEmail } from './notify';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
@@ -25,6 +25,7 @@ export const PREDEFINED_ALERTS: PredefinedAlert[] = [
   { key: 'risky_ports', name: 'Riskante offene Ports', description: 'Schlägt Alarm bei öffentlich erreichbaren Risiko-Ports (Telnet, RDP, ungesicherte DB-Ports).' },
   { key: 'low_score', name: 'Sicherheits-Score zu niedrig', description: 'Schlägt Alarm, wenn der Security-Score unter den Schwellwert fällt.', hasThreshold: true, thresholdLabel: 'Score unter', defaultThreshold: 65 },
   { key: 'priv_container', name: 'Privilegierte Container', description: 'Schlägt Alarm, wenn privilegierte Docker-Container laufen.' },
+  { key: 'fw_blocked', name: 'Blockierte Verbindungen (Firewall)', description: 'Schlägt Alarm, wenn die Firewall in der letzten Stunde auffällig viele Zugriffe blockiert hat (nur wenn aktiviert).', hasThreshold: true, thresholdLabel: 'blockierte Verbindungen ab', defaultThreshold: 20 },
 ];
 
 export interface MetricOption {
@@ -86,6 +87,17 @@ function evalPredefinedSync(rule: AlertRuleRow): EvalResult | null {
         .filter((p) => RISKY_PORTS.has(p));
       const unique = [...new Set(open)];
       return { breached: unique.length > 0, detail: unique.length ? `Riskante Ports offen: ${unique.join(', ')}` : 'keine riskanten Ports' };
+    }
+    case 'fw_blocked': {
+      const limit = rule.threshold ?? 20;
+      const readCount = (cmd: string): number => {
+        try { return parseInt(privExec(cmd, { timeout: 8000 }).toString().trim()) || 0; } catch { return 0; }
+      };
+      // Blockierungen der letzten 60 Minuten aus dem Kernel-Journal …
+      let count = readCount('bash -c "journalctl -k --since \\"60 min ago\\" --no-pager 2>/dev/null | grep -c -i \\"UFW BLOCK\\" || true"');
+      // … sonst grob aus dem UFW-Log (letzte Zeilen)
+      if (count === 0) count = readCount('bash -c "tail -n 3000 /var/log/ufw.log 2>/dev/null | grep -c -i \\"UFW BLOCK\\" || true"');
+      return { breached: count >= limit, detail: `${count} blockierte Verbindung(en) in der letzten Stunde (Schwelle ${limit})` };
     }
     default:
       return null;

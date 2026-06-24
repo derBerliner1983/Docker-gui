@@ -111,8 +111,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
   (Server/Port/Benutzer/Passwort/SSL im UI, z.B. Gmail/Web.de – auch an externe Adressen)
 - Ereignisse einzeln schaltbar: geplante Backups, Container-Abstürze, Sicherheits- & Viren-Funde
 - **Alarm-Regeln** (unter Sicherheit): vordefinierte Auffälligkeiten (SSH-Root-Login, fail2ban-Sperren,
-  riskante offene Ports, Security-Score-Schwelle, privilegierte Container) **und eigene Schwellwerte**
-  (CPU/RAM/Disk über X % für Y Minuten) – pro Regel eigene **Empfänger-Adressen** (mehrere möglich)
+  riskante offene Ports, Security-Score-Schwelle, privilegierte Container, **blockierte Firewall-
+  Verbindungen**) **und eigene Schwellwerte** (CPU/RAM/Disk über X % für Y Minuten) – pro Regel
+  eigene **Empfänger-Adressen** (mehrere möglich); Alarme nur für **aktivierte** Regeln
 - Hintergrund-Monitor prüft alle 60 s und mailt bei Auffälligkeiten (mit Anti-Spam-Cooldown)
 - Verlauf in der Oberfläche, Testnachricht per Klick
 
@@ -134,9 +135,10 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ### ⚙️ Einstellungen, Version & Migration
 - Passwort & 2FA verwalten, System-Info, erkannte Module
-- **Version & Updates**: aktuelle Version sichtbar, Update-Prüfung gegen GitHub-Releases –
-  und **1-Klick-Update direkt in der Oberfläche** (holt den neuen Code per `git pull` und
-  führt `install.sh --update` aus, mit Live-Log)
+- **Version & Updates**: aktuelle Version sichtbar; Update-Prüfung **direkt gegen das
+  Git-Repository** (vergleicht die `VERSION`-Datei und neue Commits – funktioniert auch bei
+  **privaten** Repos ohne Releases), Fallback auf GitHub-Releases; dazu **1-Klick-Update in
+  der Oberfläche** (`git pull` + `install.sh --update`, mit Live-Log)
 - **Konfigurations-Migration**: gesamte Core-Hub-Konfiguration (DB + Caddy-Zertifikate inkl.
   Root-CA + SMB) als ein `.tar.gz` exportieren und per **Drag & Drop** importieren →
   Serverumzug mit einem Klick

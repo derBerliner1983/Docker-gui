@@ -77,6 +77,21 @@ function findCaddyPki(): string | null {
   return null;
 }
 
+/** Findet das Quell-/Git-Verzeichnis (von install.sh in $DATA_DIR/source_dir gemerkt). */
+function findRepoRoot(): string | null {
+  let recorded = '';
+  try { recorded = fs.readFileSync(path.join(DATA_DIR, 'source_dir'), 'utf8').trim(); } catch { /* keins gemerkt */ }
+  const candidates = [recorded, '/opt/core-hub', path.resolve(__dirname, '../../..'), process.cwd()].filter(Boolean);
+  return candidates.find((d) => fs.existsSync(path.join(d, 'install.sh'))) ?? null;
+}
+
+/** git im Repo ausführen – erst direkt, bei Rechtefehler via sudo (Klon kann root gehören). */
+function gitCmd(repoRoot: string, args: string, timeout = 8000): string {
+  const cmd = `git -C "${repoRoot}" ${args}`;
+  try { return execSync(cmd, { timeout, stdio: ['ignore', 'pipe', 'ignore'] }).toString(); }
+  catch { return privExec(cmd, { timeout }); }
+}
+
 export async function settingsRoutes(fastify: FastifyInstance) {
   fastify.get('/api/settings/info', { preHandler: requireAuth }, async (_req, reply) => {
     reply.send({
@@ -97,16 +112,58 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // ── Version & update check (queries the GitHub releases API) ──
-  fastify.get('/api/settings/version', { preHandler: requireAuth }, async (_req, reply) => {
+  // ── Version & Update-Prüfung ──
+  // Primär per Git: vergleicht die lokale VERSION mit der im Remote-Repository
+  // (funktioniert auch bei privaten Repos ohne GitHub-Releases). Fallback: GitHub-Releases-API.
+  // ?refresh=1 holt den Remote-Stand frisch (git fetch); ohne Parameter wird der
+  // bereits bekannte Stand verglichen (schnell, für das automatische Laden).
+  fastify.get<{ Querystring: { refresh?: string } }>('/api/settings/version', { preHandler: requireAuth }, async (req, reply) => {
     const result: {
-      current: string; latest: string | null; updateAvailable: boolean;
-      releaseUrl: string | null; repo: string; checkedAt: string; error?: string;
+      current: string; latest: string | null; updateAvailable: boolean; behind: number;
+      method: string; releaseUrl: string | null; repo: string; checkedAt: string; error?: string;
     } = {
-      current: APP_VERSION, latest: null, updateAvailable: false,
+      current: APP_VERSION, latest: null, updateAvailable: false, behind: 0, method: 'none',
       releaseUrl: `https://github.com/${GITHUB_REPO}`, repo: GITHUB_REPO, checkedAt: new Date().toISOString(),
     };
+    const doFetch = req.query.refresh === '1';
+
+    // 1) Git-basierter Vergleich
+    const repoRoot = findRepoRoot();
+    if (repoRoot && fs.existsSync(path.join(repoRoot, '.git'))) {
+      result.method = 'git';
+      try {
+        if (doFetch) { try { gitCmd(repoRoot, 'fetch --quiet --tags origin', 20000); } catch { /* evtl. offline */ } }
+        // Upstream-Branch ermitteln (Tracking-Branch oder origin/<branch>)
+        let upstream = '';
+        try { upstream = gitCmd(repoRoot, 'rev-parse --abbrev-ref --symbolic-full-name @{u}', 6000).trim(); } catch { /* */ }
+        if (!upstream) {
+          let br = 'HEAD';
+          try { br = gitCmd(repoRoot, 'rev-parse --abbrev-ref HEAD', 6000).trim(); } catch { /* */ }
+          upstream = `origin/${br}`;
+        }
+        try { result.behind = parseInt(gitCmd(repoRoot, `rev-list --count HEAD..${upstream}`, 6000).trim()) || 0; } catch { /* */ }
+        let remoteVer = '';
+        try { remoteVer = gitCmd(repoRoot, `show ${upstream}:VERSION`, 6000).trim().replace(/[^0-9.]/g, ''); } catch { /* */ }
+        if (remoteVer) {
+          result.updateAvailable = compareVersions(remoteVer, BASE_VERSION) > 0 || result.behind > 0;
+          result.latest = result.behind > 0 && compareVersions(remoteVer, BASE_VERSION) <= 0
+            ? `${remoteVer} (+${result.behind} Commits)` : remoteVer;
+        } else if (result.behind > 0) {
+          result.updateAvailable = true;
+          result.latest = `${BASE_VERSION} (+${result.behind} Commits)`;
+        } else {
+          result.latest = BASE_VERSION; // aktuell
+        }
+        return reply.send(result);
+      } catch (e) {
+        result.error = `Git-Prüfung fehlgeschlagen: ${e instanceof Error ? e.message : ''}`;
+        // → GitHub-Fallback
+      }
+    }
+
+    // 2) Fallback: GitHub-Releases-API (öffentliche Repos mit Releases)
     try {
+      result.method = result.method === 'git' ? 'git+github' : 'github';
       const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
         headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'core-hub' },
         signal: AbortSignal.timeout(6000),
@@ -116,16 +173,17 @@ export async function settingsRoutes(fastify: FastifyInstance) {
         const tag = (data.tag_name || data.name || '').trim();
         if (tag) {
           result.latest = tag;
-          result.updateAvailable = compareVersions(tag, APP_VERSION) > 0;
+          result.updateAvailable = compareVersions(tag, BASE_VERSION) > 0;
           if (data.html_url) result.releaseUrl = data.html_url;
+          result.error = undefined;
         }
       } else if (res.status === 404) {
-        result.error = 'Noch keine Releases veröffentlicht';
-      } else {
-        result.error = `GitHub: HTTP ${res.status}`;
+        if (!result.latest && result.method === 'github') result.error = 'Keine GitHub-Releases gefunden (und kein Git-Checkout für die Versionsprüfung).';
+      } else if (!result.latest) {
+        result.error = result.error || `GitHub: HTTP ${res.status}`;
       }
     } catch (err) {
-      result.error = err instanceof Error ? err.message : 'Versionsprüfung fehlgeschlagen';
+      if (!result.latest) result.error = result.error || (err instanceof Error ? err.message : 'Versionsprüfung fehlgeschlagen');
     }
     reply.send(result);
   });

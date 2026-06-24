@@ -149,6 +149,8 @@ export interface VersionInfo {
   current: string;
   latest: string | null;
   updateAvailable: boolean;
+  behind?: number;
+  method?: string;
   releaseUrl: string | null;
   repo: string;
   checkedAt: string;

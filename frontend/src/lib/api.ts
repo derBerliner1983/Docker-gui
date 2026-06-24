@@ -255,7 +255,7 @@ export const api = {
 
   settings: {
     info: () => req<{ version: string; hostname: string; platform: string; dataDir: string; node: string; uptime: number; features: Record<string, boolean> }>('/api/settings/info'),
-    version: () => req<VersionInfo>('/api/settings/version'),
+    version: (refresh = false) => req<VersionInfo>(`/api/settings/version${refresh ? '?refresh=1' : ''}`),
     exportUrl: () => '/api/settings/export',
     restart: () => req<{ ok: boolean; note: string }>('/api/settings/restart', { method: 'POST' }),
     import: async (file: File) => {

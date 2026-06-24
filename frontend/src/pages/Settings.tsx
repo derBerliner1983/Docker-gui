@@ -363,12 +363,13 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   const [updateDone, setUpdateDone] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
-  const check = useCallback(async () => {
+  const check = useCallback(async (refresh = false) => {
     setChecking(true);
-    try { setVer(await api.settings.version()); } catch { /* */ }
+    try { setVer(await api.settings.version(refresh)); } catch { /* */ }
     finally { setChecking(false); }
   }, []);
-  useEffect(() => { void check(); }, [check]);
+  // Beim Laden schnell (ohne git fetch), Button „Prüfen" holt den Remote-Stand frisch
+  useEffect(() => { void check(false); }, [check]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -397,7 +398,7 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   return (
     <Panel title="Version & Updates" icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
       actions={
-        <button className="btn btn--outline btn--sm" disabled={checking} onClick={check}>
+        <button className="btn btn--outline btn--sm" disabled={checking} onClick={() => check(true)}>
           {checking ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />} Prüfen
         </button>
       }
@@ -459,7 +460,9 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
         )}
 
         <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 12 }}>
-          Repository: {ver?.repo ?? '—'}{ver ? ` · zuletzt geprüft ${timeAgo(new Date(ver.checkedAt).getTime() / 1000)}` : ''}
+          Repository: {ver?.repo ?? '—'}
+          {ver?.method && ver.method !== 'none' ? ` · Prüfung via ${ver.method === 'github' ? 'GitHub-Releases' : 'Git'}` : ''}
+          {ver ? ` · zuletzt geprüft ${timeAgo(new Date(ver.checkedAt).getTime() / 1000)}` : ''}
         </div>
       </div>
     </Panel>
