@@ -238,8 +238,8 @@ function FirewallPanel() {
             <select className="input input--rect" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' })} style={{ width: 92, cursor: 'pointer' }} title="Aktion">
               <option value="allow">allow</option><option value="deny">deny</option><option value="reject">reject</option>
             </select>
-            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 118, cursor: 'pointer' }} title="Richtung">
-              <option value="">Richtung: –</option><option value="in">Eingehend (in)</option><option value="out">Ausgehend (out)</option>
+            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 152, cursor: 'pointer' }} title="Richtung – Beide legt je eine Regel für ein- und ausgehend an">
+              <option value="">Richtung: –</option><option value="in">Eingehend (in)</option><option value="out">Ausgehend (out)</option><option value="both">Beide (ein + aus)</option>
             </select>
             <input className="input input--rect" placeholder="Port (z.B. 443)" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} style={{ width: 110 }} />
             <select className="input input--rect" value={form.proto} onChange={(e) => setForm({ ...form, proto: e.target.value })} style={{ width: 86, cursor: 'pointer' }}>
@@ -408,7 +408,7 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
           <select className="input input--rect" value={direction} onChange={(e) => setDirection(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="in">Eingehend (in)</option>
             <option value="out">Ausgehend (out)</option>
-            <option value="">Beide</option>
+            <option value="both">Beide (ein + aus)</option>
           </select>
         </div>
       </div>
@@ -442,6 +442,7 @@ function ConnectionsPanel() {
   const [entries, setEntries] = useState<FirewallLogEntry[]>([]);
   const [available, setAvailable] = useState(true);
   const [logging, setLogging] = useState(false);
+  const [level, setLevel] = useState('low');
   const [total, setTotal] = useState(0);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -456,6 +457,7 @@ function ConnectionsPanel() {
     try {
       const res = await api.firewall.log(2000);
       setEntries(res.entries); setAvailable(res.available); setLogging(res.logging);
+      setLevel(res.level ?? 'low');
       setTotal(res.total ?? res.entries.length); setMessage(res.message ?? '');
       setSelected(new Set());
     } catch (err) { setMessage(err instanceof Error ? err.message : 'Fehler'); }
@@ -464,7 +466,14 @@ function ConnectionsPanel() {
   useEffect(() => { void load(); }, [load]);
 
   const toggleLogging = async (v: boolean) => {
-    try { await api.firewall.setLogging(v); setLogging(v); setTimeout(() => void load(), 600); }
+    // Beim Einschalten gleich auf "medium" gehen, damit auch erlaubte Verbindungen erscheinen
+    const lvl = v ? (level === 'off' || level === 'low' ? 'medium' : level) : 'off';
+    try { const r = await api.firewall.setLogging(v, lvl); setLogging(v); setLevel(r.level ?? lvl); setTimeout(() => void load(), 600); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const changeLevel = async (lvl: string) => {
+    try { const r = await api.firewall.setLogging(lvl !== 'off', lvl); setLevel(r.level ?? lvl); setLogging(lvl !== 'off'); setTimeout(() => void load(), 600); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
 
@@ -504,6 +513,14 @@ function ConnectionsPanel() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
           <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Protokollierung</span>
           <Switch checked={logging} onChange={toggleLogging} />
+          {logging && (
+            <select className="input input--rect" value={level} onChange={(e) => void changeLevel(e.target.value)} style={{ width: 188, cursor: 'pointer', fontSize: 12 }} title="Logging-Stufe – ab Mittel werden auch erlaubte Verbindungen protokolliert">
+              <option value="low">Stufe: Niedrig (nur blockiert)</option>
+              <option value="medium">Stufe: Mittel (auch erlaubt)</option>
+              <option value="high">Stufe: Hoch (alles)</option>
+              <option value="full">Stufe: Voll (alles, ungedrosselt)</option>
+            </select>
+          )}
           <button className="btn btn--ghost btn--icon btn--sm" title="Aktualisieren" onClick={() => void load()}>
             {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />}
           </button>
@@ -520,6 +537,13 @@ function ConnectionsPanel() {
             <div style={{ background: 'rgba(234,179,8,.1)', border: '1px solid var(--color-warning)', borderRadius: 8, padding: '10px 14px', margin: '8px 0 12px', fontSize: 12.5, color: 'var(--color-warning)' }}>
               ⚠ Die Firewall-Protokollierung ist <b>aus</b>. Ohne sie werden keine Verbindungsversuche aufgezeichnet.
               Schalte sie oben rechts ein, um zu sehen, wer von wo zugreift.
+            </div>
+          )}
+          {logging && level === 'low' && (
+            <div style={{ background: 'rgba(59,130,246,.1)', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '10px 14px', margin: '8px 0 12px', fontSize: 12.5, color: 'var(--color-accent)' }}>
+              ℹ Auf Stufe <b>Niedrig</b> protokolliert ufw nur <b>blockierte</b> Pakete – deshalb siehst du hier nur <b>BLOCK</b>.
+              Stelle die Stufe oben rechts auf <b>Mittel</b> (oder höher), damit auch <b>erlaubte</b> Verbindungen (ALLOW) erscheinen.
+              <span style={{ color: 'var(--color-muted)' }}> Hinweis: Höhere Stufen erzeugen deutlich mehr Logeinträge.</span>
             </div>
           )}
 

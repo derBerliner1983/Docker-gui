@@ -42,6 +42,11 @@ function cleanProfile(p?: string): string {
   return (p ?? '').replace(/\s*\(v6\)\s*$/i, '').replace(/[^\w \-()]/g, '').trim().slice(0, 40);
 }
 
+/** Redundante Richtungs-Suffixe `(in)`/`(out)` entfernen – die Richtung steht in einer eigenen Spalte. */
+function stripDirSuffix(s: string): string {
+  return s.replace(/\s*\((?:in|out)\)/gi, '').replace(/\s+/g, ' ').trim();
+}
+
 /** Parse `ufw status numbered` output (inkl. Kommentar/Name). */
 function parseUfw(out: string): FirewallRule[] {
   const rules: FirewallRule[] = [];
@@ -50,10 +55,10 @@ function parseUfw(out: string): FirewallRule[] {
     if (m) {
       rules.push({
         num: parseInt(m[1]),
-        to: m[2].trim(),
+        to: stripDirSuffix(m[2].trim()),
         action: m[3].toUpperCase(),
         direction: (m[4] ?? '').toUpperCase(),
-        from: m[5].trim(),
+        from: stripDirSuffix(m[5].trim()),
         comment: (m[6] ?? '').trim(),
         raw: line.trim(),
       });
@@ -73,17 +78,21 @@ function buildRuleCmd(
   parts: { p: string; pr: string; fromIp: string; dir: string; comment?: string },
 ): string | null {
   const { p, pr, fromIp, dir } = parts;
-  const d = dir ? ` ${dir}` : '';
   const c = parts.comment ? ` comment '${cleanComment(parts.comment)}'` : '';
+  const proto = pr ? ` proto ${pr}` : '';
   let base: string | null = null;
-  if (!dir) {
-    // Einfache Syntax (Standard = eingehend)
-    if (fromIp) base = `ufw ${action} from ${fromIp}${p ? ` to any port ${p}` : ''}${pr ? ` proto ${pr}` : ''}`;
-    else if (p) base = `ufw ${action} ${p}${pr ? `/${pr}` : ''}`;
+  if (dir === 'out') {
+    // Ausgehend: die angegebene Adresse ist das Ziel (wohin der Verkehr geht)
+    if (fromIp) base = `ufw ${action} out to ${fromIp}${p ? ` port ${p}` : ''}${proto}`;
+    else if (p) base = `ufw ${action} out to any port ${p}${proto}`;
+  } else if (dir === 'in') {
+    // Eingehend: die angegebene Adresse ist die Quelle (woher der Verkehr kommt)
+    if (fromIp) base = `ufw ${action} in from ${fromIp}${p ? ` to any port ${p}` : ''}${proto}`;
+    else if (p) base = `ufw ${action} in to any port ${p}${proto}`;
   } else {
-    // Mit Richtung → ausführliche Syntax
-    if (fromIp) base = `ufw ${action}${d} from ${fromIp}${p ? ` to any port ${p}` : ''}${pr ? ` proto ${pr}` : ''}`;
-    else if (p) base = `ufw ${action}${d} to any port ${p}${pr ? ` proto ${pr}` : ''}`;
+    // Ohne Richtung → einfache Syntax (Standard = eingehend)
+    if (fromIp) base = `ufw ${action} from ${fromIp}${p ? ` to any port ${p}` : ''}${proto}`;
+    else if (p) base = `ufw ${action} ${p}${pr ? `/${pr}` : ''}`;
   }
   return base ? base + c : null;
 }
@@ -108,6 +117,16 @@ function readLoggingState(): boolean {
   const v = safeExec('ufw status verbose 2>/dev/null') || privExecSafe('ufw status verbose');
   return /Logging:\s*on/i.test(v);
 }
+
+/** Logging-Stufe lesen: off | low | medium | high | full. */
+function readLoggingLevel(): string {
+  const v = safeExec('ufw status verbose 2>/dev/null') || privExecSafe('ufw status verbose');
+  const m = v.match(/Logging:\s*on\s*\(([a-z]+)\)/i);
+  if (m) return m[1].toLowerCase();
+  return /Logging:\s*on/i.test(v) ? 'low' : 'off';
+}
+
+const LOG_LEVELS = ['off', 'low', 'medium', 'high', 'full'];
 
 function privExecSafe(cmd: string): string {
   try { return privExec(cmd, { timeout: 6000 }); } catch { return ''; }
@@ -139,10 +158,18 @@ export async function firewallRoutes(fastify: FastifyInstance) {
       const { action } = body;
       if (!['allow', 'deny', 'reject'].includes(action)) return reply.status(400).send({ error: 'Ungültige Aktion' });
       const base = sanitiseParts(body);
+      // "both" → je eine Regel für ein- und ausgehend
+      const dirs = body.direction === 'both' ? ['in', 'out'] : [base.dir];
       // Mehrere Quell-Adressen → je eine Regel (gleicher Name zum Gruppieren)
       const addrs = splitAddrs(body.from);
       const targets = addrs.length > 0 ? addrs : [''];
-      const cmds = targets.map((a) => buildRuleCmd(action, { ...base, fromIp: a })).filter(Boolean) as string[];
+      const cmds: string[] = [];
+      for (const a of targets) {
+        for (const d of dirs) {
+          const cmd = buildRuleCmd(action, { ...base, fromIp: a, dir: d });
+          if (cmd) cmds.push(cmd);
+        }
+      }
       if (cmds.length === 0) return reply.status(400).send({ error: 'Port oder Quell-IP erforderlich' });
       try {
         for (const cmd of cmds) privExec(cmd, { timeout: 8000 });
@@ -264,13 +291,17 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Protokollierung (Verbindungsversuche) ein-/ausschalten
-  fastify.post<{ Body: { enable: boolean } }>('/api/firewall/logging', { preHandler: requireAdmin }, async (req, reply) => {
+  // Protokollierung (Verbindungsversuche) ein-/ausschalten oder Stufe setzen
+  fastify.post<{ Body: { enable?: boolean; level?: string } }>('/api/firewall/logging', { preHandler: requireAdmin }, async (req, reply) => {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
+    // Stufe hat Vorrang; sonst per enable an/aus. ufw-Stufen: off/low/medium/high/full
+    const target = req.body?.level && LOG_LEVELS.includes(req.body.level)
+      ? req.body.level
+      : (req.body?.enable ? 'on' : 'off');
     try {
-      privExec(`ufw logging ${req.body?.enable ? 'on' : 'off'}`, { timeout: 8000 });
-      auditQueries.log.run(req.user.id, 'firewall.logging', String(req.body?.enable));
-      reply.send({ ok: true, logging: !!req.body?.enable });
+      privExec(`ufw logging ${target}`, { timeout: 8000 });
+      auditQueries.log.run(req.user.id, 'firewall.logging', target);
+      reply.send({ ok: true, logging: target !== 'off', level: readLoggingLevel() });
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'ufw-Fehler' });
     }
@@ -283,7 +314,7 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     try { ingestFirewallLog(); } catch { /* */ }
     const entries = queryFirewallLog(limit);
     const stats = firewallLogStats();
-    reply.send({ available: true, logging: readLoggingState(), source: 'Protokoll-DB', entries, total: stats.total, blocked: stats.blocked });
+    reply.send({ available: true, logging: readLoggingState(), level: readLoggingLevel(), source: 'Protokoll-DB', entries, total: stats.total, blocked: stats.blocked });
   });
 
   // Protokoll leeren
