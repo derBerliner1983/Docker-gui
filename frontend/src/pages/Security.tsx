@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { Modal } from '../components/ui/Modal';
 import { Donut } from '../components/ui/Donut';
 import { Switch } from '../components/ui/Switch';
 import { SecurityAlerts } from '../components/security/AlertsPanel';
@@ -82,6 +83,36 @@ function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFin
           {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function StatePill({ label, Icon, on, danger }: { label: string; Icon: React.ElementType; on: boolean; danger?: boolean }) {
+  const color = danger ? 'var(--color-error)' : on ? 'var(--color-success)' : 'var(--color-faint)';
+  const bg = danger ? 'rgba(239,68,68,.12)' : on ? 'rgba(34,197,94,.12)' : 'var(--color-border)';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: bg, color, minWidth: 86, justifyContent: 'center' }}>
+      <Icon size={10} /> {label} {on ? '✓' : '✗'}
+    </span>
+  );
+}
+
+/** Kompakte, schreibgeschützte Übersichtszeile für das Netzwerkzugang-Panel. */
+function NetSummaryRow({ f, showZoneBadge }: { f: SecurityFinding; showZoneBadge: boolean }) {
+  const meta = STATUS_META[f.status];
+  const Icon = meta.icon;
+  const zone = f.accessZone ? ZONE_META[f.accessZone] : null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--color-border)' }}>
+      <Icon size={15} color={meta.color} style={{ flexShrink: 0 }} />
+      <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.title}</span>
+      {zone && showZoneBadge && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: zone.bg, color: zone.color, flexShrink: 0 }}>
+          <zone.Icon size={9} /> {zone.label}
+        </span>
+      )}
+      {f.port && <StatePill label="LAN" Icon={Home} on={!!f.lan} />}
+      {f.port && <StatePill label="Internet" Icon={Globe} on={!!f.internet} danger={!!f.internet && f.accessZone === 'lan-only'} />}
     </div>
   );
 }
@@ -208,6 +239,7 @@ export function Security() {
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState<string | null>(null);
+  const [netModalOpen, setNetModalOpen] = useState(false);
   const [showZoneBadge, setShowZoneBadge] = useState(() => localStorage.getItem('security-zone-badge') !== 'false');
 
   const toggleZoneBadge = () => {
@@ -321,31 +353,64 @@ export function Security() {
 
             <SshPanel />
 
-            {/* Netzwerkzugang – LAN vs. Internet */}
+            {/* Netzwerkzugang – kompakte Übersicht, Bearbeitung im Popup */}
             <Panel
               title="Netzwerkzugang"
               icon={<Globe size={15} />}
               subtitle={`${networkFindings.filter((f) => f.internet && f.accessZone === 'lan-only').length} kritisch im Internet`}
               storageKey="sec-network"
               actions={
+                networkFindings.length > 0 && (
+                  <button
+                    className="btn btn--outline btn--sm"
+                    onClick={() => setNetModalOpen(true)}
+                    title="Port-Zugriff (LAN/Internet) bearbeiten"
+                    style={{ fontSize: 11, padding: '2px 10px' }}
+                  >
+                    <Pencil size={12} /> Bearbeiten
+                  </button>
+                )
+              }
+            >
+              {scan.firewallActive === false && (
+                <div style={{ background: 'rgba(234,179,8,.12)', border: '1px solid var(--color-warning)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12.5, color: 'var(--color-warning)' }}>
+                  ⚠ Die <b>Firewall (ufw) ist inaktiv</b> – aktuell ist alles erreichbar. Regeln greifen erst, wenn die Firewall aktiviert ist (oben „Handlungsbedarf" → Firewall aktivieren).
+                </div>
+              )}
+              {networkFindings.length === 0 ? (
+                <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
+              ) : (
+                <div style={{ marginTop: 2 }}>
+                  {networkFindings.map((f) => <NetSummaryRow key={f.id} f={f} showZoneBadge={showZoneBadge} />)}
+                </div>
+              )}
+            </Panel>
+
+            {/* Bearbeiten-Popup: LAN/Internet pro Port schalten */}
+            <Modal
+              open={netModalOpen}
+              title="Netzwerkzugang bearbeiten"
+              onClose={() => setNetModalOpen(false)}
+              width={680}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
+                  Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>Internet</b> (von überall erreichbar).
+                  {' '}Die Schalter zeigen den <b>echten Firewall-Zustand</b> und ändern ihn sofort.
+                  {' '}Mit <b>Pangolin/Newt</b> laufen externe Dienste über den Tunnel – direkte Internet-Ports kannst du gefahrlos abschalten.
+                </div>
                 <button
                   className="btn btn--outline btn--sm"
                   onClick={toggleZoneBadge}
                   title={showZoneBadge ? 'Empfehlungs-Labels ausblenden' : 'Empfehlungs-Labels einblenden'}
-                  style={{ fontSize: 11, padding: '2px 8px' }}
+                  style={{ fontSize: 11, padding: '2px 8px', flexShrink: 0, whiteSpace: 'nowrap' }}
                 >
                   {showZoneBadge ? 'Labels aus' : 'Labels ein'}
                 </button>
-              }
-            >
-              <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, marginTop: 4, lineHeight: 1.6 }}>
-                Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>Internet</b> (von überall erreichbar).
-                {' '}Die Schalter zeigen den <b>echten Firewall-Zustand</b> und ändern ihn sofort.
-                {' '}Mit <b>Pangolin/Newt</b> laufen externe Dienste über den Tunnel – direkte Internet-Ports kannst du gefahrlos abschalten.
               </div>
               {scan.firewallActive === false && (
                 <div style={{ background: 'rgba(234,179,8,.12)', border: '1px solid var(--color-warning)', borderRadius: 8, padding: '10px 14px', marginBottom: 12, fontSize: 12.5, color: 'var(--color-warning)' }}>
-                  ⚠ Die <b>Firewall (ufw) ist inaktiv</b> – aktuell ist alles erreichbar. Die Schalter legen zwar Regeln an, diese greifen aber erst, wenn die Firewall aktiviert ist (oben „Handlungsbedarf" → Firewall aktivieren oder im Netzwerk-Tab).
+                  ⚠ Die <b>Firewall (ufw) ist inaktiv</b> – aktuell ist alles erreichbar. Die Schalter legen zwar Regeln an, diese greifen aber erst, wenn die Firewall aktiviert ist.
                 </div>
               )}
               <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -356,14 +421,10 @@ export function Security() {
                   </span>
                 ))}
               </div>
-              {networkFindings.length === 0 ? (
-                <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
-              ) : (
-                <div style={{ marginTop: 2 }}>
-                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
-                </div>
-              )}
-            </Panel>
+              <div style={{ marginTop: 2 }}>
+                {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
+              </div>
+            </Modal>
 
             {/* E-Mail-Alarm-Regeln */}
             <SecurityAlerts />
