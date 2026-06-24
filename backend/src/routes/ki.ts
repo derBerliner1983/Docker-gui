@@ -226,20 +226,41 @@ export async function kiRoutes(fastify: FastifyInstance) {
     ).split('\n').map((s) => s.trim()).filter((s) => /^\d+\.\d+\.\d+\.\d+$/.test(s));
     // Check if Caddy has an HTTPS proxy entry pointing at Ollama's port
     const ollamaProxy = proxyQueries.getAll.all().find((h) => h.target_port === 11434 && h.enabled);
-    const httpsUrl = ollamaProxy?.https ? `https://${ollamaProxy.hostname}` : null;
+    const httpsUrls: string[] = [];
+    if (ollamaProxy?.https) {
+      // hostname field may be space-separated ("ai-server 192.168.1.x") — split and build one URL per entry
+      for (const h of (ollamaProxy.hostname ?? '').split(/\s+/).filter(Boolean)) {
+        httpsUrls.push(`https://${h}`);
+      }
+    }
     const httpsProxyId = ollamaProxy?.id ?? null;
     const caddyAvailable = hasBinary('caddy');
-    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps, httpsUrl, httpsProxyId, caddyAvailable });
+    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps, httpsUrls, httpsProxyId, caddyAvailable });
   });
 
   // ── Ollama HTTPS proxy (enable / disable via Caddy) ──
   fastify.post('/api/ki/https', { preHandler: requireAdmin }, async (_req, reply) => {
     if (!hasBinary('caddy')) return reply.status(503).send({ error: 'Caddy nicht installiert (apt install caddy)' });
     const hostname = safeExec('hostname 2>/dev/null').trim() || 'server';
+    const lanIps = safeExec(
+      "ip -4 addr show 2>/dev/null | grep 'inet ' | grep -vE '127\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.' | awk '{print $2}' | cut -d'/' -f1"
+    ).split('\n').map((s) => s.trim()).filter((s) => /^\d+\.\d+\.\d+\.\d+$/.test(s));
+    // Space-separated: Caddy accepts multiple hosts in one block ("host1 192.168.x.x { ... }")
+    const caddySiteAddr = [hostname, ...lanIps].join(' ');
     try {
-      proxyQueries.upsert.run(null, 'Ollama', hostname, 'localhost', 11434, 1, 1);
+      proxyQueries.upsert.run(null, 'Ollama', caddySiteAddr, 'localhost', 11434, 1, 1);
       applyCaddy(proxyQueries.getAll.all());
-      reply.send({ ok: true, httpsUrl: `https://${hostname}`, httpsProxyId: proxyQueries.getAll.all().find(h => h.target_port === 11434)?.id ?? null });
+      // Switch Ollama to local-only so HTTP port 11434 is unreachable from LAN
+      const tmp = `/tmp/ollama-override-${process.pid}-https.conf`;
+      writeFileSync(tmp, '[Service]\nEnvironment="OLLAMA_HOST=127.0.0.1:11434"\n');
+      try { mkdirSync('/etc/systemd/system/ollama.service.d/', { recursive: true }); } catch {
+        privExec(`bash -c 'mkdir -p /etc/systemd/system/ollama.service.d/'`, { timeout: 5000 });
+      }
+      privExec(`cp ${tmp} /etc/systemd/system/ollama.service.d/override.conf`, { timeout: 5000 });
+      try { unlinkSync(tmp); } catch { /* */ }
+      privExec('systemctl daemon-reload', { timeout: 10000 });
+      privExec('systemctl restart ollama', { timeout: 20000 });
+      reply.send({ ok: true });
     } catch (err) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'HTTPS konnte nicht aktiviert werden' });
     }
@@ -247,10 +268,21 @@ export async function kiRoutes(fastify: FastifyInstance) {
 
   fastify.delete('/api/ki/https', { preHandler: requireAdmin }, async (_req, reply) => {
     const existing = proxyQueries.getAll.all().find((h) => h.target_port === 11434);
-    if (!existing) return reply.send({ ok: true });
     try {
-      proxyQueries.delete.run(existing.id);
-      if (hasBinary('caddy')) applyCaddy(proxyQueries.getAll.all());
+      if (existing) {
+        proxyQueries.delete.run(existing.id);
+        if (hasBinary('caddy')) applyCaddy(proxyQueries.getAll.all());
+      }
+      // Switch Ollama back to LAN so HTTP on port 11434 is reachable again
+      const tmp = `/tmp/ollama-override-${process.pid}-http.conf`;
+      writeFileSync(tmp, '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"\n');
+      try { mkdirSync('/etc/systemd/system/ollama.service.d/', { recursive: true }); } catch {
+        privExec(`bash -c 'mkdir -p /etc/systemd/system/ollama.service.d/'`, { timeout: 5000 });
+      }
+      privExec(`cp ${tmp} /etc/systemd/system/ollama.service.d/override.conf`, { timeout: 5000 });
+      try { unlinkSync(tmp); } catch { /* */ }
+      privExec('systemctl daemon-reload', { timeout: 10000 });
+      privExec('systemctl restart ollama', { timeout: 20000 });
       reply.send({ ok: true });
     } catch (err) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'HTTPS konnte nicht deaktiviert werden' });

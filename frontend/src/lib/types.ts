@@ -441,7 +441,7 @@ export interface KiAccess {
   port: string;
   hostname: string;
   lanIps: string[];
-  httpsUrl: string | null;
+  httpsUrls: string[];
   httpsProxyId: number | null;
   caddyAvailable: boolean;
 }

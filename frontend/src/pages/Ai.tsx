@@ -376,7 +376,7 @@ export function Ai() {
   const toggleHttps = async () => {
     setAccessBusy(true);
     try {
-      if (access?.httpsUrl) {
+      if (access && access.httpsUrls.length > 0) {
         await api.ki.disableHttps();
       } else {
         await api.ki.enableHttps();
@@ -474,35 +474,38 @@ export function Ai() {
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
             <button
               className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
-              disabled={accessBusy}
+              disabled={accessBusy || (access?.httpsUrls.length ?? 0) > 0}
+              title={(access?.httpsUrls.length ?? 0) > 0 ? 'Modus wird von HTTPS verwaltet' : undefined}
               onClick={() => void changeAccess('local')}
             >
               <WifiOff size={11} /> Nur lokal
             </button>
             <button
               className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
-              disabled={accessBusy}
+              disabled={accessBusy || (access?.httpsUrls.length ?? 0) > 0}
+              title={(access?.httpsUrls.length ?? 0) > 0 ? 'Modus wird von HTTPS verwaltet' : undefined}
               onClick={() => void changeAccess('lan')}
             >
               <Globe size={11} /> LAN
             </button>
             {access?.caddyAvailable && (
               <button
-                className={`btn btn--sm ${access.httpsUrl ? 'btn--outline' : 'btn--ghost'}`}
-                style={access.httpsUrl ? { color: 'var(--color-success)', borderColor: 'var(--color-success)' } : { color: 'var(--color-faint)' }}
+                className={`btn btn--sm ${access.httpsUrls.length > 0 ? 'btn--outline' : 'btn--ghost'}`}
+                style={access.httpsUrls.length > 0 ? { color: 'var(--color-success)', borderColor: 'var(--color-success)' } : { color: 'var(--color-faint)' }}
                 disabled={accessBusy}
                 onClick={() => void toggleHttps()}
-                title={access.httpsUrl ? 'HTTPS für Ollama deaktivieren' : 'HTTPS für Ollama via Caddy aktivieren'}
+                title={access.httpsUrls.length > 0 ? 'HTTPS für Ollama deaktivieren' : 'HTTPS für Ollama via Caddy aktivieren'}
               >
-                {access.httpsUrl ? <Lock size={11} /> : <LockOpen size={11} />}
-                {access.httpsUrl ? 'HTTPS' : 'HTTPS ein'}
+                {access.httpsUrls.length > 0 ? <Lock size={11} /> : <LockOpen size={11} />}
+                {access.httpsUrls.length > 0 ? 'HTTPS' : 'HTTPS ein'}
               </button>
             )}
             {access && (
               <>
                 <div style={{ width: 1, height: 14, background: 'var(--color-border)', flexShrink: 0 }} />
-                {access.httpsUrl && <OllamaUrl href={access.httpsUrl} https />}
-                {access.mode === 'local' ? (
+                {access.httpsUrls.length > 0 ? (
+                  access.httpsUrls.map((url) => <OllamaUrl key={url} href={url} https />)
+                ) : access.mode === 'local' ? (
                   <>
                     <OllamaUrl href={`http://127.0.0.1:${access.port}`} />
                     <OllamaUrl href={`http://localhost:${access.port}`} />
