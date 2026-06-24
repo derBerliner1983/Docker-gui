@@ -438,6 +438,9 @@ export interface KiHardware {
 export interface KiAccess {
   mode: 'local' | 'lan';
   host: string;
+  port: string;
+  hostname: string;
+  lanIps: string[];
 }
 
 export interface HFGgufFile {

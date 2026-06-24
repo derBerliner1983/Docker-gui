@@ -27,6 +27,25 @@ function inferCaps(name: string, family?: string): Cap[] {
   return caps;
 }
 
+function OllamaUrl({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4,
+        fontSize: 11, fontFamily: 'var(--font-mono)',
+        color: 'var(--color-accent)', textDecoration: 'none',
+        background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.25)',
+        borderRadius: 4, padding: '1px 7px',
+      }}
+    >
+      {href} <ExternalLink size={9} />
+    </a>
+  );
+}
+
 const CAP_LABEL: Record<Cap, string> = {
   text: 'Text', code: 'Code', vision: 'Bilder', audio: 'Audio',
   reasoning: 'Reasoning', math: 'Mathe', embeddings: 'Embeddings', multilingual: 'Mehrsprachig',
@@ -345,8 +364,9 @@ export function Ai() {
   const changeAccess = async (mode: 'local' | 'lan') => {
     setAccessBusy(true);
     try {
-      const r = await api.ki.setAccess(mode);
-      setAccessState({ mode: r.mode as 'local' | 'lan', host: r.host });
+      await api.ki.setAccess(mode);
+      const ac = await api.ki.access();
+      setAccessState(ac);
     } catch (err) { alert(err instanceof Error ? err.message : 'Fehler beim Ändern des Netzwerkzugangs'); }
     finally { setAccessBusy(false); }
   };
@@ -433,31 +453,46 @@ export function Ai() {
             </div>
           </div>
           {/* Netzwerkzugang */}
-          <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
-            <button
-              className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
-              disabled={accessBusy}
-              onClick={() => void changeAccess('local')}
-            >
-              <WifiOff size={11} /> Nur lokal
-            </button>
-            <button
-              className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
-              disabled={accessBusy}
-              onClick={() => void changeAccess('lan')}
-            >
-              <Globe size={11} /> LAN
-            </button>
+          <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px 10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
+              <button
+                className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
+                disabled={accessBusy}
+                onClick={() => void changeAccess('local')}
+              >
+                <WifiOff size={11} /> Nur lokal
+              </button>
+              <button
+                className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
+                disabled={accessBusy}
+                onClick={() => void changeAccess('lan')}
+              >
+                <Globe size={11} /> LAN
+              </button>
+              {accessBusy && <span className="spinner" style={{ width: 13, height: 13 }} />}
+            </div>
             {access && (
-              <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>
-                {access.mode === 'lan'
-                  ? `Erreichbar auf Port ${access.host.split(':')[1] ?? '11434'} im LAN`
-                  : 'Nur von diesem Gerät (localhost) erreichbar'}
-              </span>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+                {access.mode === 'local' ? (
+                  <>
+                    <OllamaUrl href={`http://127.0.0.1:${access.port}`} />
+                    <OllamaUrl href={`http://localhost:${access.port}`} />
+                  </>
+                ) : (
+                  <>
+                    {access.lanIps.slice(0, 3).map((ip) => (
+                      <OllamaUrl key={ip} href={`http://${ip}:${access.port}`} />
+                    ))}
+                    {access.hostname && <OllamaUrl href={`http://${access.hostname}:${access.port}`} />}
+                    {access.lanIps.length === 0 && !access.hostname && (
+                      <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>http://&lt;server-ip&gt;:{access.port}</span>
+                    )}
+                  </>
+                )}
+              </div>
             )}
-            {accessBusy && <span className="spinner" style={{ width: 13, height: 13 }} />}
           </div>
         </div>
 

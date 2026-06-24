@@ -217,7 +217,12 @@ export async function kiRoutes(fastify: FastifyInstance) {
     const env = safeExec('systemctl show ollama --property=Environment --value 2>/dev/null').trim();
     const hostMatch = env.match(/OLLAMA_HOST=["']?([^\s"']+)/);
     const host = hostMatch?.[1] ?? '127.0.0.1:11434';
-    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host });
+    const port = host.split(':')[1] ?? '11434';
+    const hostname = safeExec('hostname 2>/dev/null').trim() || 'server';
+    const lanIps = safeExec(
+      "ip -4 addr show 2>/dev/null | grep 'inet ' | grep -vE '127\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.' | awk '{print $2}' | cut -d'/' -f1"
+    ).split('\n').map((s) => s.trim()).filter((s) => /^\d+\.\d+\.\d+\.\d+$/.test(s));
+    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps });
   });
 
   fastify.post<{ Body: { mode: 'local' | 'lan' } }>('/api/ki/access', { preHandler: requireAdmin }, async (req, reply) => {
