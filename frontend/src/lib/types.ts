@@ -400,6 +400,30 @@ export interface OllamaStatus {
   port: number;
 }
 
+export interface OllamaModelShow {
+  details: OllamaModelDetails;
+  model_info: Record<string, number | string | boolean | null>;
+  parameters?: string;
+  template?: string;
+}
+
+export interface HFSearchResult {
+  id: string;
+  author: string;
+  downloads: number;
+  likes: number;
+  lastModified: string;
+  pipeline_tag?: string;
+  tags?: string[];
+}
+
+export interface KiHardware {
+  totalRamGb: number;
+  gpus: Array<{ name: string; vramMb: number }>;
+  recommendation: string;
+  maxModelGb: number;
+}
+
 export interface SecurityScan {
   score: number;
   grade: string;

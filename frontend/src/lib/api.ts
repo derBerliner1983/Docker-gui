@@ -6,6 +6,7 @@ import type {
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
+  OllamaModelShow, HFSearchResult, KiHardware,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -284,6 +285,9 @@ export const api = {
     pull: (model: string) => req<{ ok: boolean; queued: boolean }>('/api/ki/pull', { method: 'POST', body: JSON.stringify({ model }) }),
     remove: (name: string) => req('/api/ki/models/' + encodeURIComponent(name), { method: 'DELETE' }),
     control: (action: 'start' | 'stop') => req('/api/ki/control', { method: 'POST', body: JSON.stringify({ action }) }),
+    show: (name: string) => req<OllamaModelShow>('/api/ki/show', { method: 'POST', body: JSON.stringify({ name }) }),
+    hfSearch: (q: string) => req<{ models: HFSearchResult[] }>(`/api/ki/hf-search?q=${encodeURIComponent(q)}`),
+    hardware: () => req<KiHardware>('/api/ki/hardware'),
   },
 
   cron: {
