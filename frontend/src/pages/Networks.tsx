@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -338,6 +338,106 @@ function downloadCsv(rows: FirewallLogEntry[], filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function QuickRuleModal({ entry, open, onClose, onDone }: {
+  entry: FirewallLogEntry | null;
+  open: boolean;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [action, setAction] = useState<'allow' | 'deny' | 'reject'>('allow');
+  const [from, setFrom] = useState('');
+  const [port, setPort] = useState('');
+  const [proto, setProto] = useState('');
+  const [direction, setDirection] = useState('in');
+  const [comment, setComment] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (entry) {
+      setFrom(entry.src || '');
+      setPort(entry.dpt || '');
+      setProto((entry.proto || '').toLowerCase());
+      setDirection((entry.direction || 'IN').toLowerCase());
+      setAction('allow');
+      setComment('');
+      setError('');
+    }
+  }, [entry, open]);
+
+  const submit = async () => {
+    if (!port && !from) { setError('Port oder Quell-IP angeben'); return; }
+    setBusy(true); setError('');
+    try {
+      await api.firewall.add({
+        action,
+        port: port || undefined,
+        proto: proto || undefined,
+        from: from || undefined,
+        direction: direction || undefined,
+        comment: comment || undefined,
+      });
+      onDone(); onClose();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={open} title="Firewall-Regel aus Verbindung erstellen" onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className={`btn btn--${action === 'allow' ? 'primary' : 'danger'} btn--sm`} onClick={submit} disabled={busy}>
+          {busy && <span className="spinner" style={{ width: 12, height: 12 }} />} Regel anlegen
+        </button>
+      </>}>
+      {error && <div className="login-error">{error}</div>}
+      <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12 }}>
+        Erstelle eine Firewall-Regel basierend auf dieser Verbindung. Alle Felder sind anpassbar.
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label className="form-label">Aktion</label>
+          <select className="input input--rect" value={action} onChange={(e) => setAction(e.target.value as 'allow' | 'deny' | 'reject')} style={{ cursor: 'pointer' }}>
+            <option value="allow">Erlauben (allow)</option>
+            <option value="deny">Blockieren (deny)</option>
+            <option value="reject">Ablehnen (reject)</option>
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Richtung</label>
+          <select className="input input--rect" value={direction} onChange={(e) => setDirection(e.target.value)} style={{ cursor: 'pointer' }}>
+            <option value="in">Eingehend (in)</option>
+            <option value="out">Ausgehend (out)</option>
+            <option value="">Beide</option>
+          </select>
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Von IP (Quelle)</label>
+        <input className="input input--rect" value={from} onChange={(e) => setFrom(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder="leer = alle Quellen" />
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label className="form-label">Ziel-Port</label>
+          <input className="input input--rect" value={port} onChange={(e) => setPort(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder="z.B. 443" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Protokoll</label>
+          <select className="input input--rect" value={proto} onChange={(e) => setProto(e.target.value)} style={{ cursor: 'pointer' }}>
+            <option value="">tcp+udp</option>
+            <option value="tcp">tcp</option>
+            <option value="udp">udp</option>
+          </select>
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Name / Bezeichnung (optional)</label>
+        <input className="input input--rect" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="z.B. Heimnetz erlauben" />
+      </div>
+    </Modal>
+  );
+}
+
 function ConnectionsPanel() {
   const [entries, setEntries] = useState<FirewallLogEntry[]>([]);
   const [available, setAvailable] = useState(true);
@@ -349,6 +449,7 @@ function ConnectionsPanel() {
   const [dirFilter, setDirFilter] = useState<'all' | 'IN' | 'OUT'>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [quickRule, setQuickRule] = useState<FirewallLogEntry | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -455,7 +556,7 @@ function ConnectionsPanel() {
               <table className="dtable">
                 <thead><tr>
                   <th style={{ width: 30 }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Alle (angezeigten) auswählen" /></th>
-                  <th>Zeit</th><th>Aktion</th><th>Richtung</th><th>Quell-IP</th><th>Ziel-Port</th><th>Dienst</th><th>Protokoll</th><th>Schnittstelle</th>
+                  <th>Zeit</th><th>Aktion</th><th>Richtung</th><th>Quell-IP</th><th>Ziel-Port</th><th>Dienst</th><th>Protokoll</th><th>Schnittstelle</th><th style={{ width: 44 }}></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((e, i) => {
@@ -474,6 +575,15 @@ function ConnectionsPanel() {
                         </td>
                         <td className="text-muted">{e.proto || '–'}</td>
                         <td className="dtable__mono text-muted">{e.iface || '–'}</td>
+                        <td>
+                          <button
+                            className="btn btn--ghost btn--icon btn--sm"
+                            title="Firewall-Regel aus dieser Verbindung erstellen"
+                            onClick={() => setQuickRule(e)}
+                          >
+                            <ShieldPlus size={12} />
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -481,6 +591,7 @@ function ConnectionsPanel() {
               </table>
             </div>
           )}
+          <QuickRuleModal entry={quickRule} open={!!quickRule} onClose={() => setQuickRule(null)} onDone={load} />
         </>
       )}
     </Panel>
