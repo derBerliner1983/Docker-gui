@@ -143,7 +143,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Ollama-Status, installierte Modelle, VRAM-Anzeige pro Modell, Start/Stop-Schalter
 - **Hardware-Erkennung**: CPU, RAM, GPU + VRAM; erkennt APU/UMA (Ryzen AI MAX) korrekt; berechnet die **empfohlene maximale Modellgröße** (GB) mit aufklappbarer Erklärung der Formel
 - **Zugriffsmodus**: Ollama auf lokal (`127.0.0.1`) oder LAN (`0.0.0.0`) schalten – schreibt automatisch den systemd-Override und startet den Dienst neu
-- **Zugriffs-URLs**: `http://IP:11434` und `http://Hostname:11434` direkt im UI anklickbar; falls ein Caddy-HTTPS-Proxy für Port 11434 eingerichtet ist, erscheint automatisch die `https://`-URL (grün)
+- **Zugriffs-URLs**: direkt im UI anklickbare Chips – lokal: `http://127.0.0.1:port` + `http://localhost:port`; LAN: `http://IP:port` + `http://Hostname:port`
+- **1-Klick HTTPS via Caddy**: Button „HTTPS ein" erscheint, sobald Caddy installiert ist – ein Klick erstellt automatisch einen Caddy-Proxy-Eintrag für Hostname **und alle LAN-IPs** (`tls internal`), schaltet Ollama auf `127.0.0.1` (HTTP von LAN gesperrt) und startet den Dienst neu; alle `http://`-Chips verschwinden, stattdessen erscheint ein grüner `https://`-Chip pro Hostname/IP
+- **HTTPS deaktivieren**: erneuter Klick entfernt den Caddy-Eintrag und schaltet Ollama zurück auf LAN-Modus (`0.0.0.0`), `http://`-Chips erscheinen wieder
 - **Modell-Suche**: Beliebte Empfehlungen zuerst, HuggingFace GGUF-Suche darunter
 - **GGUF-Quantisierungsselektor**: beim Laden eines HF-Modells Quantisierung wählen (Q4_K_M, Q5_K_M, Q8_0 …); lädt via `hf.co/<repo>:<quant>` direkt in Ollama
 - **Gleichzeitige Downloads**: mehrere Modelle parallel laden, Status pro Modell
@@ -281,7 +283,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
 | **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, **Web-Terminal**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
 | **12** | **Datei-Manager** (Browsen/Bearbeiten/Rechte, sudo-Fallback für System-Verzeichnisse), **1-Klick-Update in der Oberfläche** (git pull + install.sh --update mit Live-Log), Container-Migration als Doku | ✅ |
-| **13** | **GPU-Dashboard** (NVIDIA + AMD / APU UMA), **KI/Ollama** (Hardware-Analyse, Zugriffsmodus, GGUF-Quantisierung, parallele Downloads), **Samba Auto-Lifecycle** (Start/Stop/Firewall automatisch), **Container-Logs als SSE-Stream** (Echtzeit, kein Polling) | ✅ |
+| **13** | **GPU-Dashboard** (NVIDIA + AMD / APU UMA), **KI/Ollama** (Hardware-Analyse, Zugriffsmodus, GGUF-Quantisierung, parallele Downloads, **1-Klick HTTPS** via Caddy – Hostname + alle LAN-IPs, HTTP-Sperre, Auto-Umschalten), **Samba Auto-Lifecycle** (Start/Stop/Firewall automatisch), **Container-Logs als SSE-Stream** (Echtzeit, kein Polling) | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
 - ⏳ Mehrsprachigkeit (EN/DE)
