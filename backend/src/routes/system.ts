@@ -67,6 +67,49 @@ function vmMemoryUsage(): number {
   return kb * 1024;
 }
 
+interface GpuStat {
+  name: string;
+  vendor: 'nvidia' | 'amd' | 'unknown';
+  utilizationPct: number | null;
+  vramTotalMb: number | null;
+  vramUsedMb: number | null;
+  unified: boolean;
+}
+
+function detectGpus(): GpuStat[] {
+  // NVIDIA via nvidia-smi
+  const nv = safeExec('nvidia-smi --query-gpu=name,utilization.gpu,memory.total,memory.used --format=csv,noheader,nounits 2>/dev/null');
+  if (nv.trim()) {
+    return nv.trim().split('\n').flatMap((line) => {
+      const p = line.split(',').map((s) => s.trim());
+      if (!p[0]) return [];
+      return [{ name: p[0], vendor: 'nvidia' as const, utilizationPct: parseFloat(p[1]) || 0, vramTotalMb: parseInt(p[2]) || null, vramUsedMb: parseInt(p[3]) || null, unified: false }];
+    });
+  }
+
+  // AMD via amdgpu kernel driver sysfs
+  const cards = safeExec('ls /sys/class/drm/ 2>/dev/null').split(/\s+/).filter((d) => /^card\d+$/.test(d.trim()));
+  const amdGpus: GpuStat[] = [];
+  for (const card of cards.slice(0, 2)) {
+    const base = `/sys/class/drm/${card.trim()}/device`;
+    const busyRaw = safeExec(`cat ${base}/gpu_busy_percent 2>/dev/null`).trim();
+    if (!busyRaw) continue;
+    const vramTotal = parseInt(safeExec(`cat ${base}/mem_info_vram_total 2>/dev/null`).trim()) || 0;
+    const vramUsed  = parseInt(safeExec(`cat ${base}/mem_info_vram_used  2>/dev/null`).trim()) || 0;
+    const lspciLine = safeExec('lspci 2>/dev/null | grep -iE "VGA compatible|3D controller|Display controller" | head -1');
+    const name = lspciLine.replace(/^[^\s]+\s+[^:]+:\s*/, '').trim() || 'AMD GPU';
+    amdGpus.push({
+      name, vendor: 'amd',
+      utilizationPct: parseInt(busyRaw) || 0,
+      vramTotalMb: vramTotal > 0 ? Math.round(vramTotal / 1024 / 1024) : null,
+      vramUsedMb:  vramUsed  > 0 ? Math.round(vramUsed  / 1024 / 1024) : null,
+      unified: vramTotal < 256 * 1024 * 1024, // <256 MB dedicated → UMA/APU
+    });
+    break;
+  }
+  return amdGpus;
+}
+
 export async function systemRoutes(fastify: FastifyInstance) {
   // ── Full system stats (CPU per core, RAM breakdown, disk, network) ──
   fastify.get('/api/system/stats', { preHandler: requireAuth }, async (_req, reply) => {
@@ -81,6 +124,7 @@ export async function systemRoutes(fastify: FastifyInstance) {
         si.cpu(),
         dockerMemoryUsage(),
       ]);
+      const gpu = detectGpus();
 
       const vmMem = vmMemoryUsage();
       // Echter RAM-Verbrauch wie htop: zuerst /proc/meminfo, sonst Fallback.
@@ -139,6 +183,7 @@ export async function systemRoutes(fastify: FastifyInstance) {
           arch: osInfo.arch,
           uptime: time.uptime,
         },
+        gpu,
       });
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'System error' });

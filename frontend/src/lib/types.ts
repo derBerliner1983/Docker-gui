@@ -181,6 +181,7 @@ export interface SystemStats {
   disk: { fs: string; type: string; size: number; used: number; available: number; percent: number; mount: string }[];
   network: { iface: string; rx_bytes: number; tx_bytes: number; rx_sec: number; tx_sec: number; operstate: string }[];
   os: { hostname: string; platform: string; distro: string; release: string; kernel: string; arch: string; uptime: number };
+  gpu?: GpuStat[];
 }
 
 export interface ProcessInfo {
@@ -417,11 +418,33 @@ export interface HFSearchResult {
   tags?: string[];
 }
 
+export interface GpuStat {
+  name: string;
+  vendor: 'nvidia' | 'amd' | 'unknown';
+  utilizationPct: number | null;
+  vramTotalMb: number | null;
+  vramUsedMb: number | null;
+  unified: boolean;
+}
+
 export interface KiHardware {
   totalRamGb: number;
-  gpus: Array<{ name: string; vramMb: number }>;
+  gpus: Array<{ name: string; vramMb: number; unified: boolean }>;
   recommendation: string;
+  explanation: string;
   maxModelGb: number;
+}
+
+export interface KiAccess {
+  mode: 'local' | 'lan';
+  host: string;
+}
+
+export interface HFGgufFile {
+  filename: string;
+  quant: string;
+  size: number;
+  ollamaTag: string;
 }
 
 export interface SecurityScan {

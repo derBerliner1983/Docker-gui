@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { spawn } from 'child_process';
+import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { hasBinary, privExec, safeExec } from '../lib/privilege';
 
@@ -120,29 +121,123 @@ export async function kiRoutes(fastify: FastifyInstance) {
     const totalKb = parseInt(memInfo.match(/MemTotal:\s+(\d+)/)?.[1] ?? '0');
     const totalGb = Math.round(totalKb / 1024 / 1024 * 10) / 10;
 
-    const gpus: Array<{ name: string; vramMb: number }> = [];
+    const gpus: Array<{ name: string; vramMb: number; unified: boolean }> = [];
+
+    // NVIDIA
     const nv = safeExec('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null');
     if (nv.trim()) {
       for (const line of nv.trim().split('\n')) {
-        const parts = line.split(',').map((s) => s.trim());
-        if (parts[0]) gpus.push({ name: parts[0], vramMb: parseInt(parts[1] ?? '0') || 0 });
+        const p = line.split(',').map((s) => s.trim());
+        if (p[0]) gpus.push({ name: p[0], vramMb: parseInt(p[1] ?? '0') || 0, unified: false });
       }
     }
 
-    const vramGb = (gpus[0]?.vramMb ?? 0) / 1024;
+    // AMD via amdgpu sysfs
+    if (gpus.length === 0) {
+      const cards = safeExec('ls /sys/class/drm/ 2>/dev/null').split(/\s+/).filter((d) => /^card\d+$/.test(d.trim()));
+      for (const card of cards.slice(0, 2)) {
+        const base = `/sys/class/drm/${card.trim()}/device`;
+        if (!safeExec(`cat ${base}/gpu_busy_percent 2>/dev/null`).trim()) continue;
+        const vramTotal = parseInt(safeExec(`cat ${base}/mem_info_vram_total 2>/dev/null`).trim()) || 0;
+        const lspciLine = safeExec('lspci 2>/dev/null | grep -iE "VGA compatible|3D controller|Display controller" | head -1');
+        const name = lspciLine.replace(/^[^\s]+\s+[^:]+:\s*/, '').trim() || 'AMD GPU';
+        const vramMb = vramTotal > 0 ? Math.round(vramTotal / 1024 / 1024) : 0;
+        const unified = vramTotal < 256 * 1024 * 1024;
+        gpus.push({ name, vramMb, unified });
+        break;
+      }
+    }
+
+    // Max model size formula:
+    // Use effective VRAM if dedicated GPU present, otherwise RAM.
+    // Reserve 4 GB for OS. Use 70% of remaining for model (leaves headroom for KV-cache).
+    const dedicatedVramGb = gpus.filter(g => !g.unified).reduce((s, g) => s + g.vramMb / 1024, 0);
+    const unifiedVramGb   = gpus.filter(g =>  g.unified).reduce((s, g) => s + g.vramMb / 1024, 0);
+
+    let basis = 0;
+    let basisLabel = '';
+    let explanation = '';
+
+    if (dedicatedVramGb >= 4) {
+      basis = dedicatedVramGb;
+      basisLabel = `${dedicatedVramGb.toFixed(0)} GB dediziertem VRAM`;
+      explanation = `Du hast eine dedizierte GPU mit ${dedicatedVramGb.toFixed(0)} GB VRAM. Ollama lädt das Modell vollständig in den GPU-Speicher, was deutlich schneller ist als CPU-Inferenz. Empfehlung: Modellgröße (quantisiert) ≤ ${dedicatedVramGb.toFixed(0)} × 0,85 = ${(dedicatedVramGb * 0.85).toFixed(0)} GB.`;
+    } else if (unifiedVramGb >= 4) {
+      // APU / unified memory: GPU + CPU share same RAM pool
+      basis = totalGb; // use full system RAM since it's all one pool
+      basisLabel = `${totalGb} GB Unified Memory (GPU+CPU teilen RAM)`;
+      explanation = `Dein System verwendet Unified Memory Architecture (UMA): GPU und CPU teilen sich den gleichen ${totalGb} GB RAM-Pool. Die GPU-Seite belegt ca. ${unifiedVramGb.toFixed(0)} GB davon. Ollama kann den vollen RAM nutzen (nach Abzug ~4 GB für OS). Empfehlung: ≤ ${(Math.max(0, totalGb - 4) * 0.7).toFixed(0)} GB Modellgröße.`;
+    } else {
+      basis = totalGb;
+      basisLabel = `${totalGb} GB RAM (CPU-Inferenz)`;
+      explanation = `Keine dedizierte GPU erkannt – Ollama läuft auf der CPU. Faustformel: Modellgröße ≤ (RAM − 4 GB Betriebssystem) × 0,7 = ${(Math.max(0, totalGb - 4) * 0.7).toFixed(0)} GB. Die quantisierten Modelle (Q4_K_M) brauchen ca. 0,6 Byte pro Parameter, also passt ein 7B-Modell (~4,2 GB) locker in 16 GB RAM.`;
+    }
+
+    const maxModelGb = Math.max(1, Math.floor(Math.max(0, basis - 4) * 0.7));
+
     let recommendation = '';
-    let maxModelGb = 0;
+    if (maxModelGb >= 35) recommendation = `${basisLabel} – 70B-Modelle möglich (quantisiert)`;
+    else if (maxModelGb >= 18) recommendation = `${basisLabel} – bis 30B-Modelle empfohlen`;
+    else if (maxModelGb >= 8)  recommendation = `${basisLabel} – bis 13B-Modelle empfohlen`;
+    else if (maxModelGb >= 4)  recommendation = `${basisLabel} – 7B-Modelle ideal`;
+    else if (maxModelGb >= 2)  recommendation = `${basisLabel} – 3B-Modelle empfohlen`;
+    else                        recommendation = `${basisLabel} – nur 1–3B-Modelle`;
 
-    if (vramGb >= 24) { recommendation = `GPU mit ${vramGb.toFixed(0)} GB VRAM – 70B Modelle möglich`; maxModelGb = 40; }
-    else if (vramGb >= 16) { recommendation = `GPU mit ${vramGb.toFixed(0)} GB VRAM – bis 30B Modelle`; maxModelGb = 20; }
-    else if (vramGb >= 8)  { recommendation = `GPU mit ${vramGb.toFixed(0)} GB VRAM – 7B Modelle ideal`; maxModelGb = 6; }
-    else if (vramGb >= 4)  { recommendation = `GPU mit ${vramGb.toFixed(0)} GB VRAM – bis 3B Modelle`; maxModelGb = 3; }
-    else if (totalGb >= 64) { recommendation = `${totalGb} GB RAM – bis 30B Modelle (CPU)`; maxModelGb = 24; }
-    else if (totalGb >= 32) { recommendation = `${totalGb} GB RAM – bis 13B Modelle (CPU)`; maxModelGb = 10; }
-    else if (totalGb >= 16) { recommendation = `${totalGb} GB RAM – 7B Modelle empfohlen (CPU)`; maxModelGb = 6; }
-    else if (totalGb >= 8)  { recommendation = `${totalGb} GB RAM – bis 3B, max. 7B (langsam, CPU)`; maxModelGb = 4; }
-    else                     { recommendation = `${totalGb} GB RAM – nur 1–3B Modelle`; maxModelGb = 2; }
+    reply.send({ totalRamGb: totalGb, gpus, recommendation, explanation, maxModelGb });
+  });
 
-    reply.send({ totalRamGb: totalGb, gpus, recommendation, maxModelGb });
+  // ── HuggingFace: list GGUF files for a model ──
+  fastify.get<{ Querystring: { id: string } }>('/api/ki/hf-files', { preHandler: requireAuth }, async (req, reply) => {
+    const id = (req.query.id ?? '').trim();
+    if (!id || !/^[a-zA-Z0-9_./-]+$/.test(id)) return reply.status(400).send({ error: 'Ungültige ID' });
+    try {
+      const r = await fetch(`https://huggingface.co/api/models/${id}`, {
+        signal: AbortSignal.timeout(12000),
+        headers: { 'User-Agent': 'Core-Hub/1.0' },
+      });
+      if (!r.ok) return reply.send({ files: [] });
+      const data = await r.json() as { siblings?: Array<{ rfilename: string; size?: number }> };
+      const PREF = ['Q4_K_M','Q5_K_M','Q4_K_S','Q8_0','Q6_K','Q5_K_S','Q4_0','Q3_K_M','Q3_K_L','Q2_K','IQ4_XS','IQ3_M','F16','BF16'];
+      const files = (data.siblings ?? [])
+        .filter((f) => f.rfilename.toLowerCase().endsWith('.gguf') && !f.rfilename.toLowerCase().includes('-split-'))
+        .map((f) => {
+          const stem = f.rfilename.replace(/\.gguf$/i, '');
+          const q = stem.match(/[_-]([IQ][QF]?[0-9][A-Z0-9_]*[KLMSXB]?)$/i)?.[1]?.toUpperCase() ?? stem.split(/[_-]/).pop()?.toUpperCase() ?? 'DEFAULT';
+          return { filename: f.rfilename, quant: q, size: f.size ?? 0, ollamaTag: q, pref: PREF.indexOf(q) };
+        })
+        .sort((a, b) => (a.pref < 0 ? 999 : a.pref) - (b.pref < 0 ? 999 : b.pref));
+      reply.send({ files: files.map(({ filename, quant, size, ollamaTag }) => ({ filename, quant, size, ollamaTag })) });
+    } catch {
+      reply.send({ files: [] });
+    }
+  });
+
+  // ── Ollama network access ──
+  fastify.get('/api/ki/access', { preHandler: requireAuth }, async (_req, reply) => {
+    const env = safeExec('systemctl show ollama --property=Environment --value 2>/dev/null').trim();
+    const hostMatch = env.match(/OLLAMA_HOST=["']?([^\s"']+)/);
+    const host = hostMatch?.[1] ?? '127.0.0.1:11434';
+    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host });
+  });
+
+  fastify.post<{ Body: { mode: 'local' | 'lan' } }>('/api/ki/access', { preHandler: requireAdmin }, async (req, reply) => {
+    const mode = req.body?.mode;
+    if (!['local', 'lan'].includes(mode)) return reply.status(400).send({ error: 'Ungültiger Modus' });
+    const newHost = mode === 'lan' ? '0.0.0.0:11434' : '127.0.0.1:11434';
+    const tmpPath = `/tmp/ollama-override-${process.pid}.conf`;
+    writeFileSync(tmpPath, `[Service]\nEnvironment="OLLAMA_HOST=${newHost}"\n`);
+    try {
+      try { mkdirSync('/etc/systemd/system/ollama.service.d/', { recursive: true }); } catch {
+        privExec(`bash -c 'mkdir -p /etc/systemd/system/ollama.service.d/'`, { timeout: 5000 });
+      }
+      privExec(`cp ${tmpPath} /etc/systemd/system/ollama.service.d/override.conf`, { timeout: 5000 });
+      privExec(`systemctl daemon-reload`, { timeout: 10000 });
+      privExec(`systemctl restart ollama`, { timeout: 20000 });
+      reply.send({ ok: true, mode, host: newHost });
+    } catch (err) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Zugriff konnte nicht geändert werden' });
+    } finally {
+      try { unlinkSync(tmpPath); } catch { /* */ }
+    }
   });
 }

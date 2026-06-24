@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Gauge, CheckCircle2, AlertTriangle, Info, ArrowRight } from 'lucide-react';
+import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Gauge, CheckCircle2, AlertTriangle, Info, ArrowRight, MonitorCheck } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut, donutColor } from '../components/ui/Donut';
@@ -159,6 +159,73 @@ export function Dashboard() {
             </>
           )}
         </Panel>
+
+        {/* ── GPU ── */}
+        {stats?.gpu && stats.gpu.length > 0 && (() => {
+          const g = stats.gpu![0];
+          const vramPct = g.vramTotalMb && g.vramUsedMb != null ? Math.round((g.vramUsedMb / g.vramTotalMb) * 100) : null;
+          return (
+            <Panel
+              title="Grafik"
+              icon={<MonitorCheck size={15} />}
+              subtitle={g.name}
+              storageKey="gpu"
+              actions={g.utilizationPct !== null && (
+                <span style={{ fontSize: 13, fontWeight: 700, color: donutColor(g.utilizationPct) }}>
+                  {g.utilizationPct}%
+                </span>
+              )}
+            >
+              <div className="donut-group" style={{ marginTop: 12, alignItems: 'center' }}>
+                {g.utilizationPct !== null && (
+                  <div className="donut-item">
+                    <Donut
+                      size={130}
+                      thickness={14}
+                      segments={[
+                        { value: g.utilizationPct, color: donutColor(g.utilizationPct) },
+                        { value: 100 - g.utilizationPct, color: 'var(--color-border-strong)' },
+                      ]}
+                      centerLabel={`${g.utilizationPct}%`}
+                      centerSub="Last"
+                      centerColor={donutColor(g.utilizationPct)}
+                    />
+                    <div className="donut-item__caption">GPU-Last</div>
+                  </div>
+                )}
+                {g.vramTotalMb !== null && g.vramUsedMb !== null && vramPct !== null && (
+                  <div className="donut-item">
+                    <Donut
+                      size={130}
+                      thickness={14}
+                      segments={[
+                        { value: g.vramUsedMb, color: donutColor(vramPct) },
+                        { value: g.vramTotalMb - g.vramUsedMb, color: 'var(--color-border-strong)' },
+                      ]}
+                      centerLabel={`${vramPct}%`}
+                      centerSub={g.unified ? 'UMA' : 'VRAM'}
+                      centerColor={donutColor(vramPct)}
+                    />
+                    <div className="donut-item__caption">
+                      <div style={{ fontWeight: 600 }}>{g.unified ? 'Unified Memory' : 'VRAM'}</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-subtle)' }}>
+                        {formatBytes(g.vramUsedMb * 1024 * 1024)} / {formatBytes(g.vramTotalMb * 1024 * 1024)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div style={{ alignSelf: 'center', fontSize: 11.5, color: 'var(--color-subtle)', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 600, fontSize: 12, color: 'var(--color-muted)', marginBottom: 2 }}>{g.vendor.toUpperCase()}</div>
+                  {g.unified && (
+                    <div style={{ fontSize: 11, color: 'var(--color-faint)' }}>
+                      Unified Memory Architecture<br />GPU + CPU teilen RAM-Pool
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Panel>
+          );
+        })()}
 
         {/* ── SYSTEM (RAM + Disk donuts) ── */}
         <Panel

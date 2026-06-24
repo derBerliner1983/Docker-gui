@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BrainCircuit, Download, Trash2, RefreshCw, HardDrive, Cpu, Tag,
   Search, ExternalLink, Eye, Code2, Mic, Zap, FileText, ChevronRight, MemoryStick,
+  ChevronDown, Info, Globe, WifiOff,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Switch } from '../components/ui/Switch';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
-import type { OllamaStatus, OllamaModel, OllamaModelShow, HFSearchResult, KiHardware } from '../lib/types';
+import type { OllamaStatus, OllamaModel, OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile } from '../lib/types';
 
 // ── capability inference from model name/family ──────────────────────────────
 type Cap = 'text' | 'code' | 'vision' | 'audio' | 'reasoning' | 'math' | 'embeddings' | 'multilingual';
@@ -97,6 +98,7 @@ function fmtDate(iso: string): string {
 
 // ── Hardware card ─────────────────────────────────────────────────────────────
 function HWCard({ hw }: { hw: KiHardware }) {
+  const [explainOpen, setExplainOpen] = useState(false);
   const hasGpu = hw.gpus.length > 0;
   const color = hw.maxModelGb >= 10 ? 'var(--color-success)' : hw.maxModelGb >= 4 ? 'var(--color-warning)' : 'var(--color-error)';
   return (
@@ -113,8 +115,13 @@ function HWCard({ hw }: { hw: KiHardware }) {
           <div key={g.name} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Cpu size={18} color={color} />
             <div>
-              <div style={{ fontSize: 12, fontWeight: 700 }}>{g.name}</div>
-              <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>{(g.vramMb / 1024).toFixed(0)} GB VRAM</div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {g.name}
+                {g.unified && <span style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 700, marginLeft: 5 }}>UMA</span>}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>
+                {g.unified ? 'Unified Memory (geteilt)' : `${(g.vramMb / 1024).toFixed(0)} GB VRAM`}
+              </div>
             </div>
           </div>
         ))}
@@ -125,7 +132,18 @@ function HWCard({ hw }: { hw: KiHardware }) {
         <div style={{ fontSize: 11, color: 'var(--color-faint)', flexShrink: 0 }}>
           Empf. max. Modellgröße: <strong style={{ color }}>{hw.maxModelGb} GB</strong>
         </div>
+        <button
+          onClick={() => setExplainOpen((v) => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-faint)', padding: '2px 6px', borderRadius: 4, flexShrink: 0 }}
+        >
+          <Info size={11} /> Berechnung {explainOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        </button>
       </div>
+      {explainOpen && hw.explanation && (
+        <div style={{ borderTop: '1px solid var(--color-border)', padding: '10px 18px', fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.7 }}>
+          {hw.explanation}
+        </div>
+      )}
     </div>
   );
 }
@@ -243,6 +261,14 @@ export function Ai() {
   // Custom model input
   const [customModel, setCustomModel] = useState('');
 
+  // Ollama access control
+  const [access, setAccessState] = useState<KiAccess | null>(null);
+  const [accessBusy, setAccessBusy] = useState(false);
+
+  // GGUF quantization modal
+  const [ggufModal, setGgufModal] = useState<{ id: string; files: HFGgufFile[] } | null>(null);
+  const [ggufLoading, setGgufLoading] = useState<string | null>(null);
+
   // Detail modal
   const [detailModel, setDetailModel] = useState<OllamaModel | null>(null);
 
@@ -252,10 +278,11 @@ export function Ai() {
 
   const load = useCallback(async () => {
     try {
-      const [s, m, hw] = await Promise.allSettled([api.ki.status(), api.ki.models(), api.ki.hardware()]);
+      const [s, m, hw, ac] = await Promise.allSettled([api.ki.status(), api.ki.models(), api.ki.hardware(), api.ki.access()]);
       if (s.status === 'fulfilled') setStatus(s.value);
       if (m.status === 'fulfilled') setModels(m.value.models ?? []);
       if (hw.status === 'fulfilled') setHardware(hw.value);
+      if (ac.status === 'fulfilled') setAccessState(ac.value);
     } catch { /* */ }
   }, []);
 
@@ -313,6 +340,24 @@ export function Ai() {
     try { await api.ki.remove(name); await loadModels(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
     finally { setDeleting(null); }
+  };
+
+  const changeAccess = async (mode: 'local' | 'lan') => {
+    setAccessBusy(true);
+    try {
+      const r = await api.ki.setAccess(mode);
+      setAccessState({ mode: r.mode as 'local' | 'lan', host: r.host });
+    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler beim Ändern des Netzwerkzugangs'); }
+    finally { setAccessBusy(false); }
+  };
+
+  const openGguf = async (id: string) => {
+    setGgufLoading(id);
+    try {
+      const r = await api.ki.hfFiles(id);
+      setGgufModal({ id, files: r.files });
+    } catch { alert('GGUF-Dateien konnten nicht geladen werden'); }
+    finally { setGgufLoading(null); }
   };
 
   const installedNames = new Set(models.map((m) => m.name));
@@ -386,6 +431,33 @@ export function Ai() {
               <HardDrive size={13} color="var(--color-muted)" />
               <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>{fmtBytes(totalSize)} belegt</span>
             </div>
+          </div>
+          {/* Netzwerkzugang */}
+          <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
+            <button
+              className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
+              disabled={accessBusy}
+              onClick={() => void changeAccess('local')}
+            >
+              <WifiOff size={11} /> Nur lokal
+            </button>
+            <button
+              className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
+              disabled={accessBusy}
+              onClick={() => void changeAccess('lan')}
+            >
+              <Globe size={11} /> LAN
+            </button>
+            {access && (
+              <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>
+                {access.mode === 'lan'
+                  ? `Erreichbar auf Port ${access.host.split(':')[1] ?? '11434'} im LAN`
+                  : 'Nur von diesem Gerät (localhost) erreichbar'}
+              </span>
+            )}
+            {accessBusy && <span className="spinner" style={{ width: 13, height: 13 }} />}
           </div>
         </div>
 
@@ -480,46 +552,13 @@ export function Ai() {
             {hfLoading && <span className="spinner" style={{ width: 16, height: 16, alignSelf: 'center', flexShrink: 0 }} />}
           </div>
 
-          {/* HuggingFace results */}
-          {search.trim().length >= 2 && (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-faint)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
-                <ExternalLink size={11} /> HuggingFace GGUF-Modelle
-                {hfResults.length > 0 && <span style={{ color: 'var(--color-muted)' }}>({hfResults.length})</span>}
-              </div>
-              {hfResults.length === 0 && !hfLoading && (
-                <div style={{ fontSize: 12, color: 'var(--color-faint)', padding: '8px 0' }}>Keine HuggingFace-Ergebnisse für „{search}"</div>
-              )}
-              {hfResults.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
-                  {hfResults.map((m) => (
-                    <div key={m.id} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.id}>{m.id}</div>
-                      <div style={{ display: 'flex', gap: 10, fontSize: 10.5, color: 'var(--color-faint)' }}>
-                        <span>↓ {fmtNum(m.downloads)}</span>
-                        <span>♥ {fmtNum(m.likes)}</span>
-                        <span>{fmtDate(m.lastModified)}</span>
-                      </div>
-                      <button
-                        className="btn btn--primary btn--sm"
-                        style={{ fontSize: 11, marginTop: 4 }}
-                        disabled={pulling.has(`hf.co/${m.id}`)}
-                        onClick={() => pull(`hf.co/${m.id}`)}
-                      >
-                        {pulling.has(`hf.co/${m.id}`) ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</> : <><Download size={10} /> Laden via Ollama</>}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div style={{ borderBottom: '1px solid var(--color-border)', margin: '14px 0' }} />
-            </div>
-          )}
-
-          {/* Popular models grid */}
+          {/* Popular models grid – always shown first */}
           {filteredPopular.length > 0 && (
             <>
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-faint)', marginBottom: 8 }}>Beliebte Modelle</div>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-faint)', marginBottom: 8 }}>
+                Beliebte Modelle
+                {search.trim().length >= 2 && <span style={{ fontWeight: 400, marginLeft: 6 }}>({filteredPopular.length} gefunden)</span>}
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10, marginBottom: 18 }}>
                 {filteredPopular.map((pm) => {
                   const installed = installedNames.has(pm.name);
@@ -566,6 +605,44 @@ export function Ai() {
             </>
           )}
 
+          {/* HuggingFace results – shown BELOW popular models */}
+          {search.trim().length >= 2 && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ borderTop: '1px solid var(--color-border)', margin: '6px 0 14px' }} />
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-faint)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <ExternalLink size={11} /> HuggingFace GGUF-Modelle
+                {hfResults.length > 0 && <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>({hfResults.length})</span>}
+              </div>
+              {hfResults.length === 0 && !hfLoading && (
+                <div style={{ fontSize: 12, color: 'var(--color-faint)', padding: '8px 0' }}>Keine HuggingFace-Ergebnisse für „{search}"</div>
+              )}
+              {hfResults.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8, maxHeight: 320, overflowY: 'auto' }}>
+                  {hfResults.map((m) => (
+                    <div key={m.id} style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={m.id}>{m.id}</div>
+                      <div style={{ display: 'flex', gap: 10, fontSize: 10.5, color: 'var(--color-faint)' }}>
+                        <span>↓ {fmtNum(m.downloads)}</span>
+                        <span>♥ {fmtNum(m.likes)}</span>
+                        <span>{fmtDate(m.lastModified)}</span>
+                      </div>
+                      <button
+                        className="btn btn--primary btn--sm"
+                        style={{ fontSize: 11, marginTop: 4 }}
+                        disabled={ggufLoading === m.id}
+                        onClick={() => void openGguf(m.id)}
+                      >
+                        {ggufLoading === m.id
+                          ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</>
+                          : <><Download size={10} /> Quantisierung wählen</>}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Custom model name input */}
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', marginBottom: 8 }}>Beliebiger Modellname (ollama.com/library oder hf.co/…)</div>
@@ -594,6 +671,59 @@ export function Ai() {
         onDelete={remove}
         deleting={deleting}
       />
+
+      {/* GGUF quantization selection modal */}
+      <Modal
+        open={!!ggufModal}
+        title={`Quantisierung wählen: ${ggufModal?.id ?? ''}`}
+        onClose={() => setGgufModal(null)}
+        width={560}
+      >
+        {ggufModal && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 4 }}>
+              Q4_K_M bietet den besten Kompromiss aus Qualität und Dateigröße. Größere Quantisierungen (Q8) sind qualitativ besser, brauchen aber mehr RAM.
+            </div>
+            {ggufModal.files.length === 0 ? (
+              <div style={{ fontSize: 12, color: 'var(--color-faint)', padding: 12 }}>Keine GGUF-Dateien gefunden.</div>
+            ) : (
+              ggufModal.files.map((f) => {
+                const tag = `hf.co/${ggufModal.id}:${f.ollamaTag}`;
+                const isLoading = pulling.has(tag);
+                const isRecommended = f.quant === 'Q4_K_M';
+                return (
+                  <div key={f.filename} style={{
+                    display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                    background: 'var(--color-surface)', borderRadius: 6,
+                    border: `1px solid ${isRecommended ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {f.quant}
+                        {isRecommended && <span style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 600 }}>Empfohlen</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--color-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</div>
+                    </div>
+                    <span style={{ fontSize: 11.5, color: 'var(--color-muted)', flexShrink: 0 }}>
+                      {f.size > 0 ? fmtBytes(f.size) : '?'}
+                    </span>
+                    <button
+                      className="btn btn--primary btn--sm"
+                      style={{ fontSize: 11, flexShrink: 0 }}
+                      disabled={isLoading}
+                      onClick={() => { void pull(tag); setGgufModal(null); }}
+                    >
+                      {isLoading
+                        ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</>
+                        : <><Download size={10} /> Laden</>}
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </Modal>
     </>
   );
 }
