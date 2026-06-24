@@ -5,7 +5,7 @@ import { Switch } from '../ui/Switch';
 import { api } from '../../lib/api';
 import type { AlertRule, PredefinedAlert, AlertMetric, NotificationConfig } from '../../lib/types';
 
-function SmtpPanel() {
+export function SmtpPanel() {
   const [cfg, setCfg] = useState<NotificationConfig | null>(null);
   const [form, setForm] = useState({ smtpHost: '', smtpPort: 587, smtpUser: '', smtpPass: '', smtpFrom: '', smtpSecure: false });
   const [saving, setSaving] = useState(false);
@@ -265,10 +265,5 @@ export function AlertsPanel() {
 }
 
 export function SecurityAlerts() {
-  return (
-    <>
-      <SmtpPanel />
-      <AlertsPanel />
-    </>
-  );
+  return <AlertsPanel />;
 }

@@ -4,6 +4,7 @@ import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, Fi
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Switch } from '../components/ui/Switch';
+import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import { formatUptime, timeAgo } from '../lib/utils';
 import type { NotificationItem, NotificationConfig, VersionInfo } from '../lib/types';
@@ -484,6 +485,7 @@ export function Settings() {
         <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />
         <PasswordPanel />
         <TwoFactorPanel />
+        <SmtpPanel />
         <NotificationsPanel />
         <MigrationPanel />
 
