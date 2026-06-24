@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
+import { portInfo } from '../lib/utils';
 import type { DockerNetwork, HostInterface, FirewallRule, FirewallLogEntry, Container, VmNetwork, VM } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
@@ -244,23 +245,45 @@ function FirewallPanel() {
 
 const LOG_ACTION_BADGE: Record<string, string> = { BLOCK: 'dead', ALLOW: 'running', LIMIT: 'restarting', AUDIT: 'stopped' };
 
+function csvCell(v: string): string {
+  const s = v ?? '';
+  return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadCsv(rows: FirewallLogEntry[], filename: string) {
+  const header = ['Zeit', 'Aktion', 'Richtung', 'Quell-IP', 'Quell-Port', 'Ziel-IP', 'Ziel-Port', 'Protokoll', 'Schnittstelle', 'Dienst (Ziel-Port)'];
+  const lines = [header.join(';')];
+  for (const e of rows) {
+    lines.push([
+      e.ts, e.action, e.direction, e.src, e.spt, e.dst, e.dpt, e.proto, e.iface, portInfo(e.dpt).name,
+    ].map(csvCell).join(';'));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function ConnectionsPanel() {
   const [entries, setEntries] = useState<FirewallLogEntry[]>([]);
   const [available, setAvailable] = useState(true);
   const [logging, setLogging] = useState(false);
-  const [source, setSource] = useState('');
+  const [total, setTotal] = useState(0);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [actionFilter, setActionFilter] = useState<'all' | 'BLOCK' | 'ALLOW'>('all');
   const [dirFilter, setDirFilter] = useState<'all' | 'IN' | 'OUT'>('all');
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.firewall.log(500);
+      const res = await api.firewall.log(2000);
       setEntries(res.entries); setAvailable(res.available); setLogging(res.logging);
-      setSource(res.source ?? ''); setMessage(res.message ?? '');
+      setTotal(res.total ?? res.entries.length); setMessage(res.message ?? '');
+      setSelected(new Set());
     } catch (err) { setMessage(err instanceof Error ? err.message : 'Fehler'); }
     finally { setLoading(false); }
   }, []);
@@ -268,6 +291,12 @@ function ConnectionsPanel() {
 
   const toggleLogging = async (v: boolean) => {
     try { await api.firewall.setLogging(v); setLogging(v); setTimeout(() => void load(), 600); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const clearLog = async () => {
+    if (!confirm('Das gesamte Verbindungsprotokoll löschen?')) return;
+    try { await api.firewall.clearLog(); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
 
@@ -282,12 +311,20 @@ function ConnectionsPanel() {
   });
 
   const blocked = entries.filter((e) => e.action === 'BLOCK').length;
+  const allSelected = filtered.length > 0 && filtered.every((_, i) => selected.has(i));
+  const selRows = filtered.filter((_, i) => selected.has(i));
+
+  const toggleRow = (i: number) => setSelected((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(filtered.map((_, i) => i)));
+
+  const exportSelected = () => downloadCsv(selRows.length ? selRows : filtered, `verbindungen-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`);
+  const exportAll = () => downloadCsv(filtered, `verbindungen-alle-${new Date().toISOString().slice(0, 10)}.csv`);
 
   return (
     <Panel
       title="Verbindungsversuche"
       icon={<Activity size={15} />}
-      subtitle={available ? `${entries.length} Einträge · ${blocked} blockiert` : 'nicht verfügbar'}
+      subtitle={available ? `${total} im Protokoll · ${blocked} blockiert (geladen)` : 'nicht verfügbar'}
       storageKey="fw-connections"
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -312,15 +349,28 @@ function ConnectionsPanel() {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 12px' }}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 10px' }}>
             <select className="input input--rect" value={actionFilter} onChange={(e) => setActionFilter(e.target.value as 'all')} style={{ width: 150, cursor: 'pointer' }}>
               <option value="all">Alle Aktionen</option><option value="BLOCK">Nur blockiert</option><option value="ALLOW">Nur erlaubt</option>
             </select>
             <select className="input input--rect" value={dirFilter} onChange={(e) => setDirFilter(e.target.value as 'all')} style={{ width: 140, cursor: 'pointer' }}>
               <option value="all">Beide Richtungen</option><option value="IN">Eingehend</option><option value="OUT">Ausgehend</option>
             </select>
-            <input className="input input--rect" placeholder="Filter: IP, Port, Protokoll…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 220, fontFamily: 'var(--font-mono)' }} />
-            <span style={{ fontSize: 11.5, color: 'var(--color-faint)', marginLeft: 'auto' }}>{filtered.length} von {entries.length}{source ? ` · ${source}` : ''}</span>
+            <input className="input input--rect" placeholder="Filter: IP, Port, Protokoll…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200, fontFamily: 'var(--font-mono)' }} />
+            <span style={{ fontSize: 11.5, color: 'var(--color-faint)', marginLeft: 'auto' }}>{filtered.length} angezeigt{selRows.length ? ` · ${selRows.length} ausgewählt` : ''}</span>
+          </div>
+
+          {/* Export- & Verwaltungsleiste */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <button className="btn btn--outline btn--sm" onClick={exportSelected} disabled={filtered.length === 0}>
+              <Download size={13} /> {selRows.length ? `Auswahl als CSV (${selRows.length})` : 'Angezeigte als CSV'}
+            </button>
+            <button className="btn btn--ghost btn--sm" onClick={exportAll} disabled={filtered.length === 0}>
+              <Download size={13} /> Alle als CSV
+            </button>
+            <button className="btn btn--danger btn--sm" style={{ marginLeft: 'auto' }} onClick={clearLog}>
+              <Trash2 size={13} /> Protokoll leeren
+            </button>
           </div>
 
           {filtered.length === 0 ? (
@@ -330,19 +380,30 @@ function ConnectionsPanel() {
           ) : (
             <div className="table-scroll">
               <table className="dtable">
-                <thead><tr><th>Zeit</th><th>Aktion</th><th>Richtung</th><th>Quell-IP</th><th>Ziel-Port</th><th>Protokoll</th><th>Schnittstelle</th></tr></thead>
+                <thead><tr>
+                  <th style={{ width: 30 }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Alle (angezeigten) auswählen" /></th>
+                  <th>Zeit</th><th>Aktion</th><th>Richtung</th><th>Quell-IP</th><th>Ziel-Port</th><th>Dienst</th><th>Protokoll</th><th>Schnittstelle</th>
+                </tr></thead>
                 <tbody>
-                  {filtered.map((e, i) => (
-                    <tr key={i}>
-                      <td className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>{e.ts || '–'}</td>
-                      <td><span className={`badge badge--${LOG_ACTION_BADGE[e.action] ?? 'stopped'}`}>{e.action}</span></td>
-                      <td className="text-muted" style={{ fontSize: 12 }}>{DIR_LABEL[e.direction] ?? e.direction}</td>
-                      <td className="dtable__mono" style={{ fontWeight: 600 }}>{e.src || '–'}</td>
-                      <td className="dtable__mono">{e.dpt || '–'}</td>
-                      <td className="text-muted">{e.proto || '–'}</td>
-                      <td className="dtable__mono text-muted">{e.iface || '–'}</td>
-                    </tr>
-                  ))}
+                  {filtered.map((e, i) => {
+                    const pi = portInfo(e.dpt);
+                    return (
+                      <tr key={i} style={selected.has(i) ? { background: 'var(--color-accent-subtle, rgba(99,102,241,.08))' } : undefined}>
+                        <td><input type="checkbox" checked={selected.has(i)} onChange={() => toggleRow(i)} /></td>
+                        <td className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>{e.ts || '–'}</td>
+                        <td><span className={`badge badge--${LOG_ACTION_BADGE[e.action] ?? 'stopped'}`}>{e.action}</span></td>
+                        <td className="text-muted" style={{ fontSize: 12 }}>{DIR_LABEL[e.direction] ?? e.direction}</td>
+                        <td className="dtable__mono" style={{ fontWeight: 600 }}>{e.src || '–'}</td>
+                        <td className="dtable__mono" title={pi.hint}>{e.dpt || '–'}</td>
+                        <td title={pi.hint} style={{ fontSize: 12, cursor: 'help', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          {pi.risky && <AlertTriangle size={12} style={{ color: 'var(--color-warning)', flexShrink: 0 }} />}
+                          <span style={{ color: pi.name === 'Kein Standarddienst' || pi.name === 'Dynamischer Port' || pi.name === 'System-Port' ? 'var(--color-faint)' : 'var(--color-fg)' }}>{pi.name}</span>
+                        </td>
+                        <td className="text-muted">{e.proto || '–'}</td>
+                        <td className="dtable__mono text-muted">{e.iface || '–'}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary } from '../lib/privilege';
 import { auditQueries } from '../db/index';
+import { ingestFirewallLog, queryFirewallLog, firewallLogStats, clearFirewallLog } from '../lib/firewalllog';
 
 interface FirewallRule {
   num: number;
@@ -67,46 +68,6 @@ function readLoggingState(): boolean {
 
 function privExecSafe(cmd: string): string {
   try { return privExec(cmd, { timeout: 6000 }); } catch { return ''; }
-}
-
-interface ConnLogEntry {
-  ts: string;
-  action: string;     // BLOCK | ALLOW | AUDIT | LIMIT
-  direction: string;  // IN | OUT
-  iface: string;
-  src: string;
-  dst: string;
-  proto: string;
-  spt: string;
-  dpt: string;
-}
-
-/** UFW-Kernel-Logzeilen parsen (aus /var/log/ufw.log oder journalctl). */
-function parseUfwLog(out: string, limit: number): ConnLogEntry[] {
-  const entries: ConnLogEntry[] = [];
-  const lines = out.split('\n');
-  for (let i = lines.length - 1; i >= 0 && entries.length < limit; i--) {
-    const line = lines[i];
-    const am = line.match(/\[UFW\s+(BLOCK|ALLOW|AUDIT|LIMIT)\]/i);
-    if (!am) continue;
-    const field = (k: string) => { const m = line.match(new RegExp(`\\b${k}=([^\\s]+)`)); return m ? m[1] : ''; };
-    // Zeitstempel: Syslog-Prefix "Mon DD HH:MM:SS" oder ISO am Zeilenanfang
-    const tsm = line.match(/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})/) || line.match(/^(\d{4}-\d{2}-\d{2}T[\d:.]+)/);
-    const inIf = field('IN');
-    const outIf = field('OUT');
-    entries.push({
-      ts: tsm ? tsm[1] : '',
-      action: am[1].toUpperCase(),
-      direction: inIf ? 'IN' : outIf ? 'OUT' : '',
-      iface: inIf || outIf,
-      src: field('SRC'),
-      dst: field('DST'),
-      proto: field('PROTO'),
-      spt: field('SPT'),
-      dpt: field('DPT'),
-    });
-  }
-  return entries;
 }
 
 export async function firewallRoutes(fastify: FastifyInstance) {
@@ -181,6 +142,13 @@ export async function firewallRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: { enable: boolean } }>('/api/firewall/toggle', { preHandler: requireAdmin }, async (req, reply) => {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
+      if (req.body?.enable) {
+        // Aussperr-Schutz: SSH und Web-Ports (80/443 für die Oberfläche) zuerst freigeben,
+        // sonst ist Core-Hub nach dem Aktivieren nicht mehr erreichbar.
+        for (const r of ['22/tcp', '80/tcp', '443/tcp']) {
+          try { privExec(`ufw allow ${r}`, { timeout: 8000 }); } catch { /* evtl. schon vorhanden */ }
+        }
+      }
       privExec(`bash -c "yes | ufw ${req.body?.enable ? 'enable' : 'disable'}"`, { timeout: 8000 });
       auditQueries.log.run(req.user.id, 'firewall.toggle', String(req.body?.enable));
       reply.send({ ok: true });
@@ -201,18 +169,24 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // Verbindungsversuche / -aufrufe (UFW-Log) anzeigen
+  // Verbindungsversuche aus der Protokoll-DB (vorher frische Logzeilen einlesen)
   fastify.get<{ Querystring: { limit?: string } }>('/api/firewall/log', { preHandler: requireAuth }, async (req, reply) => {
-    if (!hasBinary('ufw')) return reply.send({ available: false, logging: false, entries: [], message: 'ufw nicht installiert' });
-    const limit = Math.min(1000, Math.max(10, parseInt(req.query.limit ?? '300') || 300));
-    // Bevorzugt das dedizierte UFW-Log, sonst der Kernel-Journal
-    let raw = privExecSafe('bash -c "tail -n 4000 /var/log/ufw.log 2>/dev/null"');
-    let source = '/var/log/ufw.log';
-    if (!raw.trim()) {
-      raw = privExecSafe('bash -c "journalctl -k -n 4000 --no-pager 2>/dev/null | grep -i ufw"');
-      source = 'journalctl -k';
+    if (!hasBinary('ufw')) return reply.send({ available: false, logging: false, entries: [], total: 0, blocked: 0, message: 'ufw nicht installiert' });
+    const limit = Math.min(5000, Math.max(10, parseInt(req.query.limit ?? '500') || 500));
+    try { ingestFirewallLog(); } catch { /* */ }
+    const entries = queryFirewallLog(limit);
+    const stats = firewallLogStats();
+    reply.send({ available: true, logging: readLoggingState(), source: 'Protokoll-DB', entries, total: stats.total, blocked: stats.blocked });
+  });
+
+  // Protokoll leeren
+  fastify.delete('/api/firewall/log', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      clearFirewallLog();
+      auditQueries.log.run(req.user.id, 'firewall.log.clear', null);
+      reply.send({ ok: true });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Fehler' });
     }
-    const entries = parseUfwLog(raw, limit);
-    reply.send({ available: true, logging: readLoggingState(), source, entries });
   });
 }

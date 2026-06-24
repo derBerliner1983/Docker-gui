@@ -60,6 +60,56 @@ function translateTime(t: string): string {
  * Übersetzt den Docker-Statustext (z. B. "Up About a minute (healthy)") ins
  * Deutsche – inklusive Zustand, Zeit und Gesundheitszustand.
  */
+/** Bekannte Ports → Dienst + Hinweis (für Hover-Tipps in der Verbindungsliste). */
+const PORT_SERVICES: Record<string, { name: string; risky?: boolean }> = {
+  '20': { name: 'FTP-Daten' }, '21': { name: 'FTP', risky: true },
+  '22': { name: 'SSH (Fernzugriff)' }, '23': { name: 'Telnet (unverschlüsselt!)', risky: true },
+  '25': { name: 'SMTP (Mailversand)' }, '53': { name: 'DNS (Namensauflösung)' },
+  '67': { name: 'DHCP-Server' }, '68': { name: 'DHCP-Client' },
+  '80': { name: 'HTTP (Web)' }, '110': { name: 'POP3 (Mailabruf)' },
+  '111': { name: 'RPC/portmapper', risky: true }, '123': { name: 'NTP (Zeit)' },
+  '135': { name: 'MS-RPC', risky: true }, '137': { name: 'NetBIOS', risky: true },
+  '139': { name: 'NetBIOS/SMB', risky: true }, '143': { name: 'IMAP (Mail)' },
+  '161': { name: 'SNMP', risky: true }, '389': { name: 'LDAP' },
+  '443': { name: 'HTTPS (Web, sicher)' }, '445': { name: 'SMB/CIFS (Dateifreigabe)', risky: true },
+  '465': { name: 'SMTP (SSL)' }, '514': { name: 'Syslog' }, '587': { name: 'SMTP (Submission)' },
+  '631': { name: 'IPP (Drucker)' }, '636': { name: 'LDAPS' },
+  '993': { name: 'IMAPS (Mail, sicher)' }, '995': { name: 'POP3S (sicher)' },
+  '1194': { name: 'OpenVPN' }, '1433': { name: 'MS SQL Server', risky: true },
+  '1521': { name: 'Oracle DB', risky: true }, '1883': { name: 'MQTT (IoT)' },
+  '2049': { name: 'NFS (Dateifreigabe)' }, '2375': { name: 'Docker-API (unverschlüsselt!)', risky: true },
+  '2376': { name: 'Docker-API (TLS)' }, '3000': { name: 'Web-App (häufig Grafana/Node)' },
+  '3306': { name: 'MySQL/MariaDB', risky: true }, '3389': { name: 'RDP (Windows-Fernzugriff)', risky: true },
+  '5060': { name: 'SIP (VoIP)' }, '5432': { name: 'PostgreSQL', risky: true },
+  '5900': { name: 'VNC (Fernsteuerung)', risky: true }, '5985': { name: 'WinRM', risky: true },
+  '6379': { name: 'Redis', risky: true }, '8006': { name: 'Proxmox' },
+  '8080': { name: 'HTTP-alternativ (Web/Proxy)' }, '8443': { name: 'HTTPS-alternativ' },
+  '8123': { name: 'Home Assistant' }, '9000': { name: 'Web-App (häufig Portainer)' },
+  '9090': { name: 'Web-App (häufig Prometheus/Cockpit)' }, '9200': { name: 'Elasticsearch', risky: true },
+  '11211': { name: 'Memcached', risky: true }, '27017': { name: 'MongoDB', risky: true },
+  '51820': { name: 'WireGuard (VPN)' },
+};
+
+export interface PortHint { name: string; category: string; risky: boolean; hint: string; }
+
+/** Liefert eine kurze Erklärung zu einem Port (Dienst + Einordnung) für Hover-Tipps. */
+export function portInfo(portStr: string): PortHint {
+  const port = parseInt(portStr, 10);
+  if (!portStr || isNaN(port)) return { name: 'Unbekannt', category: '', risky: false, hint: 'Kein Port erkannt.' };
+  const known = PORT_SERVICES[portStr];
+  if (known) {
+    return {
+      name: known.name,
+      category: 'Bekannter Dienst',
+      risky: !!known.risky,
+      hint: `${known.name} – häufig genutzter Port.${known.risky ? ' ⚠ Sollte nicht offen im Internet stehen.' : ''}`,
+    };
+  }
+  if (port >= 49152) return { name: 'Dynamischer Port', category: 'Dynamisch/ephemer', risky: false, hint: `Port ${port}: dynamischer/temporärer Port – meist die Gegenseite eines Clients, kein fester Dienst.` };
+  if (port <= 1023) return { name: 'System-Port', category: 'Well-known (reserviert)', risky: false, hint: `Port ${port}: reservierter System-Port ohne bekannten Standarddienst in dieser Liste.` };
+  return { name: 'Kein Standarddienst', category: 'Registriert/anwendungsspezifisch', risky: false, hint: `Port ${port}: kein allgemein bekannter Dienst – meist anwendungsspezifisch (eigener Container/Programm).` };
+}
+
 /** Docker-Neustart-Richtlinie auf Deutsch anzeigen. */
 export function germanRestart(policy: string): string {
   switch (policy) {

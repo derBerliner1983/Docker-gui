@@ -36,6 +36,7 @@ import { fileRoutes } from './routes/files';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
+import { startFirewallLogIngest } from './lib/firewalllog';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
 const PORT = parseInt(process.env.PORT ?? '4200');
@@ -124,6 +125,9 @@ async function main() {
 
   // Security/System-Alarme periodisch auswerten (E-Mail bei Auffälligkeiten)
   startAlertMonitor();
+
+  // Firewall-Verbindungsprotokoll periodisch in die DB einlesen
+  startFirewallLogIngest();
 }
 
 main().catch((err) => {

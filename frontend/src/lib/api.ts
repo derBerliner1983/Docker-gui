@@ -250,7 +250,8 @@ export const api = {
     remove: (num: number) => req(`/api/firewall/${num}`, { method: 'DELETE' }),
     toggle: (enable: boolean) => req('/api/firewall/toggle', { method: 'POST', body: JSON.stringify({ enable }) }),
     setLogging: (enable: boolean) => req<{ ok: boolean; logging: boolean }>('/api/firewall/logging', { method: 'POST', body: JSON.stringify({ enable }) }),
-    log: (limit = 300) => req<{ available: boolean; logging: boolean; source?: string; entries: FirewallLogEntry[]; message?: string }>(`/api/firewall/log?limit=${limit}`),
+    log: (limit = 500) => req<{ available: boolean; logging: boolean; source?: string; entries: FirewallLogEntry[]; total?: number; blocked?: number; message?: string }>(`/api/firewall/log?limit=${limit}`),
+    clearLog: () => req('/api/firewall/log', { method: 'DELETE' }),
   },
 
   settings: {
