@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { hasBinary, privExec, safeExec } from '../lib/privilege';
 import { proxyQueries } from '../db/index';
+import { applyCaddy } from './proxy';
 
 const OLLAMA = 'http://127.0.0.1:11434';
 
@@ -226,7 +227,34 @@ export async function kiRoutes(fastify: FastifyInstance) {
     // Check if Caddy has an HTTPS proxy entry pointing at Ollama's port
     const ollamaProxy = proxyQueries.getAll.all().find((h) => h.target_port === 11434 && h.enabled);
     const httpsUrl = ollamaProxy?.https ? `https://${ollamaProxy.hostname}` : null;
-    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps, httpsUrl });
+    const httpsProxyId = ollamaProxy?.id ?? null;
+    const caddyAvailable = hasBinary('caddy');
+    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps, httpsUrl, httpsProxyId, caddyAvailable });
+  });
+
+  // ── Ollama HTTPS proxy (enable / disable via Caddy) ──
+  fastify.post('/api/ki/https', { preHandler: requireAdmin }, async (_req, reply) => {
+    if (!hasBinary('caddy')) return reply.status(503).send({ error: 'Caddy nicht installiert (apt install caddy)' });
+    const hostname = safeExec('hostname 2>/dev/null').trim() || 'server';
+    try {
+      proxyQueries.upsert.run(null, 'Ollama', hostname, 'localhost', 11434, 1, 1);
+      applyCaddy(proxyQueries.getAll.all());
+      reply.send({ ok: true, httpsUrl: `https://${hostname}`, httpsProxyId: proxyQueries.getAll.all().find(h => h.target_port === 11434)?.id ?? null });
+    } catch (err) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'HTTPS konnte nicht aktiviert werden' });
+    }
+  });
+
+  fastify.delete('/api/ki/https', { preHandler: requireAdmin }, async (_req, reply) => {
+    const existing = proxyQueries.getAll.all().find((h) => h.target_port === 11434);
+    if (!existing) return reply.send({ ok: true });
+    try {
+      proxyQueries.delete.run(existing.id);
+      if (hasBinary('caddy')) applyCaddy(proxyQueries.getAll.all());
+      reply.send({ ok: true });
+    } catch (err) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'HTTPS konnte nicht deaktiviert werden' });
+    }
   });
 
   fastify.post<{ Body: { mode: 'local' | 'lan' } }>('/api/ki/access', { preHandler: requireAdmin }, async (req, reply) => {

@@ -290,6 +290,8 @@ export const api = {
     hardware: () => req<KiHardware>('/api/ki/hardware'),
     access: () => req<KiAccess>('/api/ki/access'),
     setAccess: (mode: 'local' | 'lan') => req<{ ok: boolean; mode: string; host: string }>('/api/ki/access', { method: 'POST', body: JSON.stringify({ mode }) }),
+    enableHttps: () => req<{ ok: boolean; httpsUrl: string; httpsProxyId: number | null }>('/api/ki/https', { method: 'POST' }),
+    disableHttps: () => req<{ ok: boolean }>('/api/ki/https', { method: 'DELETE' }),
     hfFiles: (id: string) => req<{ files: HFGgufFile[] }>(`/api/ki/hf-files?id=${encodeURIComponent(id)}`),
   },
 

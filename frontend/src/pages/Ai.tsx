@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BrainCircuit, Download, Trash2, RefreshCw, HardDrive, Cpu, Tag,
   Search, ExternalLink, Eye, Code2, Mic, Zap, FileText, ChevronRight, MemoryStick,
-  ChevronDown, Info, Globe, WifiOff,
+  ChevronDown, Info, Globe, WifiOff, Lock, LockOpen,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
@@ -373,6 +373,20 @@ export function Ai() {
     finally { setAccessBusy(false); }
   };
 
+  const toggleHttps = async () => {
+    setAccessBusy(true);
+    try {
+      if (access?.httpsUrl) {
+        await api.ki.disableHttps();
+      } else {
+        await api.ki.enableHttps();
+      }
+      const ac = await api.ki.access();
+      setAccessState(ac);
+    } catch (err) { alert(err instanceof Error ? err.message : 'HTTPS konnte nicht geändert werden'); }
+    finally { setAccessBusy(false); }
+  };
+
   const openGguf = async (id: string) => {
     setGgufLoading(id);
     try {
@@ -472,6 +486,18 @@ export function Ai() {
             >
               <Globe size={11} /> LAN
             </button>
+            {access?.caddyAvailable && (
+              <button
+                className={`btn btn--sm ${access.httpsUrl ? 'btn--outline' : 'btn--ghost'}`}
+                style={access.httpsUrl ? { color: 'var(--color-success)', borderColor: 'var(--color-success)' } : { color: 'var(--color-faint)' }}
+                disabled={accessBusy}
+                onClick={() => void toggleHttps()}
+                title={access.httpsUrl ? 'HTTPS für Ollama deaktivieren' : 'HTTPS für Ollama via Caddy aktivieren'}
+              >
+                {access.httpsUrl ? <Lock size={11} /> : <LockOpen size={11} />}
+                {access.httpsUrl ? 'HTTPS' : 'HTTPS ein'}
+              </button>
+            )}
             {access && (
               <>
                 <div style={{ width: 1, height: 14, background: 'var(--color-border)', flexShrink: 0 }} />

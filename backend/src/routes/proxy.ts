@@ -45,7 +45,7 @@ function renderCaddyBlock(hosts: ProxyRow[]): string {
 }
 
 /** Write the managed block into the Caddyfile and reload Caddy. */
-function applyCaddy(hosts: ProxyRow[]): void {
+export function applyCaddy(hosts: ProxyRow[]): void {
   let existing = '';
   if (fs.existsSync(CADDYFILE)) existing = safeExec(`cat ${CADDYFILE}`, 4000);
   else existing = safeExec(`cat ${CADDYFILE} 2>/dev/null`, 4000);

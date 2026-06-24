@@ -442,6 +442,8 @@ export interface KiAccess {
   hostname: string;
   lanIps: string[];
   httpsUrl: string | null;
+  httpsProxyId: number | null;
+  caddyAvailable: boolean;
 }
 
 export interface HFGgufFile {
