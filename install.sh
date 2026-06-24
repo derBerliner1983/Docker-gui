@@ -10,6 +10,10 @@ SERVICE_USER="core-hub"
 SERVICE_NAME="core-hub"
 PORT="${PORT:-4200}"
 
+# Verzeichnis dieses Scripts = Quell-/Git-Checkout (von dem aus installiert wird).
+# Wird gemerkt, damit das In-App-Update später genau hier `git pull` ausführen kann.
+SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
@@ -77,10 +81,14 @@ NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
 FORCE_UPDATE=0
 if [ "${1:-}" = "--update" ]; then
   FORCE_UPDATE=1
-  # Neueste Quelle von GitHub holen (sofern git verfügbar und Verzeichnis ein Repo ist)
-  if command -v git &>/dev/null && [ -d "$INSTALL_DIR/.git" ]; then
-    info "Hole neueste Version von GitHub (git pull)..."
-    git -C "$INSTALL_DIR" pull --ff-only 2>&1 || warn "git pull fehlgeschlagen – fahre mit vorhandenem Stand fort"
+  # Neueste Quelle von GitHub holen (sofern dieses Verzeichnis ein Git-Checkout ist).
+  # git pull läuft im SOURCE_DIR (dem ursprünglichen Klon), nicht im INSTALL_DIR.
+  if command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
+    info "Hole neueste Version von GitHub (git pull in $SOURCE_DIR)..."
+    git config --global --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
+    git -C "$SOURCE_DIR" pull --ff-only 2>&1 || warn "git pull fehlgeschlagen – fahre mit vorhandenem Stand fort"
+    # Neueste VERSION nach dem Pull erneut einlesen
+    NEW_VERSION="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || cat ./VERSION 2>/dev/null || echo '0.0.0')"
   fi
 fi
 
@@ -204,15 +212,21 @@ visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/c
 
 # Eindeutige Build-Kennung aus Git ableiten (kurzer Hash) – so ist jeder
 # ausgelieferte Stand exakt identifizierbar, auch ohne VERSION-Erhöhung.
-GIT_HASH="$(git rev-parse --short=7 HEAD 2>/dev/null || true)"
+GIT_HASH="$(git -C "$SOURCE_DIR" rev-parse --short=7 HEAD 2>/dev/null || true)"
 if [ -n "$GIT_HASH" ]; then
   info "Build-Kennung: ${NEW_VERSION}+${GIT_HASH}"
 fi
 
 # Dateien kopieren
-info "Kopiere Dateien nach $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
-cp -r . "$INSTALL_DIR/"
+if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
+  info "Kopiere Dateien von $SOURCE_DIR nach $INSTALL_DIR..."
+  cp -r "$SOURCE_DIR/." "$INSTALL_DIR/"
+else
+  info "Quelle = Installationsverzeichnis – Kopieren übersprungen (Update an Ort und Stelle)."
+fi
+# Quell-Verzeichnis merken, damit das In-App-Update später `git pull` hier ausführt
+echo "$SOURCE_DIR" > "$DATA_DIR/source_dir"
 # Build-Datei schreiben (vom Backend für die angezeigte Version gelesen)
 if [ -n "$GIT_HASH" ]; then
   echo "$GIT_HASH" > "$INSTALL_DIR/BUILD"

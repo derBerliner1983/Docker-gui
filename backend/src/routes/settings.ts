@@ -259,14 +259,20 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     try { await req.jwtVerify(); if ((req.user as { role: string }).role !== 'admin') { reply.status(403).send(); return; } }
     catch { reply.status(401).send(); return; }
 
-    // Locate the repo root (production: /opt/core-hub; dev: walk up from __dirname)
+    // Locate the git checkout to update from. install.sh records the original
+    // clone directory in $DATA_DIR/source_dir; prefer that (it has a .git remote
+    // and is NOT the install dir, so install.sh can copy from it safely).
+    let recordedSource = '';
+    try { recordedSource = fs.readFileSync(path.join(DATA_DIR, 'source_dir'), 'utf8').trim(); } catch { /* none */ }
     const candidates = [
+      recordedSource,
       '/opt/core-hub',
       path.resolve(__dirname, '../../..'),
       path.resolve(__dirname, '../..'),
       process.cwd(),
-    ];
+    ].filter(Boolean);
     const repoRoot = candidates.find(d => fs.existsSync(path.join(d, 'install.sh'))) ?? '/opt/core-hub';
+    const isGitRepo = fs.existsSync(path.join(repoRoot, '.git'));
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -289,22 +295,21 @@ export async function settingsRoutes(fastify: FastifyInstance) {
         proc.on('close', (code) => resolve(code === 0));
       });
 
-    try {
-      send(`[Core-Hub] Repository: ${repoRoot}`);
-      send('[1/2] git pull …');
-      // git pull: run as root (via sudo) if not already root
-      const gitOk = isRoot
-        ? await runStream('git', ['-C', repoRoot, 'pull'], repoRoot)
-        : await runStream('sudo', ['-n', 'git', '-C', repoRoot, 'pull'], repoRoot);
-      if (!gitOk) { send('[!] git pull fehlgeschlagen – fahre trotzdem fort'); }
+    const sudo = (args: string[]) => isRoot ? runStream(args[0], args.slice(1), repoRoot) : runStream('sudo', ['-n', ...args], repoRoot);
 
-      send('[2/2] install.sh --update …');
-      const installOk = isRoot
-        ? await runStream('bash', ['install.sh', '--update'], repoRoot)
-        : await runStream('sudo', ['-n', 'bash', 'install.sh', '--update'], repoRoot);
+    try {
+      send(`[Core-Hub] Quell-Verzeichnis: ${repoRoot}`);
+      if (!isGitRepo) {
+        send('[!] Kein Git-Checkout gefunden – es wird kein Code aktualisiert, nur install.sh --update läuft.');
+        send('    Tipp: Core-Hub aus einem "git clone" installieren, damit Updates automatisch geholt werden.');
+      }
+      // install.sh --update führt den git pull selbst im Quell-Verzeichnis aus
+      // und baut Backend + Frontend neu. Wir starten es einmal und streamen das Log.
+      send('› bash install.sh --update …');
+      const installOk = await sudo(['bash', 'install.sh', '--update']);
 
       if (installOk) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
-      else { send('[!] Installer beendet mit Fehler. Bitte Log prüfen.'); }
+      else { send('[!] Installer beendet mit Fehler. Bitte Log oben prüfen.'); }
     } catch (e) {
       send(`[Fehler] ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
     }

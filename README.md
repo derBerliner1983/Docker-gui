@@ -119,12 +119,22 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Zwei-Faktor-Authentifizierung (2FA / TOTP)**: pro Konto einrichten, beim Login wird ein
   Einmalcode aus der Authenticator-App abgefragt (Google Authenticator, Aegis, 1Password …)
 
+### 📂 Datei-Manager
+- Verzeichnisbaum durchsuchen, Textdateien direkt im Browser bearbeiten
+- Hochladen, Ordner anlegen, umbenennen, löschen, herunterladen
+- Rechte (chmod) und Eigentümer/Gruppe sehen und ändern – auch in System-Verzeichnissen
+  (`/etc`, `/opt`, …) über die sudoers-Allowlist
+
 ### ⚙️ Einstellungen, Version & Migration
 - Passwort & 2FA verwalten, System-Info, erkannte Module
-- **Version & Updates**: aktuelle Version sichtbar, Update-Prüfung gegen GitHub-Releases,
-  Hinweis samt Befehl, wenn eine neuere Version verfügbar ist
-- **Migration**: gesamte Konfiguration (DB + Caddy-Zertifikate inkl. Root-CA + SMB) als ein `.tar.gz`
-  exportieren und per **Drag & Drop** importieren → Serverumzug mit einem Klick
+- **Version & Updates**: aktuelle Version sichtbar, Update-Prüfung gegen GitHub-Releases –
+  und **1-Klick-Update direkt in der Oberfläche** (holt den neuen Code per `git pull` und
+  führt `install.sh --update` aus, mit Live-Log)
+- **Konfigurations-Migration**: gesamte Core-Hub-Konfiguration (DB + Caddy-Zertifikate inkl.
+  Root-CA + SMB) als ein `.tar.gz` exportieren und per **Drag & Drop** importieren →
+  Serverumzug mit einem Klick
+- **Container-Migration von Unraid:** Docker-Container samt App-Daten umziehen –
+  Schritt-für-Schritt-Anleitung in [docs/MIGRATION.md](./docs/MIGRATION.md)
 
 ---
 
@@ -144,18 +154,26 @@ installiert einen systemd-Dienst und eine sudoers-Allowlist für die benötigten
 
 ### Update auf eine neue Version
 
-Einfach die neue Version holen und denselben Installer erneut ausführen – er erkennt die
-bestehende Installation automatisch und läuft im **Update-Modus**. Deine Daten unter
-`/var/lib/core-hub` (Datenbank, Backups) bleiben dabei erhalten:
+**Bequem in der Oberfläche:** Unter **Einstellungen → „Version & Updates"** siehst du die
+laufende Version und ob auf GitHub eine neuere steht. Ist ein Update verfügbar, genügt ein
+Klick auf **„Jetzt aktualisieren"** – Core-Hub holt den neuen Code (`git pull` im
+ursprünglichen Klon-Verzeichnis) und führt `install.sh --update` aus, mit Live-Log.
+Anschließend startet der Dienst neu.
+
+> Voraussetzung: Core-Hub wurde per `git clone` installiert (damit `git pull` funktioniert).
+> Bei einem **privaten** Repository muss `git` auf dem Server angemeldet sein
+> (gespeicherter Token oder SSH-Deploy-Key), sonst schlägt der Pull fehl und es wird der
+> vorhandene Stand neu gebaut.
+
+**Manuell** geht es genauso – denselben Installer erneut ausführen, er erkennt die
+bestehende Installation und läuft im **Update-Modus**. Deine Daten unter
+`/var/lib/core-hub` (Datenbank, Backups) bleiben erhalten:
 
 ```bash
 cd docker-gui
 git pull
 sudo bash install.sh        # erkennt vorhandene Installation → Update
 ```
-
-Der Installer zeigt die alte und neue Version an. In der Oberfläche siehst du die laufende
-Version unter **Einstellungen → „Version & Updates"** und ob auf GitHub eine neuere Version steht.
 
 ### Optionale Abhängigkeiten (schalten weitere Module frei)
 
@@ -234,6 +252,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **9** | Update-Erkennung, Virenschutz, **2FA**, **Backup-Zeitpläne**, **Benachrichtigungen**, **App-Vorlagen**, Update-Prüfung | ✅ |
 | **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
 | **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, **Web-Terminal**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
+| **12** | **Datei-Manager** (Browsen/Bearbeiten/Rechte, sudo-Fallback für System-Verzeichnisse), **1-Klick-Update in der Oberfläche** (git pull + install.sh --update mit Live-Log), Container-Migration als Doku | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
 - ⏳ Mehrsprachigkeit (EN/DE)
