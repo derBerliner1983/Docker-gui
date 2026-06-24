@@ -366,6 +366,8 @@ export interface SecurityFinding {
   detail: string;
   recommendation: string;
   fix?: string;
+  accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
+  port?: string;
 }
 
 export interface SecurityScan {

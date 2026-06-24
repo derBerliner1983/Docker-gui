@@ -16,7 +16,9 @@ interface Finding {
   status: Status;
   detail: string;
   recommendation: string;
-  fix?: string; // action id for one-click remediation
+  fix?: string;
+  accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
+  port?: string;
 }
 
 function sshServiceUnit(): string {
@@ -150,17 +152,72 @@ function accountChecks(): Finding[] {
   return findings;
 }
 
-function portsCheck(): Finding[] {
+// Wissendatenbank: wie ist ein Port einzuordnen?
+const PORT_DB: Record<string, { name: string; zone: 'lan-only' | 'internet-ok' | 'internet-conditional'; risk: Status; note: string }> = {
+  '22':    { name: 'SSH',           zone: 'internet-conditional', risk: 'warn',     note: 'Nur mit SSH-Schlüsseln + fail2ban ins Internet; besser: LAN-only' },
+  '80':    { name: 'HTTP',          zone: 'internet-ok',          risk: 'ok',       note: 'HTTP (Redirect auf HTTPS) – für Reverse Proxy (Caddy) sicher' },
+  '443':   { name: 'HTTPS',         zone: 'internet-ok',          risk: 'ok',       note: 'Verschlüsselter Reverse Proxy / Webserver – Internet-sicher' },
+  '139':   { name: 'NetBIOS/Samba', zone: 'lan-only',             risk: 'critical', note: 'NIE ins Internet – massives Exploit-Risiko (EternalBlue, WannaCry etc.)' },
+  '445':   { name: 'SMB/Samba',     zone: 'lan-only',             risk: 'critical', note: 'NIE ins Internet – massives Exploit-Risiko (EternalBlue, WannaCry etc.)' },
+  '3306':  { name: 'MySQL/MariaDB', zone: 'lan-only',             risk: 'critical', note: 'Datenbank-Port niemals direkt ins Internet' },
+  '5432':  { name: 'PostgreSQL',    zone: 'lan-only',             risk: 'critical', note: 'Datenbank-Port niemals direkt ins Internet' },
+  '6379':  { name: 'Redis',         zone: 'lan-only',             risk: 'critical', note: 'Redis hat standardmäßig keine Auth – nur intern/LAN' },
+  '27017': { name: 'MongoDB',       zone: 'lan-only',             risk: 'critical', note: 'Datenbank-Port nur intern' },
+  '111':   { name: 'RPC',           zone: 'lan-only',             risk: 'warn',     note: 'RPC/NFS nur im LAN verwenden' },
+  '2049':  { name: 'NFS',           zone: 'lan-only',             risk: 'warn',     note: 'NFS-Freigaben nur im LAN' },
+  '5900':  { name: 'VNC',           zone: 'lan-only',             risk: 'critical', note: 'VNC meist unverschlüsselt – niemals ins Internet' },
+  '3389':  { name: 'RDP',           zone: 'lan-only',             risk: 'critical', note: 'RDP-Brute-Force massiv – niemals direkt ins Internet' },
+  '8080':  { name: 'HTTP Alt',      zone: 'internet-conditional', risk: 'warn',     note: 'Nur via Reverse Proxy (HTTPS) ins Internet freigeben' },
+  '4200':  { name: 'Core-Hub',      zone: 'internet-conditional', risk: 'warn',     note: 'Core-Hub via Caddy (Port 443) freigeben, nicht direkt' },
+  '9000':  { name: 'Portainer',     zone: 'internet-conditional', risk: 'warn',     note: 'Admin-UI nur via gesichertem Reverse Proxy freigeben' },
+  '1194':  { name: 'OpenVPN',       zone: 'internet-ok',          risk: 'ok',       note: 'VPN-Port – für Fernzugriff, verschlüsselt' },
+  '51820': { name: 'WireGuard',     zone: 'internet-ok',          risk: 'ok',       note: 'WireGuard VPN – sicher für Internet-Zugriff' },
+};
+
+/** LAN-Subnetz des Servers aus der primären Netzwerkschnittstelle ermitteln. */
+function detectLanSubnet(): string {
+  const ip4 = safeExec("ip -4 addr show | grep 'inet ' | grep -v '127.0.0.1'").trim();
+  const m = ip4.match(/inet\s+(\d+)\.(\d+)\.\d+\.\d+\/\d+/);
+  if (m) {
+    const a = parseInt(m[1]), b = parseInt(m[2]);
+    if (a === 10) return '10.0.0.0/8';
+    if (a === 172 && b >= 16 && b <= 31) return '172.16.0.0/12';
+    if (a === 192 && b === 168) return '192.168.0.0/16';
+  }
+  return '192.168.0.0/16';
+}
+
+/** Öffentlich gebundene Ports mit LAN/Internet-Klassifikation. */
+function networkAccessCheck(): Finding[] {
   const out = safeExec('ss -tlnH 2>/dev/null');
   const publicPorts = out.split('\n')
     .map((l) => l.trim().split(/\s+/)[3])
     .filter((a) => a && (a.startsWith('0.0.0.0') || a.startsWith('*') || a.startsWith('[::]')))
     .map((a) => a.split(':').pop())
-    .filter(Boolean);
+    .filter(Boolean) as string[];
   const unique = [...new Set(publicPorts)];
-  return [unique.length > 6
-    ? { id: 'ports', category: 'Netzwerk', title: `${unique.length} öffentlich erreichbare Ports`, status: 'warn', detail: unique.join(', '), recommendation: 'Prüfe offene Ports und beschränke sie per Firewall auf das Nötige.' }
-    : { id: 'ports', category: 'Netzwerk', title: `${unique.length} öffentliche Ports`, status: 'info', detail: unique.join(', ') || 'keine', recommendation: '' }];
+  const subnet = detectLanSubnet();
+  if (unique.length === 0) return [{ id: 'ports-none', category: 'Netzwerkzugang', title: 'Keine öffentlich gebundenen Ports', status: 'ok', detail: '', recommendation: '' }];
+
+  return unique.map((port) => {
+    const info = PORT_DB[port];
+    const fixId = info?.zone !== 'internet-ok' ? `port-lan-only:${port}:${subnet}` : undefined;
+    return {
+      id: `port-${port}`,
+      category: 'Netzwerkzugang',
+      title: `Port ${port}${info ? ' – ' + info.name : ''}`,
+      status: (info?.risk ?? 'info') as Status,
+      detail: info?.note ?? `Unbekannter Dienst – prüfen ob öffentlich notwendig`,
+      recommendation: info?.zone === 'lan-only'
+        ? `Dringend auf LAN (${subnet}) beschränken – dieser Port ist im Internet gefährlich.`
+        : info?.zone === 'internet-ok'
+        ? 'Internet-Zugriff für diesen Dienst ist vertretbar.'
+        : `Prüfen ob Internet-Zugriff nötig; ggf. auf LAN (${subnet}) beschränken.`,
+      fix: fixId,
+      accessZone: (info?.zone ?? 'internet-conditional') as Finding['accessZone'],
+      port,
+    };
+  });
 }
 
 async function dockerChecks(): Promise<Finding[]> {
@@ -182,6 +239,14 @@ async function dockerChecks(): Promise<Finding[]> {
     if (sockMount.length) {
       findings.push({ id: 'sock', category: 'Docker', title: `Docker-Socket in ${sockMount.length} Container(n)`, status: 'warn', detail: sockMount.join(', '), recommendation: 'Ein gemounteter docker.sock = Root auf dem Host. Nur wenn unbedingt nötig und vertrauenswürdig.' });
     }
+    // Pangolin/Newt-Tunnel erkennen – wenn aktiv, können direkte Internet-Ports gesperrt werden
+    const newtContainer = containers.find((c) =>
+      c.Names.some((n) => /newt/i.test(n)) || c.Image.toLowerCase().includes('newt') || c.Image.toLowerCase().includes('pangolin')
+    );
+    if (newtContainer) {
+      const name = newtContainer.Names[0]?.replace('/', '') ?? newtContainer.Image;
+      findings.push({ id: 'pangolin-newt', category: 'Netzwerkzugang', title: 'Pangolin/Newt Tunnel aktiv', status: 'ok', detail: `Tunnel-Container: ${name}`, recommendation: 'Externe Dienste laufen über den Pangolin-Tunnel – kein direkter Internetanschluss nötig. Alle lokalen Ports können auf Nur-LAN gesetzt werden.' });
+    }
   } catch {
     /* docker not available */
   }
@@ -198,7 +263,7 @@ export async function securityRoutes(fastify: FastifyInstance) {
       ...intrusionCheck(),
       ...antivirusCheck(),
       ...accountChecks(),
-      ...portsCheck(),
+      ...networkAccessCheck(),
       ...hardeningChecks(),
       ...(await dockerChecks()),
     ];
@@ -251,6 +316,20 @@ export async function securityRoutes(fastify: FastifyInstance) {
       const unit = sshServiceUnit();
       try {
         let output = '';
+        // Port auf LAN-only beschränken: allow von LAN, deny von überall sonst
+        if (action?.startsWith('port-lan-only:')) {
+          const parts = action.split(':');
+          const port = (parts[1] ?? '').replace(/[^0-9]/g, '');
+          const subnet = parts.slice(2).join(':').replace(/[^0-9a-fA-F:.\/]/g, '');
+          if (!port || !subnet) return reply.status(400).send({ error: 'Ungültige Aktion' });
+          if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert – Firewall zuerst einrichten' });
+          // LAN-Zugriff explizit erlauben (vor der Deny-Regel)
+          privExec(`ufw allow in from ${subnet} to any port ${port}`, { timeout: 8000 });
+          // Internet-Zugriff sperren
+          privExec(`ufw deny in to any port ${port}`, { timeout: 8000 });
+          auditQueries.log.run(req.user.id, 'security.fix', `lan-only:${port} subnet:${subnet}`);
+          return reply.send({ ok: true, output: `Port ${port} auf LAN (${subnet}) beschränkt` });
+        }
         switch (action) {
           case 'ssh-disable-root':
             privExec(`bash -c "sed -ri 's/^[#\\s]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config; grep -qiE '^PermitRootLogin' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config"`);

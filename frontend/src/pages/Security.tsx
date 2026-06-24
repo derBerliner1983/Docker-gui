@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Lock, Globe, Home } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Donut } from '../components/ui/Donut';
@@ -7,6 +7,12 @@ import { Switch } from '../components/ui/Switch';
 import { SecurityAlerts } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import type { SecurityScan, SecurityFinding, SecurityStatus, SshStatus } from '../lib/types';
+
+const ZONE_META = {
+  'lan-only':             { label: 'Nur LAN',      color: '#ef4444', bg: 'rgba(239,68,68,.1)',   Icon: Home  },
+  'internet-ok':          { label: 'Internet OK',  color: '#22c55e', bg: 'rgba(34,197,94,.1)',   Icon: Globe },
+  'internet-conditional': { label: 'Prüfen',       color: '#f59e0b', bg: 'rgba(234,179,8,.1)',   Icon: AlertTriangle },
+};
 
 const STATUS_META: Record<SecurityStatus, { color: string; label: string; icon: React.ElementType; order: number }> = {
   critical: { color: 'var(--color-error)', label: 'Kritisch', icon: XCircle, order: 0 },
@@ -25,6 +31,8 @@ function scoreColor(score: number): string {
 function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean }) {
   const meta = STATUS_META[f.status];
   const Icon = meta.icon;
+  const zone = f.accessZone ? ZONE_META[f.accessZone] : null;
+  const isLanAction = f.fix?.startsWith('port-lan-only:');
   return (
     <div style={{ display: 'flex', gap: 12, padding: '12px 0', borderBottom: '1px solid var(--color-border)' }}>
       <Icon size={18} color={meta.color} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -32,6 +40,11 @@ function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.title}</span>
           <span className="badge badge--paused" style={{ fontSize: 10 }}>{f.category}</span>
+          {zone && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }}>
+              <zone.Icon size={10} /> {zone.label}
+            </span>
+          )}
         </div>
         {f.detail && <div className="dtable__mono" style={{ fontSize: 11.5, color: 'var(--color-subtle)', marginTop: 3 }}>{f.detail}</div>}
         {f.recommendation && (
@@ -41,11 +54,18 @@ function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: 
           </div>
         )}
       </div>
-      {f.fix && (
-        <button className="btn btn--outline btn--sm" style={{ flexShrink: 0, alignSelf: 'center' }} disabled={fixing} onClick={() => onFix(f.fix!)}>
-          {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
-        </button>
-      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, alignSelf: 'center' }}>
+        {isLanAction && (
+          <button className="btn btn--danger btn--sm" style={{ whiteSpace: 'nowrap' }} disabled={fixing} onClick={() => onFix(f.fix!)} title="Firewall-Regeln anlegen: LAN erlauben, Internet sperren">
+            {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Lock size={12} />} Nur LAN
+          </button>
+        )}
+        {f.fix && !isLanAction && (
+          <button className="btn btn--outline btn--sm" disabled={fixing} onClick={() => onFix(f.fix!)}>
+            {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -191,8 +211,10 @@ export function Security() {
   };
 
   const sorted = scan ? [...scan.findings].sort((a, b) => STATUS_META[a.status].order - STATUS_META[b.status].order) : [];
-  const actionable = sorted.filter((f) => f.status === 'critical' || f.status === 'warn');
-  const passed = sorted.filter((f) => f.status === 'ok' || f.status === 'info');
+  const networkFindings = sorted.filter((f) => f.category === 'Netzwerkzugang');
+  const otherFindings = sorted.filter((f) => f.category !== 'Netzwerkzugang');
+  const actionable = otherFindings.filter((f) => f.status === 'critical' || f.status === 'warn');
+  const passed = otherFindings.filter((f) => f.status === 'ok' || f.status === 'info');
 
   return (
     <>
@@ -267,7 +289,36 @@ export function Security() {
 
             <SshPanel />
 
-            {/* E-Mail-Versand + Alarm-Regeln */}
+            {/* Netzwerkzugang – LAN vs. Internet */}
+            <Panel
+              title="Netzwerkzugang"
+              icon={<Globe size={15} />}
+              subtitle={`${networkFindings.filter((f) => f.accessZone === 'lan-only' && f.fix).length} LAN-only empfohlen`}
+              storageKey="sec-network"
+            >
+              <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, marginTop: 4, lineHeight: 1.6 }}>
+                <b>LAN-Zugang:</b> Nur aus deinem lokalen Netzwerk erreichbar (z. B. 192.168.x.x).
+                {' '}<b>Internet-Zugang:</b> Jeder im Internet kann eine Verbindung aufbauen.
+                {' '}Mit <b>Pangolin/Newt</b> werden externe Dienste über einen sicheren Tunnel geleitet – alle direkten Internet-Ports können auf <em>Nur LAN</em> gesetzt werden.
+              </div>
+              <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 14 }}>
+                {Object.entries(ZONE_META).map(([key, z]) => (
+                  <span key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: z.color }}>
+                    <z.Icon size={12} /> <b>{z.label}</b>
+                    <span style={{ color: 'var(--color-muted)' }}>– {key === 'lan-only' ? 'niemals direkt im Internet' : key === 'internet-ok' ? 'sicher für Internet-Zugriff' : 'prüfen und ggf. einschränken'}</span>
+                  </span>
+                ))}
+              </div>
+              {networkFindings.length === 0 ? (
+                <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
+              ) : (
+                <div style={{ marginTop: 2 }}>
+                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={fixing === f.fix} />)}
+                </div>
+              )}
+            </Panel>
+
+            {/* E-Mail-Alarm-Regeln */}
             <SecurityAlerts />
 
             {/* Passed checks */}
