@@ -6,7 +6,7 @@ import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { portInfo } from '../lib/utils';
-import type { DockerNetwork, HostInterface, FirewallRule, FirewallLogEntry, Container, VmNetwork, VM } from '../lib/types';
+import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
   const [name, setName] = useState('');
@@ -118,8 +118,8 @@ function ConnectModal({ net, open, onClose, onDone, containers }: { net: DockerN
   );
 }
 
-type FwForm = { action: 'allow' | 'deny' | 'reject'; port: string; proto: string; from: string; direction: string };
-const EMPTY_FW_FORM: FwForm = { action: 'allow', port: '', proto: '', from: '', direction: '' };
+type FwForm = { action: 'allow' | 'deny' | 'reject'; port: string; proto: string; from: string; direction: string; comment: string };
+const EMPTY_FW_FORM: FwForm = { action: 'allow', port: '', proto: '', from: '', direction: '', comment: '' };
 
 /** Bestehende Regel bestmöglich in Formularfelder zerlegen (zum Bearbeiten). */
 function ruleToForm(r: FirewallRule): FwForm {
@@ -130,6 +130,7 @@ function ruleToForm(r: FirewallRule): FwForm {
     proto: m && m[2] ? m[2].toLowerCase() : '',
     from: /anywhere/i.test(r.from) ? '' : r.from.replace(/\s*\(v6\)/i, '').trim(),
     direction: (r.direction ?? '').toLowerCase(),
+    comment: r.comment ?? '',
   };
 }
 
@@ -137,16 +138,19 @@ const DIR_LABEL: Record<string, string> = { IN: 'Eingehend', OUT: 'Ausgehend', '
 
 function FirewallPanel() {
   const [rules, setRules] = useState<FirewallRule[]>([]);
+  const [disabled, setDisabled] = useState<FirewallDisabledRule[]>([]);
   const [available, setAvailable] = useState(true);
   const [active, setActive] = useState(false);
   const [message, setMessage] = useState('');
   const [form, setForm] = useState<FwForm>(EMPTY_FW_FORM);
   const [editNum, setEditNum] = useState<number | null>(null);
+  const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     const res = await api.firewall.list();
-    setRules(res.rules); setAvailable(res.available); setActive(res.active); setMessage(res.message ?? '');
+    setRules(res.rules); setDisabled(res.disabled ?? []);
+    setAvailable(res.available); setActive(res.active); setMessage(res.message ?? '');
   }, []);
   useEffect(() => { void load(); }, [load]);
 
@@ -156,7 +160,7 @@ function FirewallPanel() {
   const submit = async () => {
     if (!form.port && !form.from) { alert('Port oder Quell-IP angeben'); return; }
     setBusy(true);
-    const payload = { action: form.action, port: form.port || undefined, proto: form.proto || undefined, from: form.from || undefined, direction: form.direction || undefined };
+    const payload = { action: form.action, port: form.port || undefined, proto: form.proto || undefined, from: form.from || undefined, direction: form.direction || undefined, comment: form.comment || undefined };
     try {
       if (editNum !== null) await api.firewall.update(editNum, payload);
       else await api.firewall.add(payload);
@@ -171,6 +175,39 @@ function FirewallPanel() {
     try { await api.firewall.remove(num); if (editNum === num) cancelEdit(); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
+
+  // Regel deaktivieren (merkt sich die Regel zum späteren Reaktivieren)
+  const disableRule = async (r: FirewallRule) => {
+    const f = ruleToForm(r);
+    const isPort = /^\d+(?::\d+)?(?:\/(tcp|udp))?$/i.test(r.to);
+    try {
+      await api.firewall.disable(r.num, {
+        action: f.action, port: f.port || undefined, proto: f.proto || undefined,
+        from: f.from || undefined, direction: f.direction || undefined,
+        comment: r.comment || undefined, profile: isPort ? undefined : r.to,
+      });
+      if (editNum === r.num) cancelEdit();
+      await load();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const enableRule = async (id: number) => {
+    try { await api.firewall.enableDisabled(id); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+  const discardDisabled = async (id: number) => {
+    if (!confirm('Deaktivierte Regel endgültig verwerfen?')) return;
+    try { await api.firewall.removeDisabled(id); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const q = filter.trim().toLowerCase();
+  const shownRules = q
+    ? rules.filter((r) => `${r.comment ?? ''} ${r.to} ${r.from} ${r.action} ${r.direction ?? ''}`.toLowerCase().includes(q))
+    : rules;
+  const shownDisabled = q
+    ? disabled.filter((d) => `${d.comment} ${d.to} ${d.from} ${d.action}`.toLowerCase().includes(q))
+    : disabled;
 
   return (
     <Panel
@@ -196,36 +233,48 @@ function FirewallPanel() {
               Regel #{editNum} bearbeiten
             </div>
           )}
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8, marginBottom: 12 }}>
-            <select className="input input--rect" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' })} style={{ width: 100, cursor: 'pointer' }} title="Aktion">
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8, marginBottom: 6 }}>
+            <input className="input input--rect" placeholder="Name (optional)" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} style={{ width: 150 }} title="Name / Bezeichnung der Regel" />
+            <select className="input input--rect" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' })} style={{ width: 92, cursor: 'pointer' }} title="Aktion">
               <option value="allow">allow</option><option value="deny">deny</option><option value="reject">reject</option>
             </select>
-            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 120, cursor: 'pointer' }} title="Richtung">
+            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 118, cursor: 'pointer' }} title="Richtung">
               <option value="">Richtung: –</option><option value="in">Eingehend (in)</option><option value="out">Ausgehend (out)</option>
             </select>
-            <input className="input input--rect" placeholder="Port (z.B. 443)" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} style={{ width: 120 }} />
-            <select className="input input--rect" value={form.proto} onChange={(e) => setForm({ ...form, proto: e.target.value })} style={{ width: 90, cursor: 'pointer' }}>
+            <input className="input input--rect" placeholder="Port (z.B. 443)" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} style={{ width: 110 }} />
+            <select className="input input--rect" value={form.proto} onChange={(e) => setForm({ ...form, proto: e.target.value })} style={{ width: 86, cursor: 'pointer' }}>
               <option value="">tcp+udp</option><option value="tcp">tcp</option><option value="udp">udp</option>
             </select>
-            <input className="input input--rect" placeholder="von IP (optional)" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} style={{ width: 150, fontFamily: 'var(--font-mono)' }} />
+            <input className="input input--rect" placeholder="von IP(s), mit Komma trennen" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} style={{ width: 200, fontFamily: 'var(--font-mono)' }} title="Mehrere Quell-Adressen mit Komma/Leerzeichen trennen → je eine Regel" />
             <button className="btn btn--primary btn--sm" onClick={submit} disabled={busy}>
               {editNum !== null ? <><Pencil size={13} /> Speichern</> : <><Plus size={13} /> Regel</>}
             </button>
             {editNum !== null && <button className="btn btn--ghost btn--sm" onClick={cancelEdit}><X size={13} /> Abbrechen</button>}
           </div>
+
+          {(rules.length > 0 || disabled.length > 0) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 10px' }}>
+              <input className="input input--rect" placeholder="Regeln filtern (Name, Port, IP …)" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 260 }} />
+              {filter && <button className="btn btn--ghost btn--sm" onClick={() => setFilter('')}><X size={12} /></button>}
+              <span style={{ fontSize: 11.5, color: 'var(--color-faint)', marginLeft: 'auto' }}>{shownRules.length} aktiv{disabled.length ? ` · ${shownDisabled.length} deaktiviert` : ''}</span>
+            </div>
+          )}
+
           {rules.length === 0 ? (
             <div className="text-muted text-sm" style={{ padding: '10px 0' }}>Keine Regeln.</div>
           ) : (
             <table className="dtable">
-              <thead><tr><th>#</th><th>Ziel</th><th>Aktion</th><th>Richtung</th><th>Von</th><th style={{ width: 80 }}></th></tr></thead>
+              <thead><tr><th style={{ width: 30 }}>#</th><th>Name</th><th>Ziel</th><th>Aktion</th><th>Richtung</th><th>Von</th><th style={{ width: 56 }}>Aktiv</th><th style={{ width: 70 }}></th></tr></thead>
               <tbody>
-                {rules.map((r) => (
+                {shownRules.map((r) => (
                   <tr key={r.num} style={editNum === r.num ? { background: 'var(--color-accent-subtle, rgba(99,102,241,.08))' } : undefined}>
-                    <td className="dtable__mono">{r.num}</td>
-                    <td style={{ fontWeight: 600 }}>{r.to}</td>
+                    <td className="dtable__mono text-muted">{r.num}</td>
+                    <td style={{ fontWeight: 600 }}>{r.comment || <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}>–</span>}</td>
+                    <td className="dtable__mono">{r.to}</td>
                     <td><span className={`badge badge--${r.action === 'ALLOW' ? 'running' : 'dead'}`}>{r.action}</span></td>
                     <td className="text-muted" style={{ fontSize: 12 }}>{DIR_LABEL[r.direction ?? ''] ?? r.direction}</td>
                     <td className="dtable__mono text-muted">{r.from}</td>
+                    <td><div onClick={(e) => e.stopPropagation()}><Switch checked onChange={() => void disableRule(r)} /></div></td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <button className="btn btn--ghost btn--icon btn--sm" title="Bearbeiten" onClick={() => startEdit(r)}><Pencil size={12} /></button>
@@ -236,6 +285,30 @@ function FirewallPanel() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {/* Deaktivierte Regeln (Parkbucht) */}
+          {shownDisabled.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', marginBottom: 6 }}>
+                Deaktivierte Regeln <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}>(nicht aktiv – jederzeit reaktivierbar)</span>
+              </div>
+              <table className="dtable">
+                <tbody>
+                  {shownDisabled.map((d) => (
+                    <tr key={d.id} style={{ opacity: 0.7 }}>
+                      <td style={{ fontWeight: 600 }}>{d.comment || <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}>–</span>}</td>
+                      <td className="dtable__mono">{d.to}</td>
+                      <td><span className="badge badge--stopped">{(d.action || '').toUpperCase()}</span></td>
+                      <td className="text-muted" style={{ fontSize: 12 }}>{DIR_LABEL[d.direction] ?? d.direction}</td>
+                      <td className="dtable__mono text-muted">{/anywhere/i.test(d.from) || !d.from ? 'Anywhere' : d.from}</td>
+                      <td style={{ width: 56 }}><div onClick={(e) => e.stopPropagation()}><Switch checked={false} onChange={() => void enableRule(d.id)} /></div></td>
+                      <td style={{ width: 40 }}><button className="btn btn--danger btn--icon btn--sm" title="Verwerfen" onClick={() => discardDisabled(d.id)}><Trash2 size={12} /></button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}

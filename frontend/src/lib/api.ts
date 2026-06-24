@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallLogEntry, SecurityScan, SshStatus, VmNetwork,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
@@ -242,12 +242,16 @@ export const api = {
   },
 
   firewall: {
-    list: () => req<{ available: boolean; active: boolean; logging: boolean; rules: FirewallRule[]; message?: string; listening?: string }>('/api/firewall'),
-    add: (data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string }) =>
+    list: () => req<{ available: boolean; active: boolean; logging: boolean; rules: FirewallRule[]; disabled?: FirewallDisabledRule[]; message?: string; listening?: string }>('/api/firewall'),
+    add: (data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string; comment?: string }) =>
       req('/api/firewall', { method: 'POST', body: JSON.stringify(data) }),
-    update: (num: number, data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string }) =>
+    update: (num: number, data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string; comment?: string }) =>
       req(`/api/firewall/${num}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (num: number) => req(`/api/firewall/${num}`, { method: 'DELETE' }),
+    disable: (num: number, data: { action?: string; port?: string; proto?: string; from?: string; direction?: string; comment?: string; profile?: string }) =>
+      req(`/api/firewall/${num}/disable`, { method: 'POST', body: JSON.stringify(data) }),
+    enableDisabled: (id: number) => req(`/api/firewall/disabled/${id}/enable`, { method: 'POST' }),
+    removeDisabled: (id: number) => req(`/api/firewall/disabled/${id}`, { method: 'DELETE' }),
     toggle: (enable: boolean) => req('/api/firewall/toggle', { method: 'POST', body: JSON.stringify({ enable }) }),
     setLogging: (enable: boolean) => req<{ ok: boolean; logging: boolean }>('/api/firewall/logging', { method: 'POST', body: JSON.stringify({ enable }) }),
     log: (limit = 500) => req<{ available: boolean; logging: boolean; source?: string; entries: FirewallLogEntry[]; total?: number; blocked?: number; message?: string }>(`/api/firewall/log?limit=${limit}`),

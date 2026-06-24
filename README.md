@@ -74,8 +74,10 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Docker**: Netzwerke (bridge / macvlan / ipvlan), VLAN-Tag, isolierte Netze, feste IP + Aliasse
 - **VMs**: libvirt-Netzwerke (NAT / isoliert / Bridge + VLAN), VM anhängen
 - **Firewall (ufw)**: Regeln allow/deny/reject nach Port / Protokoll / Quell-IP / **Richtung
-  (eingehend/ausgehend)** – Regeln anlegen, **bearbeiten** und löschen; beim Aktivieren werden
-  SSH und die Web-Ports (80/443) automatisch freigegeben (kein Aussperren der Oberfläche)
+  (eingehend/ausgehend)** – Regeln mit **Namen** anlegen, **bearbeiten**, **filtern** und löschen;
+  **mehrere Quell-Adressen** auf einmal (Komma-getrennt → je eine Regel); Regeln einzeln
+  **temporär deaktivieren/reaktivieren** (Parkbucht); beim Aktivieren werden SSH und die
+  Web-Ports (80/443) automatisch freigegeben (kein Aussperren der Oberfläche)
 - **Verbindungsversuche** (eigener Tab, persistente **Protokoll-DB**): zeigt protokollierte
   Zugriffe (wer von wo, blockiert/erlaubt), filterbar nach Aktion, Richtung, IP/Port;
   **Hover-Tipps** zum Ziel-Port (welcher Dienst, ob riskant), **CSV-Export** (Auswahl/alle),

@@ -330,6 +330,18 @@ export interface FirewallRule {
   action: string;
   direction?: string; // IN | OUT | ''
   from: string;
+  comment?: string;
+}
+
+export interface FirewallDisabledRule {
+  id: number;
+  action: string;
+  direction: string;
+  port: string;
+  proto: string;
+  from: string;
+  to: string;
+  comment: string;
 }
 
 export interface FirewallLogEntry {
