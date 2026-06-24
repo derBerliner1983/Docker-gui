@@ -14,19 +14,22 @@ Designsprache: eigenes Design-System (Emerald-Akzent, Inter-Font, Hell/Dunkel, G
 
 ```
 Browser (überall)
-    │ HTTPS + WebSocket
+    │ HTTPS + WebSocket + SSE
     ▼
-Docker GUI Backend   ← läuft als systemd-Dienst auf dem Server
+Core-Hub Backend   ← läuft als systemd-Dienst auf dem Server
 ├── Fastify (Node.js/TypeScript)
-├── JWT-Auth + bcrypt
-├── SQLite (Users, Audit-Log, Config)
-├── Docker Engine API (dockerode)
-└── System-Befehle (systemd, Samba, Backup, qemu/libvirt)
-    │
-    ├── /var/run/docker.sock
-    ├── systemctl
-    ├── smbd
-    └── virsh / qemu-img
+├── JWT-Auth + bcrypt + 2FA (TOTP)
+├── SQLite (Users, Audit-Log, Proxy-Hosts, Backup-Pläne, Alarm-Regeln …)
+├── Docker Engine API (dockerode) – Container, Images, Netzwerke
+├── systeminformation – CPU, RAM, Disk, Netzwerk, GPU (NVIDIA + AMD/APU)
+└── System-Befehle über sudoers-Allowlist
+    ├── systemctl  (Dienste, Samba, Ollama, SSH …)
+    ├── smbd / smbpasswd  (Samba + UFW-Lifecycle)
+    ├── ufw  (Firewall-Regeln, Samba-LAN-Freigabe)
+    ├── caddy  (HTTPS-Proxy, interne CA)
+    ├── virsh / qemu-img  (VMs + Snapshots)
+    ├── ollama  (KI-Modelle, GGUF-Downloads)
+    └── tar / rsync / clamav / apt / dnf
 ```
 
 **Installation:** Ein einziges `bash install.sh` → systemd-Service aktiv.
@@ -200,12 +203,44 @@ Font: Inter.
 | **HTTPS überall** (Caddy: HTTP→HTTPS-Redirect, Core-Hub nur auf localhost) | ✅ |
 | **Deinstallation** (`install.sh --deinstall [--purge]`) + `--update`-Modus | ✅ |
 
+### ✅ Phase 12 – Datei-Manager & 1-Klick-Update (implementiert)
+
+| Feature | Status |
+|---|---|
+| **Datei-Manager** (Verzeichnisbaum, Textdateien direkt bearbeiten) | ✅ |
+| Hochladen, Ordner anlegen, umbenennen, löschen, herunterladen | ✅ |
+| **Rechte (chmod) und Eigentümer/Gruppe** anzeigen und ändern – auch in `/etc`, `/opt` via sudoers | ✅ |
+| **1-Klick-Update in der Oberfläche** (`git pull` + `install.sh --update`, Live-Log) | ✅ |
+| Update-Prüfung gegen GitHub-Releases und `VERSION`-Datei (funktioniert auch bei privaten Repos) | ✅ |
+| **Konfigurations-Migration** (DB + Caddy-Zertifikate + SMB als `.tar.gz` exportieren/importieren) | ✅ |
+| **Container-Migration von Unraid** (Schritt-für-Schritt-Anleitung, `docs/MIGRATION.md`) | ✅ |
+
+### ✅ Phase 13 – GPU, KI/Ollama, Samba-Lifecycle & SSE-Logs (v0.7.1)
+
+| Feature | Status |
+|---|---|
+| **GPU-Dashboard-Panel** (NVIDIA via nvidia-smi, AMD via amdgpu sysfs; APU/UMA korrekt als Unified Memory) | ✅ |
+| GPU-Auslastung (%) + VRAM/UMA-Verbrauch als Donuts neben CPU/RAM auf dem Dashboard | ✅ |
+| **KI/Ollama-Seite** (Status, Modell-Liste, VRAM pro Modell, Start/Stop-Schalter) | ✅ |
+| **Hardware-Analyse**: RAM, GPU, VRAM; erkennt APU/UMA (Ryzen AI MAX, Apple Silicon-ähnlich) | ✅ |
+| **Empfohlene Modellgröße** (Formel: `(Basis − 4 GB) × 0,7`) mit aufklappbarer Erklärung | ✅ |
+| **Ollama Zugriffsmodus**: lokal (`127.0.0.1`) oder LAN (`0.0.0.0`) per Schalter – schreibt systemd-Override | ✅ |
+| Zugriffs-URLs (`http://IP:Port`, `http://Hostname:Port`) direkt in der UI; HTTPS-URL wenn Caddy-Proxy aktiv | ✅ |
+| **Beliebte Modell-Empfehlungen** (zuerst angezeigt), **HuggingFace GGUF-Suche** (darunter) | ✅ |
+| **GGUF-Quantisierungsselektor**: wähle Q4_K_M / Q5_K_M / Q8_0 … beim HF-Laden (via `hf.co/<repo>:<quant>`) | ✅ |
+| **Gleichzeitige Downloads**: mehrere Modelle parallel laden, Status pro Modell (Set-basiert) | ✅ |
+| **Samba Auto-Lifecycle**: startet automatisch + öffnet LAN-Firewall (Ports 137–139, 445) beim ersten Eintrag | ✅ |
+| Samba stoppt automatisch + blockiert Firewall wenn alle Freigaben entfernt werden | ✅ |
+| Internet-Zugang für Samba nur explizit über Sicherheitseinstellungen | ✅ |
+| **Container-Logs als SSE-Stream** (`follow: true`, kein Polling mehr) – Logs in Echtzeit | ✅ |
+| **Taskmanager Dienste-Tab**: systemd-Dienste starten / stoppen / neustarten / Autostart | ✅ |
+
 ### ⏳ Geplant / Ideen (kommende Phasen)
 
 | Feature | Status |
 |---|---|
 | Mehrsprachigkeit (EN/DE) | ⏳ |
-| Container-Logs als echter SSE-Stream (statt Polling) | ⏳ |
+| Reverse-Proxy: weitere Backends (nginx/Traefik) | ⏳ |
 
 ---
 

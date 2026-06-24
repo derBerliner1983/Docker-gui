@@ -2,9 +2,9 @@
 
 # ⬡ Core-Hub
 
-**Die Zentrale deines Linux-Servers.**
+**Die Zentrale deines Linux-Servers.** · `v0.7.1`
 
-Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Sicherheit & mehr.
+Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Sicherheit, KI & mehr.
 Alles im Browser. Ohne SSH, ohne Desktop. Funktional wie Unraid, in einem modernen eigenen Design.
 
 </div>
@@ -25,9 +25,9 @@ Alles im Browser. Ohne SSH, ohne Desktop. Funktional wie Unraid, in einem modern
 ## Was ist Core-Hub?
 
 Ein selbst-gehostetes Verwaltungs-Dashboard für Linux-Server. Du steuerst Docker-Container,
-virtuelle Maschinen, Netzwerke/VLANs, Backups, Benutzer, SMB-Freigaben, System-Updates und die
-Server-Sicherheit – komplett bequem über die Weboberfläche. Helles und dunkles Design,
-aufklappbare Panels, läuft auf jedem Gerät (PC, Handy, Tablet).
+virtuelle Maschinen, Netzwerke/VLANs, Backups, Benutzer, SMB-Freigaben, System-Updates,
+lokale KI-Modelle (Ollama) und die Server-Sicherheit – komplett bequem über die Weboberfläche.
+Helles und dunkles Design, aufklappbare Panels, läuft auf jedem Gerät (PC, Handy, Tablet).
 
 Core-Hub läuft **direkt auf Linux** (als systemd-Dienst), nicht in einem Container – nur so kann
 es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
@@ -140,13 +140,14 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
   (`/etc`, `/opt`, …) über die sudoers-Allowlist
 
 ### 🤖 KI / Ollama
-- Ollama-Status, installierte Modelle, VRAM-Anzeige pro Modell
+- Ollama-Status, installierte Modelle, VRAM-Anzeige pro Modell, Start/Stop-Schalter
 - **Hardware-Erkennung**: CPU, RAM, GPU + VRAM; erkennt APU/UMA (Ryzen AI MAX) korrekt; berechnet die **empfohlene maximale Modellgröße** (GB) mit aufklappbarer Erklärung der Formel
-- **Zugriffsmodus**: Ollama auf lokal (127.0.0.1) oder LAN (0.0.0.0) schalten – schreibt automatisch den systemd-Override und startet den Dienst neu
-- **Modell-Suche**: Beliebte Empfehlungen oben, HuggingFace-Suche darunter
-- **GGUF-Quantisierung**: beim Laden eines HF-Modells wird ein Quantisierungs-Selector angezeigt (Q4_K_M, Q5_K_M, Q8_0 …); lädt via `hf.co/<repo>:<quant>` direkt in Ollama
+- **Zugriffsmodus**: Ollama auf lokal (`127.0.0.1`) oder LAN (`0.0.0.0`) schalten – schreibt automatisch den systemd-Override und startet den Dienst neu
+- **Zugriffs-URLs**: `http://IP:11434` und `http://Hostname:11434` direkt im UI anklickbar; falls ein Caddy-HTTPS-Proxy für Port 11434 eingerichtet ist, erscheint automatisch die `https://`-URL (grün)
+- **Modell-Suche**: Beliebte Empfehlungen zuerst, HuggingFace GGUF-Suche darunter
+- **GGUF-Quantisierungsselektor**: beim Laden eines HF-Modells Quantisierung wählen (Q4_K_M, Q5_K_M, Q8_0 …); lädt via `hf.co/<repo>:<quant>` direkt in Ollama
 - **Gleichzeitige Downloads**: mehrere Modelle parallel laden, Status pro Modell
-- Modelle laden / entladen / löschen
+- Modelle laden / löschen / Details anzeigen (Parameter, Quantisierung, Kontextfenster, Fähigkeiten)
 
 ### ⚙️ Einstellungen, Version & Migration
 - Passwort & 2FA verwalten, System-Info, erkannte Module
@@ -209,6 +210,7 @@ sudo apt install caddy                                       # automatisches HTT
 sudo apt install ufw                                         # Firewall
 sudo apt install fail2ban unattended-upgrades                # Härtung
 sudo apt install clamav clamav-daemon                        # Virenschutz
+curl -fsSL https://ollama.com/install.sh | sh               # KI / Ollama
 ```
 
 Fehlt ein Tool, zeigt das jeweilige Modul einen Hinweis statt eines Fehlers.
@@ -256,8 +258,10 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | Auth | JWT, bcrypt, Rollen (Admin/Viewer), 2FA/TOTP (RFC 6238) |
 | Datenbank | SQLite (better-sqlite3) |
 | HTTPS | Caddy (interne CA / Let's Encrypt) |
-| Design | Eigenes Design-System (Design-Tokens) |
-| Deployment | systemd-Service, install.sh, sudoers-Allowlist |
+| GPU-Monitoring | NVIDIA (nvidia-smi), AMD (amdgpu sysfs), APU/UMA-Erkennung |
+| KI | Ollama REST API, HuggingFace API (GGUF-Suche), systemd-Override |
+| Design | Eigenes Design-System (Design-Tokens, SSE-Logs, xterm.js) |
+| Deployment | systemd-Service, install.sh, sudoers-Allowlist, `.deb`-Builder |
 
 ---
 
