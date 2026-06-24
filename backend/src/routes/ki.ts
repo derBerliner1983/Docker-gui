@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { hasBinary, privExec, safeExec } from '../lib/privilege';
+import { proxyQueries } from '../db/index';
 
 const OLLAMA = 'http://127.0.0.1:11434';
 
@@ -222,7 +223,10 @@ export async function kiRoutes(fastify: FastifyInstance) {
     const lanIps = safeExec(
       "ip -4 addr show 2>/dev/null | grep 'inet ' | grep -vE '127\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.' | awk '{print $2}' | cut -d'/' -f1"
     ).split('\n').map((s) => s.trim()).filter((s) => /^\d+\.\d+\.\d+\.\d+$/.test(s));
-    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps });
+    // Check if Caddy has an HTTPS proxy entry pointing at Ollama's port
+    const ollamaProxy = proxyQueries.getAll.all().find((h) => h.target_port === 11434 && h.enabled);
+    const httpsUrl = ollamaProxy?.https ? `https://${ollamaProxy.hostname}` : null;
+    reply.send({ mode: host.startsWith('0.0.0.0') ? 'lan' : 'local', host, port, hostname, lanIps, httpsUrl });
   });
 
   fastify.post<{ Body: { mode: 'local' | 'lan' } }>('/api/ki/access', { preHandler: requireAdmin }, async (req, reply) => {

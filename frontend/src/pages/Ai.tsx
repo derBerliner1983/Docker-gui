@@ -27,7 +27,7 @@ function inferCaps(name: string, family?: string): Cap[] {
   return caps;
 }
 
-function OllamaUrl({ href }: { href: string }) {
+function OllamaUrl({ href, https }: { href: string; https?: boolean }) {
   return (
     <a
       href={href}
@@ -36,9 +36,11 @@ function OllamaUrl({ href }: { href: string }) {
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 4,
         fontSize: 11, fontFamily: 'var(--font-mono)',
-        color: 'var(--color-accent)', textDecoration: 'none',
-        background: 'rgba(99,102,241,.08)', border: '1px solid rgba(99,102,241,.25)',
-        borderRadius: 4, padding: '1px 7px',
+        color: https ? 'var(--color-success)' : 'var(--color-accent)',
+        textDecoration: 'none',
+        background: https ? 'rgba(16,185,129,.08)' : 'rgba(99,102,241,.08)',
+        border: `1px solid ${https ? 'rgba(16,185,129,.3)' : 'rgba(99,102,241,.25)'}`,
+        borderRadius: 4, padding: '1px 7px', whiteSpace: 'nowrap',
       }}
     >
       {href} <ExternalLink size={9} />
@@ -453,28 +455,27 @@ export function Ai() {
             </div>
           </div>
           {/* Netzwerkzugang */}
-          <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px 10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
-              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
-              <button
-                className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
-                disabled={accessBusy}
-                onClick={() => void changeAccess('local')}
-              >
-                <WifiOff size={11} /> Nur lokal
-              </button>
-              <button
-                className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
-                disabled={accessBusy}
-                onClick={() => void changeAccess('lan')}
-              >
-                <Globe size={11} /> LAN
-              </button>
-              {accessBusy && <span className="spinner" style={{ width: 13, height: 13 }} />}
-            </div>
+          <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
+            <button
+              className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
+              disabled={accessBusy}
+              onClick={() => void changeAccess('local')}
+            >
+              <WifiOff size={11} /> Nur lokal
+            </button>
+            <button
+              className={`btn btn--sm ${access?.mode === 'lan' ? 'btn--primary' : 'btn--outline'}`}
+              disabled={accessBusy}
+              onClick={() => void changeAccess('lan')}
+            >
+              <Globe size={11} /> LAN
+            </button>
             {access && (
-              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+              <>
+                <div style={{ width: 1, height: 14, background: 'var(--color-border)', flexShrink: 0 }} />
+                {access.httpsUrl && <OllamaUrl href={access.httpsUrl} https />}
                 {access.mode === 'local' ? (
                   <>
                     <OllamaUrl href={`http://127.0.0.1:${access.port}`} />
@@ -482,17 +483,15 @@ export function Ai() {
                   </>
                 ) : (
                   <>
-                    {access.lanIps.slice(0, 3).map((ip) => (
+                    {access.lanIps.slice(0, 2).map((ip) => (
                       <OllamaUrl key={ip} href={`http://${ip}:${access.port}`} />
                     ))}
                     {access.hostname && <OllamaUrl href={`http://${access.hostname}:${access.port}`} />}
-                    {access.lanIps.length === 0 && !access.hostname && (
-                      <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>http://&lt;server-ip&gt;:{access.port}</span>
-                    )}
                   </>
                 )}
-              </div>
+              </>
             )}
+            {accessBusy && <span className="spinner" style={{ width: 13, height: 13 }} />}
           </div>
         </div>
 
