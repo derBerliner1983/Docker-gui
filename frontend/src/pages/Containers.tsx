@@ -110,13 +110,29 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
             onChange={(e) => setForm((f) => ({ ...f, restart: e.target.value }))}
             style={{ cursor: 'pointer' }}
           >
-            <option value="unless-stopped">unless-stopped</option>
-            <option value="always">always</option>
-            <option value="on-failure">on-failure</option>
-            <option value="no">no</option>
+            <option value="unless-stopped">Außer wenn manuell gestoppt</option>
+            <option value="always">Immer neu starten</option>
+            <option value="on-failure">Nur bei Fehler</option>
+            <option value="no">Nie (kein Autostart)</option>
           </select>
         </div>
-        {field('category', 'Kategorie', 'z.B. Medien')}
+        {field('category', 'Gruppe / Kategorie', 'z.B. Datenbanken')}
+      </div>
+      <div className="form-group">
+        <label className="form-label">Icon-URL (optional)</label>
+        <input
+          className="input input--rect"
+          placeholder="https://…/icon.png – leer = Buchstaben-Symbol"
+          value={form.icon ?? ''}
+          onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
+        />
+        {form.icon ? (
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--color-subtle)' }}>
+            <img src={form.icon.replace(/^http:\/\//i, 'https://')} alt="" style={{ width: 22, height: 22, objectFit: 'contain', borderRadius: 4, background: '#fff' }}
+              onError={(e) => { (e.currentTarget.style.display = 'none'); }} />
+            Vorschau
+          </div>
+        ) : null}
       </div>
       <div className="form-group">
         <label className="form-label">Ports (eine pro Zeile: host:container)</label>
@@ -196,6 +212,15 @@ export function Containers() {
   const [updates, setUpdates] = useState<Record<string, { hasUpdate: boolean | null; image: string }>>({});
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<Container | null>(null);
+  // Aufgeklappte/zugeklappte Gruppen (in localStorage gemerkt)
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('container-groups-collapsed') || '[]')); }
+    catch { return new Set(); }
+  });
+  // Entwurf für Icon/Gruppe im aufgeklappten Container
+  const [metaIcon, setMetaIcon] = useState('');
+  const [metaCat, setMetaCat] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -230,6 +255,36 @@ export function Containers() {
     }
   };
 
+  // Container auf-/zuklappen und dabei den Icon/Gruppe-Entwurf vorbelegen
+  const toggleExpand = (c: Container) => {
+    if (expandedId === c.id) { setExpandedId(null); return; }
+    setExpandedId(c.id);
+    setMetaIcon(c.icon ?? '');
+    setMetaCat(c.category ?? '');
+  };
+
+  const saveMeta = async (c: Container) => {
+    setSavingMeta(true);
+    try {
+      await api.containers.setIcon(c.id, metaIcon.trim());
+      await api.containers.setCategory(c.id, metaCat.trim());
+      await load(true);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Fehler beim Speichern');
+    } finally {
+      setSavingMeta(false);
+    }
+  };
+
+  const toggleGroup = (name: string) => {
+    setCollapsedGroups((prev) => {
+      const n = new Set(prev);
+      if (n.has(name)) n.delete(name); else n.add(name);
+      try { localStorage.setItem('container-groups-collapsed', JSON.stringify([...n])); } catch { /* */ }
+      return n;
+    });
+  };
+
   const filtered = containers.filter((c) => {
     if (filter === 'running') return c.state === 'running';
     if (filter === 'stopped') return c.state !== 'running';
@@ -237,6 +292,165 @@ export function Containers() {
   });
 
   const running = containers.filter((c) => c.state === 'running').length;
+
+  // Container nach Gruppe/Kategorie bündeln (ohne Kategorie → "Ohne Gruppe", ganz unten)
+  const GROUP_NONE = 'Ohne Gruppe';
+  const groupMap = new Map<string, Container[]>();
+  for (const c of filtered) {
+    const key = (c.category && c.category.trim()) || GROUP_NONE;
+    if (!groupMap.has(key)) groupMap.set(key, []);
+    groupMap.get(key)!.push(c);
+  }
+  const groups = [...groupMap.entries()].sort((a, b) => {
+    if (a[0] === GROUP_NONE) return 1;
+    if (b[0] === GROUP_NONE) return -1;
+    return a[0].localeCompare(b[0], 'de');
+  });
+  const hasGroups = groups.some(([name]) => name !== GROUP_NONE);
+
+  const renderCard = (c: Container) => {
+    const busy = actionLoading[c.id];
+    const isExpanded = expandedId === c.id;
+    return (
+      <div className="container-card" key={c.id}>
+        <div className="container-card__header">
+          <ContainerAvatar container={c} />
+          <div className="container-card__info">
+            <Link to={`/containers/${c.id}`} className="container-card__name" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {c.name} <ExternalLink size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
+            </Link>
+            <div className="container-card__image">{c.image}</div>
+          </div>
+          {updates[c.id]?.hasUpdate && (
+            <span className="badge badge--restarting" title="Neues Image verfügbar">
+              <ArrowUpCircle size={11} /> Update
+            </span>
+          )}
+          <ContainerBadge state={c.state} />
+          <button
+            className="icon-btn"
+            onClick={() => toggleExpand(c)}
+            style={{ marginLeft: 4 }}
+            title={isExpanded ? 'Zuklappen' : 'Details / Icon & Gruppe'}
+          >
+            <ChevronDown size={14} style={{ transform: isExpanded ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
+          </button>
+        </div>
+
+        {c.ports.length > 0 && (
+          <div className="container-card__ports">
+            {c.ports.map((p) => {
+              const [hostPort] = p.split(':');
+              const href = `http://${window.location.hostname}:${hostPort}`;
+              return (
+                <a key={p} href={href} target="_blank" rel="noreferrer"
+                  className="port-chip"
+                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                  title={`Öffnen: ${href}`}>
+                  {p} <ExternalLink size={8} style={{ opacity: 0.6, flexShrink: 0 }} />
+                </a>
+              );
+            })}
+          </div>
+        )}
+
+        {isExpanded && (
+          <div style={{ padding: '0 16px 10px', fontSize: 11.5, color: 'var(--color-subtle)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <div><span style={{ color: 'var(--color-faint)' }}>ID: </span><span style={{ fontFamily: 'var(--font-mono)' }}>{c.shortId}</span></div>
+            <div><span style={{ color: 'var(--color-faint)' }}>Erstellt: </span>{timeAgo(c.created)}</div>
+            <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{germanStatus(c.status)}</div>
+            {c.ports.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                {c.ports.map((p) => {
+                  const [hostPort, containerPort] = p.split(':');
+                  const href = `http://${window.location.hostname}:${hostPort}`;
+                  return (
+                    <div key={p}>
+                      <span style={{ color: 'var(--color-faint)' }}>Port: </span>
+                      <a href={href} target="_blank" rel="noreferrer"
+                        style={{ color: 'var(--color-accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                        {window.location.hostname}:{hostPort}
+                      </a>
+                      <span style={{ color: 'var(--color-faint)' }}> → Container {containerPort}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Icon & Gruppe direkt bearbeiten */}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>Icon &amp; Gruppe</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {metaIcon.trim() ? (
+                  <img src={metaIcon.replace(/^http:\/\//i, 'https://')} alt="" style={{ width: 26, height: 26, objectFit: 'contain', borderRadius: 4, background: '#fff', flexShrink: 0 }} onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
+                ) : (
+                  <div style={{ width: 26, height: 26, borderRadius: 4, background: avatarColor(c.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{containerInitial(c.name)}</div>
+                )}
+                <input className="input input--rect" placeholder="Icon-URL (leer = Buchstabe)" value={metaIcon}
+                  onChange={(e) => setMetaIcon(e.target.value)} style={{ flex: 1, height: 32, fontSize: 12 }} />
+              </div>
+              <input className="input input--rect" placeholder="Gruppe / Kategorie (z.B. Datenbanken)" value={metaCat}
+                onChange={(e) => setMetaCat(e.target.value)} style={{ height: 32, fontSize: 12 }}
+                list="container-group-list" />
+              <datalist id="container-group-list">
+                {[...new Set(containers.map((x) => x.category).filter(Boolean))].map((g) => <option key={g} value={g!} />)}
+              </datalist>
+              <div>
+                <button className="btn btn--primary btn--sm" disabled={savingMeta} onClick={() => saveMeta(c)}>
+                  {savingMeta ? <span className="spinner" style={{ width: 11, height: 11 }} /> : null} Speichern
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="container-card__footer">
+          <span className="container-card__status-text">{germanStatus(c.status)}</span>
+
+          {c.state !== 'running' && (
+            <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={!!busy}
+              onClick={() => action(c.id, 'start', () => api.containers.start(c.id))}>
+              {busy === 'start' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Play size={12} />}
+            </button>
+          )}
+          {c.state === 'running' && (
+            <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={!!busy}
+              onClick={() => action(c.id, 'stop', () => api.containers.stop(c.id))}>
+              {busy === 'stop' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Square size={12} />}
+            </button>
+          )}
+          <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={!!busy}
+            onClick={() => action(c.id, 'restart', () => api.containers.restart(c.id))}>
+            {busy === 'restart' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={12} />}
+          </button>
+          {c.state === 'running' && (
+            <button className="btn btn--ghost btn--icon btn--sm" title="Konsole im Container öffnen"
+              onClick={() => { setExecContainer(c); }}>
+              <SquareTerminal size={12} />
+            </button>
+          )}
+          <button className="btn btn--ghost btn--icon btn--sm" title="Logs" onClick={() => { setLogContainer(c); }}>
+            <ScrollText size={12} />
+          </button>
+          {updates[c.id]?.hasUpdate && (
+            <button className="btn btn--ghost btn--icon btn--sm" title="Neues Image laden (Update)"
+              style={{ color: 'var(--color-warning)' }} disabled={!!busy}
+              onClick={() => action(c.id, 'pull', async () => { await api.containers.pull(c.id); await checkUpdates(); })}>
+              {busy === 'pull' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={12} />}
+            </button>
+          )}
+          <Link to={`/containers/${c.id}`} className="btn btn--ghost btn--icon btn--sm" title="Konfiguration bearbeiten">
+            <Pencil size={12} />
+          </Link>
+          <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={!!busy}
+            onClick={() => setDeleteConfirm(c)}>
+            {busy === 'remove' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -283,157 +497,32 @@ export function Containers() {
             <div className="empty-state__desc">Erstelle deinen ersten Container mit dem Button oben rechts.</div>
           </div>
         ) : (
-          <div className="container-grid">
-            {filtered.map((c) => {
-              const busy = actionLoading[c.id];
-              const isExpanded = expandedId === c.id;
-              return (
-                <div className="container-card" key={c.id}>
-                  <div className="container-card__header">
-                    <ContainerAvatar container={c} />
-                    <div className="container-card__info">
-                      <Link to={`/containers/${c.id}`} className="container-card__name" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: 4 }}>
-                        {c.name} <ExternalLink size={10} style={{ opacity: 0.4, flexShrink: 0 }} />
-                      </Link>
-                      <div className="container-card__image">{c.image}</div>
-                    </div>
-                    {updates[c.id]?.hasUpdate && (
-                      <span className="badge badge--restarting" title="Neues Image verfügbar">
-                        <ArrowUpCircle size={11} /> Update
-                      </span>
-                    )}
-                    <ContainerBadge state={c.state} />
-                    <button
-                      className="icon-btn"
-                      onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                      style={{ marginLeft: 4 }}
-                    >
-                      <ChevronDown size={14} style={{ transform: isExpanded ? 'rotate(180deg)' : '', transition: 'transform 0.2s' }} />
+          hasGroups ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {groups.map(([name, items]) => {
+                const collapsed = collapsedGroups.has(name);
+                const groupRunning = items.filter((x) => x.state === 'running').length;
+                return (
+                  <div key={name}>
+                    <button className="container-group__header" onClick={() => toggleGroup(name)}>
+                      <ChevronDown size={15} style={{ transform: collapsed ? 'rotate(-90deg)' : '', transition: 'transform 0.2s', flexShrink: 0 }} />
+                      <span className="container-group__title">{name}</span>
+                      <span className="container-group__count">{groupRunning} läuft · {items.length}</span>
                     </button>
+                    {!collapsed && (
+                      <div className="container-grid" style={{ marginTop: 8 }}>
+                        {items.map(renderCard)}
+                      </div>
+                    )}
                   </div>
-
-                  {c.ports.length > 0 && (
-                    <div className="container-card__ports">
-                      {c.ports.map((p) => {
-                        const [hostPort] = p.split(':');
-                        const href = `http://${window.location.hostname}:${hostPort}`;
-                        return (
-                          <a key={p} href={href} target="_blank" rel="noreferrer"
-                            className="port-chip"
-                            style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 3 }}
-                            title={`Öffnen: ${href}`}>
-                            {p} <ExternalLink size={8} style={{ opacity: 0.6, flexShrink: 0 }} />
-                          </a>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {isExpanded && (
-                    <div style={{ padding: '0 16px 10px', fontSize: 11.5, color: 'var(--color-subtle)', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      <div><span style={{ color: 'var(--color-faint)' }}>ID: </span><span style={{ fontFamily: 'var(--font-mono)' }}>{c.shortId}</span></div>
-                      <div><span style={{ color: 'var(--color-faint)' }}>Erstellt: </span>{timeAgo(c.created)}</div>
-                      {c.category && <div><span style={{ color: 'var(--color-faint)' }}>Kategorie: </span>{c.category}</div>}
-                      <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{germanStatus(c.status)}</div>
-                      {c.ports.length > 0 && (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
-                          {c.ports.map((p) => {
-                            const [hostPort, containerPort] = p.split(':');
-                            const href = `http://${window.location.hostname}:${hostPort}`;
-                            return (
-                              <div key={p}>
-                                <span style={{ color: 'var(--color-faint)' }}>Port: </span>
-                                <a href={href} target="_blank" rel="noreferrer"
-                                  style={{ color: 'var(--color-accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                                  {window.location.hostname}:{hostPort}
-                                </a>
-                                <span style={{ color: 'var(--color-faint)' }}> → Container {containerPort}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="container-card__footer">
-                    <span className="container-card__status-text">{germanStatus(c.status)}</span>
-
-                    {c.state !== 'running' && (
-                      <button
-                        className="btn btn--ghost btn--icon btn--sm"
-                        title="Starten"
-                        disabled={!!busy}
-                        onClick={() => action(c.id, 'start', () => api.containers.start(c.id))}
-                      >
-                        {busy === 'start' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Play size={12} />}
-                      </button>
-                    )}
-                    {c.state === 'running' && (
-                      <button
-                        className="btn btn--ghost btn--icon btn--sm"
-                        title="Stoppen"
-                        disabled={!!busy}
-                        onClick={() => action(c.id, 'stop', () => api.containers.stop(c.id))}
-                      >
-                        {busy === 'stop' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Square size={12} />}
-                      </button>
-                    )}
-                    <button
-                      className="btn btn--ghost btn--icon btn--sm"
-                      title="Neustart"
-                      disabled={!!busy}
-                      onClick={() => action(c.id, 'restart', () => api.containers.restart(c.id))}
-                    >
-                      {busy === 'restart' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={12} />}
-                    </button>
-                    {c.state === 'running' && (
-                      <button
-                        className="btn btn--ghost btn--icon btn--sm"
-                        title="Konsole im Container öffnen"
-                        onClick={() => { setExecContainer(c); }}
-                      >
-                        <SquareTerminal size={12} />
-                      </button>
-                    )}
-                    <button
-                      className="btn btn--ghost btn--icon btn--sm"
-                      title="Logs"
-                      onClick={() => { setLogContainer(c); }}
-                    >
-                      <ScrollText size={12} />
-                    </button>
-                    {updates[c.id]?.hasUpdate && (
-                      <button
-                        className="btn btn--ghost btn--icon btn--sm"
-                        title="Neues Image laden (Update)"
-                        style={{ color: 'var(--color-warning)' }}
-                        disabled={!!busy}
-                        onClick={() => action(c.id, 'pull', async () => { await api.containers.pull(c.id); await checkUpdates(); })}
-                      >
-                        {busy === 'pull' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={12} />}
-                      </button>
-                    )}
-                    <Link
-                      to={`/containers/${c.id}`}
-                      className="btn btn--ghost btn--icon btn--sm"
-                      title="Konfiguration bearbeiten"
-                    >
-                      <Pencil size={12} />
-                    </Link>
-                    <button
-                      className="btn btn--danger btn--icon btn--sm"
-                      title="Löschen"
-                      disabled={!!busy}
-                      onClick={() => setDeleteConfirm(c)}
-                    >
-                      {busy === 'remove' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="container-grid">
+              {filtered.map(renderCard)}
+            </div>
+          )
         )}
       </main>
 

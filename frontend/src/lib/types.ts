@@ -415,4 +415,5 @@ export interface CreateContainerData {
   volumes?: string[];
   category?: string;
   restart?: string;
+  icon?: string;
 }

@@ -284,6 +284,22 @@ body {
 }
 .container-card__status-text { font-size: 11px; color: var(--color-subtle); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Container-Gruppen (aufklappbar) ───────────────── */
+.container-group__header {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border: 1px solid var(--color-border);
+  background: var(--color-surface-sunken); border-radius: var(--radius-sm);
+  cursor: pointer; color: var(--color-fg); font-family: var(--font-sans);
+  transition: border-color 0.12s, background 0.12s;
+}
+.container-group__header:hover { border-color: var(--color-border-strong); }
+.container-group__title { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+.container-group__count {
+  margin-left: auto; font-size: 11px; color: var(--color-muted);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill); padding: 1px 9px;
+}
+
 /* ── Filters ────────────────────────────────────── */
 .filter-tabs {
   display: inline-flex; gap: 2px; background: var(--color-surface-sunken);
@@ -549,9 +565,25 @@ body {
   .btn--md { height: 40px; padding: 0 16px; }
   .btn--sm { height: 36px; padding: 0 12px; }
   .icon-btn { width: 40px; height: 40px; }
+  /* Icon-Buttons müssen quadratisch bleiben – das obige btn--sm-Padding würde sie
+     sonst verzerren/abschneiden (Action-Icons auf Container-Karten "verschwinden"). */
+  .btn--icon, .btn--icon.btn--sm { width: 40px; height: 40px; padding: 0; flex-shrink: 0; }
   .switch__track { width: 44px; height: 26px; }
   .switch__thumb { width: 22px; height: 22px; top: 2px; left: 2px; }
   .switch input:checked + .switch__track .switch__thumb { transform: translateX(18px); }
+
+  /* Container-Karten-Footer: Aktionen klar sichtbar & tippbar.
+     Statustext bekommt eine eigene Zeile, die Buttons brechen darunter um und
+     erhalten einen sichtbaren Chip-Hintergrund (statt fast unsichtbarer Icons). */
+  .container-card__footer { flex-wrap: wrap; gap: 6px; padding: 10px; }
+  .container-card__status-text { flex: 1 1 100%; margin-bottom: 2px; }
+  .container-card__footer .btn--ghost,
+  .container-card__footer .btn--danger {
+    background: var(--color-surface-sunken);
+    border: 1px solid var(--color-border);
+    color: var(--color-fg);
+  }
+  .container-card__footer .btn--danger { color: var(--color-error); }
 
   /* Input heights */
   .input { height: 40px; }

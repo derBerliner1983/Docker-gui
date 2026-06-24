@@ -68,6 +68,8 @@ export const api = {
     pull: (id: string) => req(`/api/containers/${id}/pull`, { method: 'POST' }),
     setCategory: (id: string, category: string) =>
       req(`/api/containers/${id}/category`, { method: 'POST', body: JSON.stringify({ category }) }),
+    setIcon: (id: string, icon: string) =>
+      req(`/api/containers/${id}/icon`, { method: 'POST', body: JSON.stringify({ icon }) }),
     updates: () => req<{ updates: Record<string, { hasUpdate: boolean | null; image: string }> }>('/api/containers/updates'),
   },
 

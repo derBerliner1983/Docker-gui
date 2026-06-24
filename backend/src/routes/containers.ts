@@ -198,12 +198,12 @@ export async function containerRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post<{ Body: { image: string; name?: string; ports?: Record<string, string>; env?: string[]; volumes?: string[]; category?: string; restart?: string } }>(
+  fastify.post<{ Body: { image: string; name?: string; ports?: Record<string, string>; env?: string[]; volumes?: string[]; category?: string; restart?: string; icon?: string } }>(
     '/api/containers/create',
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
-        const { image, name, ports, env, volumes, category, restart } = req.body ?? {};
+        const { image, name, ports, env, volumes, category, restart, icon } = req.body ?? {};
         if (!image) return reply.status(400).send({ error: 'Image erforderlich' });
 
         // Ports kommen als Record<containerPort, hostPort> (tcp) vom Standard-Formular
@@ -217,6 +217,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
 
         await container.start();
         if (category) categoryQueries.set.run(container.id, category);
+        if (icon) categoryQueries.setIcon.run(container.id, icon);
         auditQueries.log.run(req.user.id, 'container.create', name ?? image);
 
         reply.status(201).send({ id: container.id });
@@ -326,6 +327,16 @@ export async function containerRoutes(fastify: FastifyInstance) {
     async (req, reply) => {
       const { category } = req.body ?? {};
       categoryQueries.set.run(req.params.id, category);
+      reply.send({ ok: true });
+    }
+  );
+
+  // Eigenes Icon (Bild-URL) je Container setzen oder entfernen (leerer String = zurücksetzen)
+  fastify.post<{ Params: { id: string }; Body: { icon: string } }>(
+    '/api/containers/:id/icon',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      categoryQueries.setIcon.run(req.params.id, req.body?.icon ?? '');
       reply.send({ ok: true });
     }
   );

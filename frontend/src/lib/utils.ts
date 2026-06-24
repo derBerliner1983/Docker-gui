@@ -60,6 +60,17 @@ function translateTime(t: string): string {
  * Übersetzt den Docker-Statustext (z. B. "Up About a minute (healthy)") ins
  * Deutsche – inklusive Zustand, Zeit und Gesundheitszustand.
  */
+/** Docker-Neustart-Richtlinie auf Deutsch anzeigen. */
+export function germanRestart(policy: string): string {
+  switch (policy) {
+    case 'unless-stopped': return 'Außer wenn manuell gestoppt';
+    case 'always':         return 'Immer';
+    case 'on-failure':     return 'Nur bei Fehler';
+    case 'no':             return 'Nie';
+    default:               return policy || 'Nie';
+  }
+}
+
 export function germanStatus(status: string): string {
   if (!status) return '';
   let s = status.trim();

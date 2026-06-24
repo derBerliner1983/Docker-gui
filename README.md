@@ -51,10 +51,14 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Nur für Admins, Authentifizierung über das Login-Cookie, läuft über die bestehende sudoers-Allowlist
 
 ### 🐳 Container
-- Anlegen (Wizard: Image, Ports, Env, Volumes, Kategorie)
-- Start / Stop / Restart / Delete
+- Anlegen (Wizard: Image, Ports, Env, Volumes, Gruppe, eigenes Icon)
+- Start / Stop / Restart / Delete · Neustart-Richtlinien auf Deutsch
+- **Gruppen / Kategorien**: Container in auf-/zuklappbare Gruppen sortieren
+  (z. B. „Datenbanken", „Automatisierung") – der Zustand bleibt gespeichert
+- **Eigenes Icon** pro Container (Bild-URL) oder automatisches Symbol
 - **Detailseite** pro Container: Live-Logs (aktualisiert alle 2,5 s), CPU-Verlaufsgraph, RAM-Anzeige, Ports, Volumes, Env-Variablen
 - **„Update verfügbar"-Erkennung** (Registry-Digest-Vergleich) + 1-Klick-Update
+- Action-Buttons (Start/Logs/Löschen …) auch auf dem Handy klar sichtbar & tippbar
 
 ### 🧩 App-Vorlagen (1-Klick-Installation)
 - Galerie beliebter Dienste – Nextcloud, Jellyfin, Plex, Pi-hole, AdGuard, Vaultwarden,

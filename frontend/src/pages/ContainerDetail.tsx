@@ -8,7 +8,7 @@ import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { Modal } from '../components/ui/Modal';
 import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
-import { formatBytes, germanStatus } from '../lib/utils';
+import { formatBytes, germanStatus, germanRestart } from '../lib/utils';
 import type { Container } from '../lib/types';
 
 const HISTORY_LEN = 40;
@@ -136,10 +136,10 @@ function EditModal({ container, inspect, onClose, onDone }: {
         <div className="form-group">
           <label className="form-label">Neustart-Richtlinie</label>
           <select className="input input--rect" value={restart} onChange={(e) => setRestart(e.target.value)} style={{ cursor: 'pointer' }}>
-            <option value="unless-stopped">unless-stopped</option>
-            <option value="always">always</option>
-            <option value="on-failure">on-failure</option>
-            <option value="no">no</option>
+            <option value="unless-stopped">Außer wenn manuell gestoppt</option>
+            <option value="always">Immer neu starten</option>
+            <option value="on-failure">Nur bei Fehler</option>
+            <option value="no">Nie (kein Autostart)</option>
           </select>
         </div>
       </div>
@@ -363,7 +363,7 @@ export function ContainerDetail() {
           <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>{germanStatus(container.status)}</span>
           <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>ID: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{container.shortId}</code></span>
           {inspect?.State.Pid ? <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>PID: {inspect.State.Pid}</span> : null}
-          {restartPolicy !== 'no' && <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>Restart: {restartPolicy}</span>}
+          {restartPolicy !== 'no' && <span style={{ fontSize: 12, color: 'var(--color-subtle)' }}>Neustart: {germanRestart(restartPolicy)}</span>}
         </div>
 
         {/* Stats cards */}
