@@ -69,11 +69,13 @@ function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFin
       </div>
       {isNetwork ? (
         <div style={{ display: 'flex', gap: 14, flexShrink: 0, alignSelf: 'center', alignItems: 'flex-start' }}>
+          <span style={{ width: 14, flexShrink: 0, alignSelf: 'center', display: 'inline-flex', justifyContent: 'center' }}>
+            {fixing && <span className="spinner" style={{ width: 14, height: 14 }} />}
+          </span>
           <AccessToggle label="LAN" Icon={Home} on={!!f.lan} disabled={fixing}
             onChange={(v) => onFix(`port-access:${f.port}:${v ? 1 : 0}:${f.internet ? 1 : 0}:${sn}`)} />
           <AccessToggle label="Internet" Icon={Globe} on={!!f.internet} disabled={fixing}
             onChange={(v) => onFix(`port-access:${f.port}:${f.lan ? 1 : 0}:${v ? 1 : 0}:${sn}`)} />
-          {fixing && <span className="spinner" style={{ width: 14, height: 14, alignSelf: 'center' }} />}
         </div>
       ) : f.fix ? (
         <button className="btn btn--outline btn--sm" style={{ flexShrink: 0, alignSelf: 'center' }} disabled={fixing} onClick={() => onFix(f.fix!)}>
