@@ -240,7 +240,7 @@ export function Security() {
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState<string | null>(null);
   const [netModalOpen, setNetModalOpen] = useState(false);
-  const [showZoneBadge, setShowZoneBadge] = useState(() => localStorage.getItem('security-zone-badge') !== 'false');
+  const [showZoneBadge, setShowZoneBadge] = useState(() => localStorage.getItem('security-zone-badge') === 'true');
 
   const toggleZoneBadge = () => {
     setShowZoneBadge((v) => { const next = !v; localStorage.setItem('security-zone-badge', String(next)); return next; });
