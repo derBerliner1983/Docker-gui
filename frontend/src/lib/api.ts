@@ -5,7 +5,7 @@ import type {
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
-  StoreSearchResult, StoreStatus,
+  StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -276,6 +276,14 @@ export const api = {
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? `HTTP ${res.status}`);
       return res.json() as Promise<{ ok: boolean; restored: string[]; note: string }>;
     },
+  },
+
+  ki: {
+    status: () => req<OllamaStatus>('/api/ki/status'),
+    models: () => req<{ models: OllamaModel[] }>('/api/ki/models'),
+    pull: (model: string) => req<{ ok: boolean; queued: boolean }>('/api/ki/pull', { method: 'POST', body: JSON.stringify({ model }) }),
+    remove: (name: string) => req('/api/ki/models/' + encodeURIComponent(name), { method: 'DELETE' }),
+    control: (action: 'start' | 'stop') => req('/api/ki/control', { method: 'POST', body: JSON.stringify({ action }) }),
   },
 
   cron: {

@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes, Files,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes, Files, BrainCircuit,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { api } from '../../lib/api';
@@ -57,11 +57,13 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const navigate = useNavigate();
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [kiInstalled, setKiInstalled] = useState(false);
 
   useEffect(() => {
     api.settings.version()
       .then((v) => { setVersion(v.current); setUpdateAvailable(v.updateAvailable); })
       .catch(() => {});
+    api.ki.status().then((s) => setKiInstalled(s.installed)).catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -108,6 +110,20 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
             ))}
           </div>
         ))}
+        {kiInstalled && (
+          <div className="sidebar__section">
+            <div className="sidebar__section-label">KI</div>
+            <NavLink
+              to="/ki"
+              className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
+              title={collapsed ? 'KI-Modelle' : undefined}
+              onClick={handleNavClick}
+            >
+              <BrainCircuit className="sidebar__item-icon" />
+              <span className="sidebar__item-label">KI-Modelle</span>
+            </NavLink>
+          </div>
+        )}
       </nav>
 
       <div className="sidebar__footer">

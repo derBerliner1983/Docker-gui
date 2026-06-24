@@ -21,6 +21,7 @@ import { Antivirus } from './pages/Antivirus';
 import { AppTemplates } from './pages/AppTemplates';
 import { Settings } from './pages/Settings';
 import { FileManager } from './pages/FileManager';
+import { Ai } from './pages/Ai';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -61,6 +62,7 @@ function AppRoutes() {
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="/files" element={<Protected><FileManager /></Protected>} />
+      <Route path="/ki" element={<Protected><Ai /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

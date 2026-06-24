@@ -366,11 +366,38 @@ export interface SecurityFinding {
   detail: string;
   recommendation: string;
   fix?: string;
+  link?: string;
+  linkLabel?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
   port?: string;
   lan?: boolean;
   internet?: boolean;
   subnet?: string;
+}
+
+export interface OllamaModelDetails {
+  parent_model: string;
+  format: string;
+  family: string;
+  families: string[];
+  parameter_size: string;
+  quantization_level: string;
+}
+
+export interface OllamaModel {
+  name: string;
+  model: string;
+  modified_at: string;
+  size: number;
+  digest: string;
+  details: OllamaModelDetails;
+}
+
+export interface OllamaStatus {
+  installed: boolean;
+  running: boolean;
+  version: string | null;
+  port: number;
 }
 
 export interface SecurityScan {

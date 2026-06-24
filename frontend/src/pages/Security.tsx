@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
@@ -42,6 +43,7 @@ function AccessToggle({ label, Icon, on, disabled, onChange }: { label: string; 
 }
 
 function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean; showZoneBadge?: boolean }) {
+  const nav = useNavigate();
   const meta = STATUS_META[f.status];
   const Icon = meta.icon;
   const zone = f.accessZone ? ZONE_META[f.accessZone] : null;
@@ -78,11 +80,20 @@ function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFin
           <AccessToggle label="Internet" Icon={Globe} on={!!f.internet} disabled={fixing}
             onChange={(v) => onFix(`port-access:${f.port}:${f.lan ? 1 : 0}:${v ? 1 : 0}:${sn}`)} />
         </div>
-      ) : f.fix ? (
-        <button className="btn btn--outline btn--sm" style={{ flexShrink: 0, alignSelf: 'center' }} disabled={fixing} onClick={() => onFix(f.fix!)}>
-          {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
-        </button>
-      ) : null}
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, alignSelf: 'center' }}>
+          {f.fix && (
+            <button className="btn btn--outline btn--sm" disabled={fixing} onClick={() => onFix(f.fix!)}>
+              {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
+            </button>
+          )}
+          {f.link && (
+            <button className="btn btn--outline btn--sm" style={{ fontSize: 11 }} onClick={() => nav(f.link!)}>
+              {f.linkLabel ?? 'Öffnen'} →
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

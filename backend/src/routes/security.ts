@@ -18,6 +18,8 @@ interface Finding {
   detail: string;
   recommendation: string;
   fix?: string;
+  link?: string;       // Frontend-Route zum Navigieren (statt/zusätzlich zu fix)
+  linkLabel?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
   port?: string;
   lan?: boolean;       // aktuell aus dem LAN erreichbar?
@@ -79,7 +81,7 @@ function firewallCheck(): Finding[] {
   const active = /Status:\s*active/i.test(status);
   return [active
     ? { id: 'fw', category: 'Firewall', title: 'Firewall aktiv', status: 'ok', detail: 'ufw active', recommendation: '' }
-    : { id: 'fw', category: 'Firewall', title: 'Firewall installiert, aber inaktiv', status: 'critical', detail: 'ufw inactive', recommendation: 'Aktiviere die Firewall (Standard: eingehend blockieren, SSH erlauben).', fix: 'firewall-install-enable' }];
+    : { id: 'fw', category: 'Firewall', title: 'Firewall installiert, aber inaktiv', status: 'critical', detail: 'ufw inactive', recommendation: 'Aktiviere die Firewall (Standard: eingehend blockieren, SSH erlauben).', fix: 'firewall-install-enable', link: '/networks', linkLabel: 'Zur Firewall' }];
 }
 
 function hardeningChecks(): Finding[] {
@@ -109,7 +111,7 @@ function updatesCheck(): Finding[] {
     const total = upg.split('\n').filter((l) => l.includes('/')).length;
     findings.push(
       secCount > 0
-        ? { id: 'updates-sec', category: 'Updates', title: `${secCount} Sicherheitsupdates verfügbar`, status: 'critical', detail: `${total} Updates gesamt`, recommendation: 'Spiele die Updates unter „System-Updates" oder mit "apt upgrade" ein.' }
+        ? { id: 'updates-sec', category: 'Updates', title: `${secCount} Sicherheitsupdates verfügbar`, status: 'critical', detail: `${total} Updates gesamt`, recommendation: 'Spiele die Updates ein.', link: '/updates', linkLabel: 'System-Updates öffnen' }
         : { id: 'updates-sec', category: 'Updates', title: 'Keine offenen Sicherheitsupdates', status: 'ok', detail: `${total} normale Updates`, recommendation: '' }
     );
     const unattended = safeExec('dpkg -l unattended-upgrades 2>/dev/null | grep -c ^ii').trim();
@@ -135,7 +137,7 @@ function intrusionCheck(): Finding[] {
 function antivirusCheck(): Finding[] {
   const installed = hasBinary('clamscan') || hasBinary('clamdscan');
   if (!installed) {
-    return [{ id: 'av', category: 'Virenschutz', title: 'Kein Virenschutz (ClamAV) installiert', status: 'warn', detail: 'clamav nicht gefunden', recommendation: 'Installiere ClamAV, um Dateien auf Schadsoftware prüfen zu können.', fix: 'antivirus-install' }];
+    return [{ id: 'av', category: 'Virenschutz', title: 'Kein Virenschutz (ClamAV) installiert', status: 'warn', detail: 'clamav nicht gefunden', recommendation: 'Installiere ClamAV, um Dateien auf Schadsoftware prüfen zu können.', fix: 'antivirus-install', link: '/antivirus', linkLabel: 'Zum Virenschutz' }];
   }
   const findings: Finding[] = [{ id: 'av', category: 'Virenschutz', title: 'Virenschutz installiert (ClamAV)', status: 'ok', detail: '', recommendation: '' }];
   const ts = safeExec("stat -c %Y /var/lib/clamav/daily.cvd /var/lib/clamav/daily.cld 2>/dev/null | sort -n | tail -1").trim();
@@ -182,6 +184,7 @@ const PORT_DB: Record<string, { name: string; zone: 'lan-only' | 'internet-ok' |
   '9000':  { name: 'Portainer',     zone: 'internet-conditional', risk: 'warn',     note: 'Admin-UI nur via gesichertem Reverse Proxy freigeben' },
   '1194':  { name: 'OpenVPN',       zone: 'internet-ok',          risk: 'ok',       note: 'VPN-Port – für Fernzugriff, verschlüsselt' },
   '51820': { name: 'WireGuard',     zone: 'internet-ok',          risk: 'ok',       note: 'WireGuard VPN – sicher für Internet-Zugriff' },
+  '11434': { name: 'Ollama AI',     zone: 'internet-conditional', risk: 'warn',     note: 'Ollama-API – kein Auth-Schutz im Standard; nur LAN oder via VPN freigeben' },
 };
 
 /** LAN-Subnetz des Servers aus der primären Netzwerkschnittstelle ermitteln. */

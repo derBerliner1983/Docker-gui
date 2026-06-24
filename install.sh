@@ -21,6 +21,23 @@ error() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 
 [ "$EUID" -ne 0 ] && error "Bitte als root ausführen: sudo bash install.sh"
 
+# ── KI-Erweiterung: Ollama installieren ──────────────────────────────────────
+if [ "${1:-}" = "--ki" ]; then
+  info "=== $APP_NAME – KI-Erweiterung (Ollama) ==="
+  if command -v ollama &>/dev/null; then
+    info "Ollama ist bereits installiert ($(ollama --version 2>/dev/null || echo 'unbekannte Version'))."
+  else
+    info "Lade und installiere Ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh
+    info "Ollama installiert."
+  fi
+  systemctl enable ollama 2>/dev/null || true
+  systemctl start  ollama 2>/dev/null || true
+  info "Ollama-Dienst aktiviert und gestartet (Port 11434)."
+  info "KI-Modelle jetzt unter dem Reiter 'KI-Modelle' in Core-Hub verwalten."
+  exit 0
+fi
+
 # ── Deinstallation ────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--deinstall" ]; then
   info "=== $APP_NAME Deinstallation ==="
