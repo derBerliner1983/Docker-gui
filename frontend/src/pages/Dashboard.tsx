@@ -176,7 +176,7 @@ export function Dashboard() {
                 </span>
               )}
             >
-              <div className="donut-group" style={{ marginTop: 12, alignItems: 'center' }}>
+              <div className="donut-group" style={{ marginTop: 12 }}>
                 {g.utilizationPct !== null && (
                   <div className="donut-item">
                     <Donut
@@ -190,7 +190,10 @@ export function Dashboard() {
                       centerSub="Last"
                       centerColor={donutColor(g.utilizationPct)}
                     />
-                    <div className="donut-item__caption">GPU-Last</div>
+                    <div className="donut-item__caption">
+                      <div style={{ fontWeight: 600 }}>GPU-Last</div>
+                      <div style={{ fontSize: 11, color: 'var(--color-subtle)' }}>&nbsp;</div>
+                    </div>
                   </div>
                 )}
                 {g.vramTotalMb !== null && g.vramUsedMb !== null && vramPct !== null && (
