@@ -168,7 +168,7 @@ export const api = {
   },
 
   shares: {
-    list: () => req<{ available: boolean; running: boolean; shares: Share[]; message?: string }>('/api/shares'),
+    list: () => req<{ available: boolean; running: boolean; shares: Share[]; firewallOpen?: boolean; message?: string }>('/api/shares'),
     create: (share: Share) => req('/api/shares', { method: 'POST', body: JSON.stringify(share) }),
     remove: (name: string) => req(`/api/shares/${encodeURIComponent(name)}`, { method: 'DELETE' }),
     service: (action: 'start' | 'stop' | 'restart') =>

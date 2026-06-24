@@ -7,6 +7,7 @@ import { auditQueries } from '../db/index';
 const SMB_CONF = '/etc/samba/smb.conf';
 const MANAGED_BEGIN = '# >>> core-hub managed shares >>>';
 const MANAGED_END = '# <<< core-hub managed shares <<<';
+const SAMBA_FW_COMMENT = 'core-hub-samba';
 
 interface Share {
   name: string;
@@ -58,6 +59,63 @@ function renderShare(s: Share): string {
 `;
 }
 
+// ── Firewall management ──────────────────────────────────────────────────────
+
+function ufwActive(): boolean {
+  if (!hasBinary('ufw')) return false;
+  return safeExec('ufw status 2>/dev/null').includes('Status: active');
+}
+
+/** Get directly connected LAN subnets (excluding docker/container bridges). */
+function getLanSubnets(): string[] {
+  const out = safeExec(
+    "ip -4 route show 2>/dev/null | grep -v default | grep -vE 'docker|cni|veth|virbr|flannel|weave|tun|wg' | awk '{print $1}' | grep -E '^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+/[0-9]+$'",
+  );
+  const subnets = out.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+  // Fall back to common RFC-1918 ranges so Samba is at least reachable from LAN
+  return subnets.length > 0 ? subnets : ['192.168.0.0/16', '10.0.0.0/8'];
+}
+
+/** Remove all UFW rules tagged with our comment (reverse-order loop). */
+function sambaFirewallBlock(): void {
+  if (!ufwActive()) return;
+  for (let i = 0; i < 40; i++) {
+    const out = safeExec('ufw status numbered 2>/dev/null');
+    const line = out.split('\n').find((l) => l.includes(SAMBA_FW_COMMENT));
+    if (!line) break;
+    const m = line.match(/^\[\s*(\d+)\]/);
+    if (!m) break;
+    try {
+      privExec(`ufw --force delete ${m[1]} 2>/dev/null`, { timeout: 5000 });
+    } catch { break; }
+  }
+}
+
+/** Open Samba ports (139, 445 TCP; 137, 138 UDP) for LAN subnets only. */
+function sambaFirewallAllow(): void {
+  if (!ufwActive()) return;
+  sambaFirewallBlock(); // remove stale rules first
+  const subnets = getLanSubnets();
+  for (const s of subnets) {
+    for (const p of ['139', '445']) {
+      try { privExec(`ufw allow from ${s} to any port ${p} proto tcp comment '${SAMBA_FW_COMMENT}'`, { timeout: 5000 }); } catch { /* */ }
+    }
+    for (const p of ['137', '138']) {
+      try { privExec(`ufw allow from ${s} to any port ${p} proto udp comment '${SAMBA_FW_COMMENT}'`, { timeout: 5000 }); } catch { /* */ }
+    }
+  }
+}
+
+/** Returns true if UFW has our Samba LAN rules (or UFW is inactive). */
+function isSambaFirewallOpen(): boolean {
+  if (!hasBinary('ufw')) return true;
+  const status = safeExec('ufw status 2>/dev/null');
+  if (!status.includes('Status: active')) return true;
+  return safeExec('ufw status numbered 2>/dev/null').includes(SAMBA_FW_COMMENT);
+}
+
+// ── Config write + auto-lifecycle ─────────────────────────────────────────────
+
 function writeShares(shares: Share[]): void {
   const conf = readConf();
   const start = conf.indexOf(MANAGED_BEGIN);
@@ -75,9 +133,25 @@ function writeShares(shares: Share[]): void {
   fs.writeFileSync(tmp, newConf);
   privExec(`cp ${tmp} ${SMB_CONF}`);
   fs.unlinkSync(tmp);
-  // Validate + reload
   safeExec('testparm -s 2>/dev/null >/dev/null');
-  privExec('systemctl reload smbd 2>/dev/null || systemctl restart smbd', { timeout: 12000 });
+
+  const wasRunning = safeExec('systemctl is-active smbd 2>/dev/null').trim() === 'active';
+
+  if (shares.length === 0) {
+    // Last share removed → stop Samba + block firewall
+    if (wasRunning) {
+      try { privExec('systemctl stop smbd nmbd 2>/dev/null || systemctl stop smbd', { timeout: 12000 }); } catch { /* */ }
+    }
+    sambaFirewallBlock();
+  } else if (!wasRunning) {
+    // First share added (Samba was stopped) → start + open LAN firewall
+    try { privExec('systemctl start smbd nmbd 2>/dev/null || systemctl start smbd', { timeout: 12000 }); } catch { /* */ }
+    sambaFirewallAllow();
+  } else {
+    // Shares modified, Samba already running → reload + ensure firewall is open
+    try { privExec('systemctl reload smbd 2>/dev/null || systemctl restart smbd', { timeout: 12000 }); } catch { /* */ }
+    sambaFirewallAllow();
+  }
 }
 
 export async function shareRoutes(fastify: FastifyInstance) {
@@ -86,7 +160,9 @@ export async function shareRoutes(fastify: FastifyInstance) {
       return reply.send({ available: false, shares: [], message: 'Samba nicht installiert (apt install samba)' });
     }
     const running = safeExec('systemctl is-active smbd 2>/dev/null').trim() === 'active';
-    reply.send({ available: true, running, shares: parseShares(readConf()) });
+    const shares = parseShares(readConf());
+    const firewallOpen = isSambaFirewallOpen();
+    reply.send({ available: true, running, shares, firewallOpen });
   });
 
   fastify.post<{ Body: Share }>('/api/shares', { preHandler: requireAdmin }, async (req, reply) => {
@@ -132,6 +208,11 @@ export async function shareRoutes(fastify: FastifyInstance) {
       if (!['start', 'stop', 'restart'].includes(action)) return reply.status(400).send({ error: 'Ungültige Aktion' });
       try {
         privExec(`systemctl ${action} smbd nmbd 2>/dev/null || systemctl ${action} smbd`, { timeout: 12000 });
+        // On manual start: also ensure firewall is open if shares exist
+        if (action !== 'stop') {
+          const shares = parseShares(readConf());
+          if (shares.length > 0) sambaFirewallAllow();
+        }
         reply.send({ ok: true });
       } catch (err: unknown) {
         reply.status(500).send({ error: err instanceof Error ? err.message : 'Samba-Fehler' });

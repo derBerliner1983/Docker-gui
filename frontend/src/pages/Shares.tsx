@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { FolderOpen, Plus, Trash2, Play, Square, RotateCcw, UserPlus } from 'lucide-react';
+import { FolderOpen, Plus, Trash2, Play, Square, RotateCcw, UserPlus, ShieldOff, ShieldCheck, Info } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -116,6 +116,7 @@ export function Shares() {
   const [shares, setShares] = useState<Share[]>([]);
   const [available, setAvailable] = useState(true);
   const [running, setRunning] = useState(false);
+  const [firewallOpen, setFirewallOpen] = useState(false);
   const [message, setMessage] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -129,6 +130,7 @@ export function Shares() {
       setShares(res.shares);
       setAvailable(res.available);
       setRunning(res.running);
+      setFirewallOpen(res.firewallOpen ?? false);
       setMessage(res.message ?? '');
     } finally {
       setRefreshing(false);
@@ -150,11 +152,20 @@ export function Shares() {
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
 
+  // Firewall/running status badge
+  const fwLabel = firewallOpen ? 'LAN offen' : 'geblockt';
+  const fwColor = firewallOpen ? 'var(--color-success)' : 'var(--color-error)';
+  const FwIcon = firewallOpen ? ShieldCheck : ShieldOff;
+
+  const topbarSubtitle = available
+    ? `Samba ${running ? 'läuft' : 'gestoppt'} · ${fwLabel}`
+    : undefined;
+
   return (
     <>
       <Topbar
         title="SMB-Freigaben"
-        subtitle={available ? `Samba ${running ? 'läuft' : 'gestoppt'}` : undefined}
+        subtitle={topbarSubtitle}
         onRefresh={load}
         refreshing={refreshing}
         actions={available && (
@@ -175,53 +186,87 @@ export function Shares() {
             </div>
           </div>
         ) : (
-          <Panel
-            title="Freigaben"
-            icon={<FolderOpen size={15} />}
-            subtitle={`${shares.length} aktiv`}
-            storageKey="shares"
-            actions={
-              <div style={{ display: 'flex', gap: 4 }}>
-                {running ? (
-                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('stop')}><Square size={12} /> Stop</button>
+          <>
+            {/* Auto-managed info banner */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+              background: firewallOpen ? 'rgba(16,185,129,.07)' : 'rgba(239,68,68,.07)',
+              border: `1px solid ${firewallOpen ? 'rgba(16,185,129,.25)' : 'rgba(239,68,68,.25)'}`,
+              borderRadius: 8, marginBottom: 14, fontSize: 12.5,
+            }}>
+              <FwIcon size={16} color={fwColor} style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                {shares.length === 0 ? (
+                  <span>
+                    <strong>Samba automatisch deaktiviert</strong> – Firewall blockiert Ports 137–139, 445.
+                    {' '}Samba startet automatisch, wenn du eine Freigabe hinzufügst.
+                  </span>
+                ) : firewallOpen ? (
+                  <span>
+                    <strong>Samba aktiv – nur LAN</strong> – Ports 137–139, 445 sind nur aus dem lokalen Netzwerk erreichbar.
+                    {' '}Internet-Zugang kann unter <em>Sicherheit</em> separat freigegeben werden.
+                  </span>
                 ) : (
-                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('start')}><Play size={12} /> Start</button>
+                  <span>
+                    <strong>Samba läuft, aber Firewall blockiert</strong> – Ports sind noch nicht freigegeben.
+                    {' '}Füge eine Freigabe hinzu oder starte Samba manuell, damit die Firewall geöffnet wird.
+                  </span>
                 )}
-                <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('restart')}><RotateCcw size={12} /> Neustart</button>
               </div>
-            }
-          >
-            {shares.length === 0 ? (
-              <div className="empty-state" style={{ padding: '40px 20px' }}>
-                <div className="empty-state__desc">Noch keine Freigaben. Erstelle eine mit „Freigabe".</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                <Info size={11} color="var(--color-faint)" />
+                <span style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>Auto-verwaltet</span>
               </div>
-            ) : (
-              <table className="dtable" style={{ marginTop: 6 }}>
-                <thead>
-                  <tr><th>Name</th><th>Pfad</th><th>Zugriff</th><th>Optionen</th><th style={{ width: 44 }}></th></tr>
-                </thead>
-                <tbody>
-                  {shares.map((s) => (
-                    <tr key={s.name}>
-                      <td style={{ fontWeight: 600 }}>{s.name}</td>
-                      <td className="dtable__mono text-muted">{s.path}</td>
-                      <td>
-                        <span className={`badge badge--${s.readOnly ? 'stopped' : 'running'}`}>
-                          <span className="badge__dot" />{s.readOnly ? 'Nur Lesen' : 'Lesen/Schreiben'}
-                        </span>
-                      </td>
-                      <td className="text-muted text-sm">
-                        {s.guestOk ? 'Gast · ' : ''}{s.browseable ? 'sichtbar' : 'versteckt'}
-                      </td>
-                      <td>
-                        <button className="btn btn--danger btn--icon btn--sm" title="Entfernen" onClick={() => remove(s.name)}><Trash2 size={12} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
+            </div>
+
+            <Panel
+              title="Freigaben"
+              icon={<FolderOpen size={15} />}
+              subtitle={`${shares.length} aktiv`}
+              storageKey="shares"
+              actions={
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {running ? (
+                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('stop')}><Square size={12} /> Stop</button>
+                  ) : (
+                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('start')}><Play size={12} /> Start</button>
+                  )}
+                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('restart')}><RotateCcw size={12} /> Neustart</button>
+                </div>
+              }
+            >
+              {shares.length === 0 ? (
+                <div className="empty-state" style={{ padding: '40px 20px' }}>
+                  <div className="empty-state__desc">Noch keine Freigaben. Erstelle eine mit „Freigabe".</div>
+                </div>
+              ) : (
+                <table className="dtable" style={{ marginTop: 6 }}>
+                  <thead>
+                    <tr><th>Name</th><th>Pfad</th><th>Zugriff</th><th>Optionen</th><th style={{ width: 44 }}></th></tr>
+                  </thead>
+                  <tbody>
+                    {shares.map((s) => (
+                      <tr key={s.name}>
+                        <td style={{ fontWeight: 600 }}>{s.name}</td>
+                        <td className="dtable__mono text-muted">{s.path}</td>
+                        <td>
+                          <span className={`badge badge--${s.readOnly ? 'stopped' : 'running'}`}>
+                            <span className="badge__dot" />{s.readOnly ? 'Nur Lesen' : 'Lesen/Schreiben'}
+                          </span>
+                        </td>
+                        <td className="text-muted text-sm">
+                          {s.guestOk ? 'Gast · ' : ''}{s.browseable ? 'sichtbar' : 'versteckt'}
+                        </td>
+                        <td>
+                          <button className="btn btn--danger btn--icon btn--sm" title="Entfernen" onClick={() => remove(s.name)}><Trash2 size={12} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </Panel>
+          </>
         )}
       </main>
 
