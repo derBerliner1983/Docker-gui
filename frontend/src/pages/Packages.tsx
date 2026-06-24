@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle, FileDown } from 'lucide-react';
+import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle, FileDown, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -14,6 +14,8 @@ export function Packages() {
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('');
   const [onlyManual, setOnlyManual] = useState(false);
+  const [sortKey, setSortKey] = useState<'name' | 'version' | 'size' | 'type'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState('');
@@ -48,12 +50,31 @@ export function Packages() {
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return packages.filter((p) => {
+    const list = packages.filter((p) => {
       if (onlyManual && p.auto) return false;
       if (!q) return true;
       return p.name.toLowerCase().includes(q) || p.summary.toLowerCase().includes(q);
     });
-  }, [packages, filter, onlyManual]);
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      let c = 0;
+      if (sortKey === 'size') c = (a.size || 0) - (b.size || 0);
+      else if (sortKey === 'version') c = a.version.localeCompare(b.version, undefined, { numeric: true });
+      // "manuell" (auto=false) vor "Abhäng." (auto=true); danach Name als Tiebreaker
+      else if (sortKey === 'type') c = (a.auto ? 1 : 0) - (b.auto ? 1 : 0) || a.name.localeCompare(b.name);
+      else c = a.name.localeCompare(b.name);
+      return c * dir;
+    });
+    return list;
+  }, [packages, filter, onlyManual, sortKey, sortDir]);
+
+  const toggleSort = (key: 'name' | 'version' | 'size' | 'type') => {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(key); setSortDir('asc'); }
+  };
+  const sortIcon = (key: 'name' | 'version' | 'size' | 'type') =>
+    sortKey !== key ? <ChevronsUpDown size={12} style={{ opacity: 0.4 }} />
+      : sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
 
   const totalSize = useMemo(() => packages.reduce((s, p) => s + p.size, 0), [packages]);
 
@@ -231,10 +252,18 @@ export function Packages() {
                     <th style={{ width: 34 }}>
                       <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Alle sichtbaren auswählen" />
                     </th>
-                    <th>Paket</th>
-                    <th style={{ width: 130 }}>Version</th>
-                    <th style={{ width: 90 }}>Größe</th>
-                    <th style={{ width: 90 }}>Typ</th>
+                    <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Paket {sortIcon('name')}</span>
+                    </th>
+                    <th style={{ width: 130, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('version')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Version {sortIcon('version')}</span>
+                    </th>
+                    <th style={{ width: 90, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('size')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Größe {sortIcon('size')}</span>
+                    </th>
+                    <th style={{ width: 90, cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('type')}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Typ {sortIcon('type')}</span>
+                    </th>
                     <th style={{ width: 90 }}></th>
                   </tr>
                 </thead>
