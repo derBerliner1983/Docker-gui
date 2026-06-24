@@ -40,7 +40,7 @@ function AccessToggle({ label, Icon, on, disabled, onChange }: { label: string; 
   );
 }
 
-function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean }) {
+function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFinding; onFix: (action: string) => void; fixing: boolean; showZoneBadge?: boolean }) {
   const meta = STATUS_META[f.status];
   const Icon = meta.icon;
   const zone = f.accessZone ? ZONE_META[f.accessZone] : null;
@@ -53,7 +53,7 @@ function FindingRow({ f, onFix, fixing }: { f: SecurityFinding; onFix: (action: 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.title}</span>
           <span className="badge badge--paused" style={{ fontSize: 10 }}>{f.category}</span>
-          {zone && (
+          {zone && showZoneBadge && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }} title="Empfehlung für diesen Dienst">
               <zone.Icon size={10} /> Empf.: {zone.label}
             </span>
@@ -206,6 +206,11 @@ export function Security() {
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState<string | null>(null);
+  const [showZoneBadge, setShowZoneBadge] = useState(() => localStorage.getItem('security-zone-badge') !== 'false');
+
+  const toggleZoneBadge = () => {
+    setShowZoneBadge((v) => { const next = !v; localStorage.setItem('security-zone-badge', String(next)); return next; });
+  };
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -307,7 +312,7 @@ export function Security() {
                 </div>
               ) : (
                 <div style={{ marginTop: 2 }}>
-                  {actionable.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
+                  {actionable.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
                 </div>
               )}
             </Panel>
@@ -320,6 +325,16 @@ export function Security() {
               icon={<Globe size={15} />}
               subtitle={`${networkFindings.filter((f) => f.internet && f.accessZone === 'lan-only').length} kritisch im Internet`}
               storageKey="sec-network"
+              actions={
+                <button
+                  className="btn btn--outline btn--sm"
+                  onClick={toggleZoneBadge}
+                  title={showZoneBadge ? 'Empfehlungs-Labels ausblenden' : 'Empfehlungs-Labels einblenden'}
+                  style={{ fontSize: 11, padding: '2px 8px' }}
+                >
+                  {showZoneBadge ? 'Labels aus' : 'Labels ein'}
+                </button>
+              }
             >
               <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, marginTop: 4, lineHeight: 1.6 }}>
                 Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>Internet</b> (von überall erreichbar).
@@ -343,7 +358,7 @@ export function Security() {
                 <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
               ) : (
                 <div style={{ marginTop: 2 }}>
-                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
+                  {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
                 </div>
               )}
             </Panel>
@@ -360,7 +375,7 @@ export function Security() {
               defaultCollapsed
             >
               <div style={{ marginTop: 2 }}>
-                {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} />)}
+                {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
               </div>
             </Panel>
           </>

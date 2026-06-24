@@ -1,3 +1,4 @@
+import { writeFileSync, unlinkSync } from 'fs';
 import type { FastifyInstance } from 'fastify';
 import Dockerode from 'dockerode';
 import bcrypt from 'bcryptjs';
@@ -25,8 +26,14 @@ interface Finding {
 }
 
 function sshServiceUnit(): string {
-  // Debian uses "ssh", RHEL/Arch use "sshd"
-  return safeExec('systemctl list-unit-files 2>/dev/null | grep -qE "^sshd?\\.service" && (systemctl list-unit-files | grep -qE "^ssh\\.service" && echo ssh || echo sshd) || echo ssh').trim() || 'ssh';
+  // Check which unit file exists; Debian uses 'ssh', RHEL/Arch use 'sshd'
+  const files = safeExec('systemctl list-unit-files 2>/dev/null');
+  if (/(?:^|\n)ssh\.service\s/m.test(files)) return 'ssh';
+  if (/(?:^|\n)sshd\.service\s/m.test(files)) return 'sshd';
+  // Fallback: check which is active right now
+  if (safeExec('systemctl is-active ssh 2>/dev/null').trim() === 'active') return 'ssh';
+  if (safeExec('systemctl is-active sshd 2>/dev/null').trim() === 'active') return 'sshd';
+  return 'ssh';
 }
 
 function defaultPasswordCheck(): Finding[] {
@@ -442,14 +449,28 @@ export async function securityRoutes(fastify: FastifyInstance) {
           return reply.send({ ok: true, output: output + (active ? '' : ' (Firewall ist inaktiv – Regeln greifen erst nach Aktivierung!)') });
         }
         switch (action) {
-          case 'ssh-disable-root':
-            privExec(`bash -c "sed -ri 's/^[#\\s]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config; grep -qiE '^PermitRootLogin' /etc/ssh/sshd_config || echo 'PermitRootLogin no' >> /etc/ssh/sshd_config"`);
+          case 'ssh-disable-root': {
+            const cfg = safeExec('cat /etc/ssh/sshd_config 2>/dev/null') || privSafe('cat /etc/ssh/sshd_config');
+            if (!cfg.trim()) throw new Error('/etc/ssh/sshd_config nicht lesbar');
+            let newRoot = cfg.replace(/^[ \t]*#?[ \t]*PermitRootLogin.*$/gim, 'PermitRootLogin no');
+            if (!/^PermitRootLogin\s/im.test(newRoot)) newRoot += '\nPermitRootLogin no\n';
+            const tmpRoot = `/tmp/sshd_config.${process.pid}.tmp`;
+            writeFileSync(tmpRoot, newRoot);
+            try { privExec(`cp ${tmpRoot} /etc/ssh/sshd_config`, { timeout: 5000 }); } finally { try { unlinkSync(tmpRoot); } catch { /* */ } }
             privExec(`systemctl reload ${unit} 2>/dev/null || systemctl restart ${unit}`, { timeout: 12000 });
             break;
-          case 'ssh-disable-password':
-            privExec(`bash -c "sed -ri 's/^[#\\s]*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config; grep -qiE '^PasswordAuthentication' /etc/ssh/sshd_config || echo 'PasswordAuthentication no' >> /etc/ssh/sshd_config"`);
+          }
+          case 'ssh-disable-password': {
+            const cfg = safeExec('cat /etc/ssh/sshd_config 2>/dev/null') || privSafe('cat /etc/ssh/sshd_config');
+            if (!cfg.trim()) throw new Error('/etc/ssh/sshd_config nicht lesbar');
+            let newPw = cfg.replace(/^[ \t]*#?[ \t]*PasswordAuthentication.*$/gim, 'PasswordAuthentication no');
+            if (!/^PasswordAuthentication\s/im.test(newPw)) newPw += '\nPasswordAuthentication no\n';
+            const tmpPw = `/tmp/sshd_config.${process.pid}.tmp`;
+            writeFileSync(tmpPw, newPw);
+            try { privExec(`cp ${tmpPw} /etc/ssh/sshd_config`, { timeout: 5000 }); } finally { try { unlinkSync(tmpPw); } catch { /* */ } }
             privExec(`systemctl reload ${unit} 2>/dev/null || systemctl restart ${unit}`, { timeout: 12000 });
             break;
+          }
           case 'firewall-install-enable':
             if (!hasBinary('ufw')) privExec('apt-get install -y ufw', { timeout: 180000 });
             privExec('bash -c "ufw default deny incoming; ufw default allow outgoing; ufw allow OpenSSH 2>/dev/null || ufw allow 22/tcp; yes | ufw enable"', { timeout: 30000 });
