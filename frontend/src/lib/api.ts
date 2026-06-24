@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, SecurityScan, SshStatus, VmNetwork,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallLogEntry, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
@@ -242,11 +242,15 @@ export const api = {
   },
 
   firewall: {
-    list: () => req<{ available: boolean; active: boolean; rules: FirewallRule[]; message?: string; listening?: string }>('/api/firewall'),
-    add: (data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string }) =>
+    list: () => req<{ available: boolean; active: boolean; logging: boolean; rules: FirewallRule[]; message?: string; listening?: string }>('/api/firewall'),
+    add: (data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string }) =>
       req('/api/firewall', { method: 'POST', body: JSON.stringify(data) }),
+    update: (num: number, data: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string }) =>
+      req(`/api/firewall/${num}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (num: number) => req(`/api/firewall/${num}`, { method: 'DELETE' }),
     toggle: (enable: boolean) => req('/api/firewall/toggle', { method: 'POST', body: JSON.stringify({ enable }) }),
+    setLogging: (enable: boolean) => req<{ ok: boolean; logging: boolean }>('/api/firewall/logging', { method: 'POST', body: JSON.stringify({ enable }) }),
+    log: (limit = 300) => req<{ available: boolean; logging: boolean; source?: string; entries: FirewallLogEntry[]; message?: string }>(`/api/firewall/log?limit=${limit}`),
   },
 
   settings: {

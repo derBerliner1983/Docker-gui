@@ -326,7 +326,20 @@ export interface FirewallRule {
   raw: string;
   to: string;
   action: string;
+  direction?: string; // IN | OUT | ''
   from: string;
+}
+
+export interface FirewallLogEntry {
+  ts: string;
+  action: string;     // BLOCK | ALLOW | AUDIT | LIMIT
+  direction: string;  // IN | OUT
+  iface: string;
+  src: string;
+  dst: string;
+  proto: string;
+  spt: string;
+  dpt: string;
 }
 
 export type SecurityStatus = 'ok' | 'warn' | 'critical' | 'info';

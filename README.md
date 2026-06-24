@@ -73,7 +73,10 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 🌐 Netzwerke & VLANs
 - **Docker**: Netzwerke (bridge / macvlan / ipvlan), VLAN-Tag, isolierte Netze, feste IP + Aliasse
 - **VMs**: libvirt-Netzwerke (NAT / isoliert / Bridge + VLAN), VM anhängen
-- **Firewall (ufw)**: Regeln allow/deny/reject nach Port / Protokoll / Quell-IP
+- **Firewall (ufw)**: Regeln allow/deny/reject nach Port / Protokoll / Quell-IP / **Richtung
+  (eingehend/ausgehend)** – Regeln anlegen, **bearbeiten** und löschen
+- **Verbindungsversuche**: eigener Tab zeigt protokollierte Zugriffe (wer von wo, blockiert/erlaubt),
+  filterbar nach Aktion, Richtung, IP/Port – Protokollierung per Schalter ein-/ausschaltbar
 
 ### 🔒 HTTPS & Reverse-Proxy (Caddy)
 - Pro Container HTTPS per Schalter aktivieren – oder alle auf einmal
