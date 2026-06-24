@@ -62,7 +62,7 @@ export function Terminal() {
 
     const cleanupConn = connect(term, fit);
 
-    const onResize = () => {
+    const doResize = () => {
       try {
         fit.fit();
         const ws = wsRef.current;
@@ -71,10 +71,13 @@ export function Terminal() {
         }
       } catch { /* */ }
     };
-    window.addEventListener('resize', onResize);
+
+    // ResizeObserver reacts to sidebar collapse / window resize / any layout change
+    const ro = new ResizeObserver(doResize);
+    ro.observe(containerRef.current);
 
     return () => {
-      window.removeEventListener('resize', onResize);
+      ro.disconnect();
       cleanupConn();
       term.dispose();
     };
@@ -102,18 +105,17 @@ export function Terminal() {
           </div>
         }
       />
-      <main className="page">
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--color-border)', color: 'var(--color-subtle)', fontSize: 12.5 }}>
+      {/* Override .page so terminal fills all remaining height without scrolling */}
+      <main style={{ flex: 1, overflow: 'hidden', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--color-border)', color: 'var(--color-subtle)', fontSize: 12.5, flexShrink: 0 }}>
             <TerminalSquare size={15} />
             <span>Interaktive Shell – Befehle werden direkt auf dem Server ausgeführt.</span>
           </div>
-          <div
-            ref={containerRef}
-            style={{ height: 'calc(100vh - 230px)', minHeight: 360, background: '#1C1C1F', padding: 10 }}
-          />
+          {/* No padding here: FitAddon uses clientHeight, padding offsets the canvas → last row clipped */}
+          <div ref={containerRef} style={{ flex: 1, background: '#1C1C1F', minHeight: 0 }} />
         </div>
-        <div className="form-hint" style={{ marginTop: 10 }}>
+        <div className="form-hint" style={{ flexShrink: 0 }}>
           ⚠️ Diese Konsole läuft mit Root-Rechten auf dem Server. Sei vorsichtig mit Befehlen, die das System verändern.
         </div>
       </main>
