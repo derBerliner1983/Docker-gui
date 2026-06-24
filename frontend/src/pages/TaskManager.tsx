@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown, Power } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { api } from '../lib/api';
@@ -41,6 +41,7 @@ export function TaskManager() {
   const [procMeta, setProcMeta] = useState({ total: 0, running: 0 });
   const [filter, setFilter] = useState('');
   const [svcFilter, setSvcFilter] = useState('');
+  const [svcTab, setSvcTab] = useState<'all' | 'running' | 'autostart'>('all');
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Record<string, string>>({});
   const [sortKey, setSortKey] = useState<ProcSortKey>('cpu');
@@ -59,12 +60,21 @@ export function TaskManager() {
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [p, s] = await Promise.allSettled([api.system.processes(), api.system.services()]);
+      const [p, s, a] = await Promise.allSettled([
+        api.system.processes(),
+        api.system.services(),
+        api.system.autostart(),
+      ]);
       if (p.status === 'fulfilled') {
         setProcesses(p.value.processes);
         setProcMeta({ total: p.value.total, running: p.value.running });
       }
-      if (s.status === 'fulfilled') setServices(s.value.services);
+      if (s.status === 'fulfilled') {
+        const enabledSet = new Set(
+          a.status === 'fulfilled' ? a.value.units.filter((u) => u.state === 'enabled').map((u) => u.name) : []
+        );
+        setServices(s.value.services.map((svc) => ({ ...svc, enabled: enabledSet.has(svc.name) })));
+      }
     } finally {
       setRefreshing(false);
     }
@@ -119,7 +129,14 @@ export function TaskManager() {
     return sorted;
   }, [processes, filter, sortKey, sortDir]);
 
-  const filteredSvcs = services.filter((s) => !svcFilter || s.name.toLowerCase().includes(svcFilter.toLowerCase()));
+  const filteredSvcs = useMemo(() => {
+    return services.filter((s) => {
+      if (svcFilter && !s.name.toLowerCase().includes(svcFilter.toLowerCase())) return false;
+      if (svcTab === 'running') return s.active === 'active';
+      if (svcTab === 'autostart') return s.enabled === true;
+      return true;
+    });
+  }, [services, svcFilter, svcTab]);
 
   return (
     <>
@@ -203,19 +220,32 @@ export function TaskManager() {
         <Panel
           title="Dienste"
           icon={<Cog size={15} />}
-          subtitle={`${filteredSvcs.length} systemd-Dienste`}
+          subtitle={`${filteredSvcs.length} von ${services.length} systemd-Diensten`}
           storageKey="tm-svcs"
-          defaultCollapsed
           actions={
-            <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-              <Search size={13} style={{ position: 'absolute', left: 9, top: 8, color: 'var(--color-faint)' }} />
-              <input
-                className="input input--rect"
-                placeholder="Dienst suchen…"
-                value={svcFilter}
-                onChange={(e) => setSvcFilter(e.target.value)}
-                style={{ height: 28, width: 160, paddingLeft: 28, fontSize: 12 }}
-              />
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+              {/* Filter-Tabs */}
+              {(['all', 'running', 'autostart'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  className={`btn btn--sm${svcTab === tab ? '' : ' btn--outline'}`}
+                  style={{ fontSize: 11, padding: '2px 9px' }}
+                  onClick={() => setSvcTab(tab)}
+                >
+                  {tab === 'all' ? 'Alle' : tab === 'running' ? 'Laufend' : 'Autostart'}
+                </button>
+              ))}
+              {/* Suche */}
+              <div style={{ position: 'relative' }}>
+                <Search size={13} style={{ position: 'absolute', left: 9, top: 8, color: 'var(--color-faint)' }} />
+                <input
+                  className="input input--rect btn--sm"
+                  placeholder="Suchen…"
+                  value={svcFilter}
+                  onChange={(e) => setSvcFilter(e.target.value)}
+                  style={{ height: 28, width: 140, paddingLeft: 28, fontSize: 12 }}
+                />
+              </div>
             </div>
           }
         >
@@ -225,6 +255,7 @@ export function TaskManager() {
                 <tr>
                   <th>Dienst</th>
                   <th>Status</th>
+                  <th>Autostart</th>
                   <th>Beschreibung</th>
                   <th style={{ width: 110 }}></th>
                 </tr>
@@ -232,6 +263,7 @@ export function TaskManager() {
               <tbody>
                 {filteredSvcs.map((s) => {
                   const active = s.active === 'active';
+                  const isBusy = !!busy[`s${s.name}`];
                   return (
                     <tr key={s.name}>
                       <td style={{ fontWeight: 600 }}>{s.name.replace('.service', '')}</td>
@@ -241,19 +273,32 @@ export function TaskManager() {
                           {s.sub || s.active}
                         </span>
                       </td>
-                      <td className="text-muted" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.description}</td>
+                      <td>
+                        <button
+                          className="btn btn--ghost btn--icon btn--sm"
+                          title={s.enabled ? 'Autostart deaktivieren' : 'Autostart aktivieren'}
+                          disabled={isBusy}
+                          onClick={() => controlSvc(s.name, s.enabled ? 'disable' : 'enable')}
+                          style={{ color: s.enabled ? 'var(--color-success)' : 'var(--color-faint)' }}
+                        >
+                          {busy[`s${s.name}`] === 'enable' || busy[`s${s.name}`] === 'disable'
+                            ? <span className="spinner" style={{ width: 11, height: 11 }} />
+                            : <Power size={13} />}
+                        </button>
+                      </td>
+                      <td className="text-muted" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.description}</td>
                       <td>
                         <div className="dtable__actions">
                           {active ? (
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={!!busy[`s${s.name}`]} onClick={() => controlSvc(s.name, 'stop')}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={isBusy} onClick={() => controlSvc(s.name, 'stop')}>
                               {busy[`s${s.name}`] === 'stop' ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Square size={12} />}
                             </button>
                           ) : (
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={!!busy[`s${s.name}`]} onClick={() => controlSvc(s.name, 'start')}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={isBusy} onClick={() => controlSvc(s.name, 'start')}>
                               {busy[`s${s.name}`] === 'start' ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />}
                             </button>
                           )}
-                          <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={!!busy[`s${s.name}`]} onClick={() => controlSvc(s.name, 'restart')}>
+                          <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={isBusy} onClick={() => controlSvc(s.name, 'restart')}>
                             <RotateCcw size={12} />
                           </button>
                         </div>
@@ -261,6 +306,9 @@ export function TaskManager() {
                     </tr>
                   );
                 })}
+                {filteredSvcs.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-faint)', padding: '20px 0' }}>Keine Dienste gefunden</td></tr>
+                )}
               </tbody>
             </table>
           </div>

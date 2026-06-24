@@ -458,6 +458,7 @@ export interface SystemService {
   active: string;
   sub: string;
   description: string;
+  enabled?: boolean;
 }
 
 export interface UserPublic {
