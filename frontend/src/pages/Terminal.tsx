@@ -43,8 +43,9 @@ export function Terminal() {
   useEffect(() => {
     if (!containerRef.current) return;
     const term = new XTerm({
-      fontFamily: 'var(--font-mono, monospace)',
+      fontFamily: "ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace",
       fontSize: 13,
+      lineHeight: 1.2,
       cursorBlink: true,
       theme: {
         background: '#1C1C1F',
@@ -112,8 +113,8 @@ export function Terminal() {
             <TerminalSquare size={15} />
             <span>Interaktive Shell – Befehle werden direkt auf dem Server ausgeführt.</span>
           </div>
-          {/* No padding here: FitAddon uses clientHeight, padding offsets the canvas → last row clipped */}
-          <div ref={containerRef} style={{ flex: 1, background: '#1C1C1F', minHeight: 0 }} />
+          {/* position:relative needed for xterm-viewport (absolute). No padding: FitAddon clipping. */}
+          <div ref={containerRef} style={{ flex: 1, background: '#1C1C1F', minHeight: 0, position: 'relative', overflow: 'hidden' }} />
         </div>
         <div className="form-hint" style={{ flexShrink: 0 }}>
           ⚠️ Diese Konsole läuft mit Root-Rechten auf dem Server. Sei vorsichtig mit Befehlen, die das System verändern.

@@ -16,6 +16,10 @@ body {
 /* ── App Shell ─────────────────────────────────── */
 .app-shell { display: flex; height: 100vh; overflow: hidden; }
 
+/* ── xterm.js: fill container so border-radius + overflow:hidden can't clip last row ── */
+.xterm { height: 100% !important; }
+.xterm-viewport { overflow-y: auto !important; }
+
 /* ── Sidebar ────────────────────────────────────── */
 .sidebar {
   width: var(--sidebar-width);
