@@ -155,6 +155,45 @@ export async function containerRoutes(fastify: FastifyInstance) {
   );
 
   fastify.get<{ Params: { id: string } }>(
+    '/api/containers/:id/logs/stream',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const res = reply.raw;
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.setHeader('Connection', 'keep-alive');
+      reply.hijack();
+
+      try {
+        const container = docker.getContainer(req.params.id);
+        const stream = await container.logs({ follow: true, stdout: true, stderr: true, tail: 200, timestamps: true });
+
+        (stream as unknown as NodeJS.ReadableStream).on('data', (chunk: Buffer) => {
+          for (const line of chunk.toString('utf8').split('\n')) {
+            const clean = line.length > 8 ? line.slice(8) : line;
+            if (clean.trim()) res.write(`data: ${clean}\n\n`);
+          }
+        });
+
+        (stream as unknown as NodeJS.ReadableStream).on('end', () => {
+          res.write('event: end\ndata: {}\n\n');
+          res.end();
+        });
+
+        (stream as unknown as NodeJS.ReadableStream).on('error', () => res.end());
+
+        req.raw.on('close', () => {
+          (stream as unknown as { destroy?: () => void }).destroy?.();
+        });
+      } catch {
+        res.write('event: error\ndata: {}\n\n');
+        res.end();
+      }
+    }
+  );
+
+  fastify.get<{ Params: { id: string } }>(
     '/api/containers/:id/stats',
     { preHandler: requireAuth },
     async (req, reply) => {

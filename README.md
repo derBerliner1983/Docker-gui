@@ -39,12 +39,13 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 📊 Dashboard (Live-Monitoring alle 2 s, aufklappbare Panels)
 - **Prozessor**: Gesamtlast als Tortendiagramm + Live-Verlaufsgraph, Einzelkerne einklappbar
 - **System**: RAM-Donut (echter Wert wie htop) mit Aufteilung System / VM / Docker / Frei, Festplatten-Donuts pro Mount
+- **GPU**: GPU-Auslastung (%) + VRAM-/Unified-Memory-Verbrauch als Donuts – NVIDIA (nvidia-smi) und AMD (amdgpu sysfs) erkannt; APU/UMA-Systeme (z. B. Ryzen AI MAX) werden korrekt als Unified Memory dargestellt
 - **Netzwerk**: alle Schnittstellen mit Live-Durchsatz
 - **Optimierung**: erkennt RAM-/CPU-Fresser, gestoppte Container, hohe Swap-Nutzung, volle Platten – mit Direktlink zur Aktion
 
 ### ⚡ Taskmanager
 - Prozesse auflisten, beenden (TERM) oder hart killen (KILL)
-- systemd-Dienste starten / stoppen / neustarten
+- **Dienste-Tab**: systemd-Dienste starten / stoppen / neustarten / Autostart ein-/ausschalten
 
 ### 🖥️ Terminal (Web-Konsole)
 - Interaktive **Root-Shell direkt im Browser** (xterm.js + WebSocket) – falls du mal nicht per SSH rankommst
@@ -56,7 +57,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Gruppen / Kategorien**: Container in auf-/zuklappbare Gruppen sortieren
   (z. B. „Datenbanken", „Automatisierung") – der Zustand bleibt gespeichert
 - **Eigenes Icon** pro Container (Bild-URL) oder automatisches Symbol
-- **Detailseite** pro Container: Live-Logs (aktualisiert alle 2,5 s), CPU-Verlaufsgraph, RAM-Anzeige, Ports, Volumes, Env-Variablen
+- **Detailseite** pro Container: **Live-Logs als SSE-Stream** (Echtzeit, kein Polling), CPU-Verlaufsgraph, RAM-Anzeige, Ports, Volumes, Env-Variablen
 - **„Update verfügbar"-Erkennung** (Registry-Digest-Vergleich) + 1-Klick-Update
 - Action-Buttons (Start/Logs/Löschen …) auch auf dem Handy klar sichtbar & tippbar
 
@@ -127,7 +128,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Autostart: Dienste beim Systemstart aktivieren/deaktivieren
 
 ### 📁 SMB-Freigaben & 👥 Benutzer
-- Ordner freigeben, Samba steuern, SMB-Benutzer
+- Ordner freigeben, SMB-Benutzer verwalten; **Samba Auto-Lifecycle**: Samba startet automatisch beim Erstellen der ersten Freigabe + öffnet die Firewall nur für LAN (Ports 137–139, 445); stoppt und blockiert automatisch, wenn alle Freigaben entfernt werden – Internet-Zugang nur explizit über Sicherheitseinstellungen
 - Core-Hub-Logins (App, Rollen) + Linux-Benutzer (anlegen/löschen/Passwort/sudo)
 - **Zwei-Faktor-Authentifizierung (2FA / TOTP)**: pro Konto einrichten, beim Login wird ein
   Einmalcode aus der Authenticator-App abgefragt (Google Authenticator, Aegis, 1Password …)
@@ -137,6 +138,15 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Hochladen, Ordner anlegen, umbenennen, löschen, herunterladen
 - Rechte (chmod) und Eigentümer/Gruppe sehen und ändern – auch in System-Verzeichnissen
   (`/etc`, `/opt`, …) über die sudoers-Allowlist
+
+### 🤖 KI / Ollama
+- Ollama-Status, installierte Modelle, VRAM-Anzeige pro Modell
+- **Hardware-Erkennung**: CPU, RAM, GPU + VRAM; erkennt APU/UMA (Ryzen AI MAX) korrekt; berechnet die **empfohlene maximale Modellgröße** (GB) mit aufklappbarer Erklärung der Formel
+- **Zugriffsmodus**: Ollama auf lokal (127.0.0.1) oder LAN (0.0.0.0) schalten – schreibt automatisch den systemd-Override und startet den Dienst neu
+- **Modell-Suche**: Beliebte Empfehlungen oben, HuggingFace-Suche darunter
+- **GGUF-Quantisierung**: beim Laden eines HF-Modells wird ein Quantisierungs-Selector angezeigt (Q4_K_M, Q5_K_M, Q8_0 …); lädt via `hf.co/<repo>:<quant>` direkt in Ollama
+- **Gleichzeitige Downloads**: mehrere Modelle parallel laden, Status pro Modell
+- Modelle laden / entladen / löschen
 
 ### ⚙️ Einstellungen, Version & Migration
 - Passwort & 2FA verwalten, System-Info, erkannte Module
@@ -267,10 +277,10 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **10** | **Container-Detailseite** (Live-Logs, CPU/RAM), Bestätigungsdialoge, Rate-Limiting, Session-Timeout, Health-Endpunkt, Audit-Rotation, Dark-Mode auto, Mobile-Optimierung, **`.deb`-Builder** | ✅ |
 | **11** | **SMTP-E-Mail**, **Alarm-Regeln** (vordefiniert + eigene Schwellwerte, Empfänger pro Regel), **Optimierungs-Panel**, **Web-Terminal**, HTTPS-überall, htop-genauer RAM, Deinstallation | ✅ |
 | **12** | **Datei-Manager** (Browsen/Bearbeiten/Rechte, sudo-Fallback für System-Verzeichnisse), **1-Klick-Update in der Oberfläche** (git pull + install.sh --update mit Live-Log), Container-Migration als Doku | ✅ |
+| **13** | **GPU-Dashboard** (NVIDIA + AMD / APU UMA), **KI/Ollama** (Hardware-Analyse, Zugriffsmodus, GGUF-Quantisierung, parallele Downloads), **Samba Auto-Lifecycle** (Start/Stop/Firewall automatisch), **Container-Logs als SSE-Stream** (Echtzeit, kein Polling) | ✅ |
 
 ### Geplant / Ideen (kommende Phasen)
 - ⏳ Mehrsprachigkeit (EN/DE)
 - ⏳ Reverse-Proxy: weitere Backends (nginx/Traefik)
-- ⏳ Container-Logs als echter SSE-Stream
 
 Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).

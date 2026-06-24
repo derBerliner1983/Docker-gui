@@ -13,8 +13,6 @@ import type { Container } from '../lib/types';
 
 const HISTORY_LEN = 40;
 const STATS_INTERVAL_MS = 3000;
-const LOGS_INTERVAL_MS = 2500;
-const INITIAL_LOG_TAIL = 300;
 
 function stateBadge(state: string) {
   return <ContainerBadge state={state} />;
@@ -177,7 +175,6 @@ export function ContainerDetail() {
   // Logs
   const [logs, setLogs] = useState<string[]>([]);
   const [logLoading, setLogLoading] = useState(true);
-  const logSinceRef = useRef<number>(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logsOpen, setLogsOpen] = useState(true);
@@ -228,35 +225,43 @@ export function ContainerDetail() {
     return () => clearInterval(t);
   }, [id]);
 
-  // Logs: initial fetch then poll for new lines
+  // Logs: SSE stream (200 tail + live follow)
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 
-    const fetchInitial = async () => {
+    const connect = async () => {
       try {
-        const res = await api.containers.logs(id, INITIAL_LOG_TAIL);
-        if (!cancelled) {
-          setLogs(res.logs);
-          logSinceRef.current = Math.floor(Date.now() / 1000);
-          setLogLoading(false);
+        const token = localStorage.getItem('token');
+        const response = await fetch(`/api/containers/${id}/logs/stream`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok || !response.body) { if (!cancelled) setLogLoading(false); return; }
+        if (!cancelled) setLogLoading(false);
+
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() ?? '';
+          for (const part of parts) {
+            if (part.startsWith('data: ')) {
+              const line = part.slice(6).trim();
+              if (line) setLogs((prev) => [...prev.slice(-500), line]);
+            }
+          }
         }
       } catch { if (!cancelled) setLogLoading(false); }
     };
-    void fetchInitial();
 
-    const t = setInterval(async () => {
-      if (!logSinceRef.current) return;
-      try {
-        const res = await api.containers.logsSince(id, logSinceRef.current);
-        if (!cancelled && res.logs.length > 0) {
-          logSinceRef.current = Math.floor(Date.now() / 1000);
-          setLogs((prev) => [...prev.slice(-500), ...res.logs]);
-        }
-      } catch { /* ignore */ }
-    }, LOGS_INTERVAL_MS);
-
-    return () => { cancelled = true; clearInterval(t); };
+    void connect();
+    return () => { cancelled = true; reader?.cancel().catch(() => {}); };
   }, [id]);
 
   // Auto-scroll logs
