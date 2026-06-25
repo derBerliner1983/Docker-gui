@@ -482,6 +482,14 @@ export function ContainerDetail() {
                 <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} style={{ width: 12, height: 12 }} />
                 Auto-scroll
               </label>
+              <button
+                className="btn btn--ghost btn--sm"
+                style={{ fontSize: 11, padding: '2px 8px' }}
+                title="Anzeige leeren (Docker-Logs bleiben erhalten)"
+                onClick={(e) => { e.stopPropagation(); setLogs([]); }}
+              >
+                Leeren
+              </button>
               {logsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
           </div>

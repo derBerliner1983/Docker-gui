@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil, Monitor, Trash2, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -8,7 +8,7 @@ import { Donut } from '../components/ui/Donut';
 import { Switch } from '../components/ui/Switch';
 import { SecurityAlerts } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
-import type { SecurityScan, SecurityFinding, SecurityStatus, SshStatus } from '../lib/types';
+import type { SecurityScan, SecurityFinding, SecurityStatus, SshStatus, DeviceSession, UserPublic } from '../lib/types';
 
 const ZONE_META = {
   'lan-only':             { label: 'Nur LAN',      color: '#ef4444', bg: 'rgba(239,68,68,.1)',   Icon: Home  },
@@ -246,6 +246,128 @@ ${scan.counts.critical === 0 && scan.counts.warn === 0 ? `
   if (w) { w.document.write(html); w.document.close(); }
 }
 
+function fmtDate(iso: string) {
+  try { return new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }); }
+  catch { return iso; }
+}
+
+function uaShort(ua: string | null): string {
+  if (!ua) return '–';
+  if (/iPhone|iPad/i.test(ua)) return 'iOS';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Mac OS/i.test(ua)) return 'macOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return ua.slice(0, 30);
+}
+
+function SessionsPanel() {
+  const [sessions, setSessions] = useState<DeviceSession[]>([]);
+  const [users, setUsers] = useState<UserPublic[]>([]);
+  const [selectedUser, setSelectedUser] = useState<number | 'all'>('all');
+  const [loading, setLoading] = useState(false);
+  const [revoking, setRevoking] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [s, u] = await Promise.allSettled([api.sessions.listAll(), api.users.list()]);
+      if (s.status === 'fulfilled') setSessions(s.value.sessions);
+      if (u.status === 'fulfilled') setUsers(u.value.users);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const revoke = async (id: number) => {
+    setRevoking(id);
+    try { await api.sessions.revoke(id); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setRevoking(null); }
+  };
+
+  const revokeAll = async (userId: number) => {
+    if (!confirm('Alle Sitzungen dieses Benutzers widerrufen?')) return;
+    try { await api.users.revokeSessions(userId); await load(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const visible = selectedUser === 'all'
+    ? sessions
+    : sessions.filter((s) => s.user_id === selectedUser);
+
+  const active = visible.filter((s) => !s.revoked);
+  const revoked = visible.filter((s) => s.revoked);
+
+  return (
+    <Panel
+      title="Geräte & Sitzungen"
+      icon={<Monitor size={15} />}
+      subtitle={`${active.length} aktiv${revoked.length ? ` · ${revoked.length} widerrufen` : ''}`}
+      storageKey="sec-sessions"
+      defaultCollapsed
+    >
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, marginTop: 6 }}>
+        <select
+          className="input input--rect"
+          style={{ fontSize: 12, padding: '4px 8px', width: 'auto' }}
+          value={selectedUser === 'all' ? 'all' : String(selectedUser)}
+          onChange={(e) => setSelectedUser(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+        >
+          <option value="all">Alle Benutzer</option>
+          {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+        </select>
+        {typeof selectedUser === 'number' && (
+          <button className="btn btn--ghost btn--sm" onClick={() => revokeAll(selectedUser)}>
+            <LogOut size={12} /> Alle widerrufen
+          </button>
+        )}
+        <button className="btn btn--ghost btn--icon btn--sm" onClick={load} disabled={loading} title="Aktualisieren">
+          {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <span style={{ fontSize: 11 }}>↻</span>}
+        </button>
+      </div>
+
+      {active.length === 0 && !loading ? (
+        <div className="text-muted text-sm">Keine aktiven Sitzungen.</div>
+      ) : (
+        <table className="dtable">
+          <thead>
+            <tr>
+              <th>Benutzer</th>
+              <th>Gerät</th>
+              <th>IP</th>
+              <th>Erstellt</th>
+              <th>Zuletzt gesehen</th>
+              <th style={{ width: 40 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {active.map((s) => (
+              <tr key={s.id}>
+                <td style={{ fontWeight: 600 }}>{s.username ?? `#${s.user_id}`}</td>
+                <td title={s.user_agent ?? ''} className="text-muted">{uaShort(s.user_agent)}</td>
+                <td className="dtable__mono text-muted">{s.ip ?? '–'}</td>
+                <td className="text-muted">{fmtDate(s.created_at)}</td>
+                <td className="text-muted">{fmtDate(s.last_seen)}</td>
+                <td>
+                  <button
+                    className="btn btn--danger btn--icon btn--sm"
+                    title="Sitzung widerrufen"
+                    disabled={revoking === s.id}
+                    onClick={() => revoke(s.id)}
+                  >
+                    {revoking === s.id ? <span className="spinner" style={{ width: 10, height: 10 }} /> : <Trash2 size={11} />}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Panel>
+  );
+}
+
 export function Security() {
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
@@ -439,6 +561,9 @@ export function Security() {
 
             {/* E-Mail-Alarm-Regeln */}
             <SecurityAlerts />
+
+            {/* Geräte & Sitzungen */}
+            <SessionsPanel />
 
             {/* Passed checks */}
             <Panel
