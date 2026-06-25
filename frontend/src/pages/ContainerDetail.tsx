@@ -178,6 +178,12 @@ export function ContainerDetail() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logsOpen, setLogsOpen] = useState(true);
+  // logSince: unix timestamp (seconds) – nur Logs ab diesem Zeitpunkt laden; in sessionStorage gespeichert
+  const logSinceKey = `log-since-${id}`;
+  const [logSince, setLogSince] = useState<number | null>(() => {
+    const stored = sessionStorage.getItem(`log-since-${id}`);
+    return stored ? parseInt(stored) : null;
+  });
   const [infoOpen, setInfoOpen] = useState(true);
 
   // Actions
@@ -225,7 +231,7 @@ export function ContainerDetail() {
     return () => clearInterval(t);
   }, [id]);
 
-  // Logs: SSE stream (200 tail + live follow)
+  // Logs: SSE stream (200 tail + live follow, or since=<ts> after clear)
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
@@ -234,7 +240,10 @@ export function ContainerDetail() {
     const connect = async () => {
       try {
         const token = localStorage.getItem('token');
-        const response = await fetch(`/api/containers/${id}/logs/stream`, {
+        const url = logSince
+          ? `/api/containers/${id}/logs/stream?since=${logSince}`
+          : `/api/containers/${id}/logs/stream`;
+        const response = await fetch(url, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         });
         if (!response.ok || !response.body) { if (!cancelled) setLogLoading(false); return; }
@@ -262,7 +271,7 @@ export function ContainerDetail() {
 
     void connect();
     return () => { cancelled = true; reader?.cancel().catch(() => {}); };
-  }, [id]);
+  }, [id, logSince]);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -485,8 +494,14 @@ export function ContainerDetail() {
               <button
                 className="btn btn--ghost btn--sm"
                 style={{ fontSize: 11, padding: '2px 8px' }}
-                title="Anzeige leeren (Docker-Logs bleiben erhalten)"
-                onClick={(e) => { e.stopPropagation(); setLogs([]); }}
+                title="Logs ab jetzt leeren (ältere Einträge dauerhaft ausblenden)"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const now = Math.floor(Date.now() / 1000);
+                  sessionStorage.setItem(logSinceKey, String(now));
+                  setLogSince(now);
+                  setLogs([]);
+                }}
               >
                 Leeren
               </button>
