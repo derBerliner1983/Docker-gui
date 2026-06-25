@@ -1,7 +1,7 @@
 import type {
   User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData, DeviceSession,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
-  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, SecurityScan, SshStatus, VmNetwork,
+  ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, FirewallAnalysis, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
@@ -258,6 +258,7 @@ export const api = {
     setLogging: (enable: boolean, level?: string) => req<{ ok: boolean; logging: boolean; level?: string }>('/api/firewall/logging', { method: 'POST', body: JSON.stringify({ enable, level }) }),
     log: (limit = 500) => req<{ available: boolean; logging: boolean; level?: string; source?: string; entries: FirewallLogEntry[]; total?: number; blocked?: number; message?: string }>(`/api/firewall/log?limit=${limit}`),
     clearLog: () => req('/api/firewall/log', { method: 'DELETE' }),
+    analyze: () => req<FirewallAnalysis>('/api/firewall/analyze'),
   },
 
   settings: {

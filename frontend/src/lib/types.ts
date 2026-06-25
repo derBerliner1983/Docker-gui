@@ -357,6 +357,28 @@ export interface FirewallLogEntry {
   dpt: string;
 }
 
+export interface FirewallFinding {
+  id: string;
+  severity: 'critical' | 'warn' | 'info' | 'ok';
+  title: string;
+  detail: string;
+  recommendation: string;
+  ruleNum?: number;
+  port?: string;
+  fix?: 'disable' | 'delete';
+  fixLabel?: string;
+}
+
+export interface FirewallAnalysis {
+  available: boolean;
+  active: boolean;
+  ruleCount: number;
+  defaultIncoming?: string;
+  listeningCount?: number;
+  findings: FirewallFinding[];
+  counts: { critical: number; warn: number; info: number };
+}
+
 export type SecurityStatus = 'ok' | 'warn' | 'critical' | 'info';
 
 export interface SecurityFinding {
