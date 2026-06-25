@@ -132,6 +132,176 @@ function privExecSafe(cmd: string): string {
   try { return privExec(cmd, { timeout: 6000 }); } catch { return ''; }
 }
 
+// ── Plausibilitäts-Assistent: Regeln gegen bekannte Risiken + offene Ports prüfen ──
+
+/** Bekannte Ports mit Risiko-Einstufung (Teilmenge der Security-PORT_DB, hier lokal gehalten). */
+const PORT_RISK: Record<string, { name: string; lanOnly: boolean; note: string }> = {
+  '139':   { name: 'NetBIOS/Samba', lanOnly: true,  note: 'NIE ins Internet – Exploit-Risiko (EternalBlue/WannaCry).' },
+  '445':   { name: 'SMB/Samba',     lanOnly: true,  note: 'NIE ins Internet – Exploit-Risiko (EternalBlue/WannaCry).' },
+  '3306':  { name: 'MySQL/MariaDB', lanOnly: true,  note: 'Datenbank niemals direkt ins Internet.' },
+  '5432':  { name: 'PostgreSQL',    lanOnly: true,  note: 'Datenbank niemals direkt ins Internet.' },
+  '6379':  { name: 'Redis',         lanOnly: true,  note: 'Redis hat standardmäßig keine Auth – nur LAN.' },
+  '27017': { name: 'MongoDB',       lanOnly: true,  note: 'Datenbank nur intern.' },
+  '5900':  { name: 'VNC',           lanOnly: true,  note: 'VNC oft unverschlüsselt – niemals ins Internet.' },
+  '3389':  { name: 'RDP',           lanOnly: true,  note: 'RDP-Brute-Force-Risiko – niemals direkt ins Internet.' },
+  '2049':  { name: 'NFS',           lanOnly: true,  note: 'NFS-Freigaben nur im LAN.' },
+  '111':   { name: 'RPC',           lanOnly: true,  note: 'RPC/NFS nur im LAN.' },
+  '11434': { name: 'Ollama AI',     lanOnly: true,  note: 'Ollama-API ohne Auth – nur LAN oder via VPN.' },
+};
+
+/** Quell-Adresse einer Regel einordnen. */
+function classifyFrom(from: string): 'any' | 'lan' | 'specific' {
+  const f = from.trim().toLowerCase();
+  if (!f || /anywhere/.test(f) || f === '0.0.0.0/0' || f === '::/0') return 'any';
+  if (/^10\./.test(f) || /^192\.168\./.test(f) || /^172\.(1[6-9]|2\d|3[01])\./.test(f) ||
+      /^169\.254\./.test(f) || /^f[cd]/.test(f) || /^fe80/.test(f)) return 'lan';
+  return 'specific';
+}
+
+/** Aus dem "to"-Feld einer Regel die Portnummer ziehen (oder null bei Profil-Namen). */
+function rulePort(to: string): { port: string; proto: string } | null {
+  const m = to.trim().match(/^(\d+)(?::\d+)?(?:\/(tcp|udp))?$/i);
+  if (!m) return null;
+  return { port: m[1], proto: (m[2] ?? '').toLowerCase() };
+}
+
+/** Lauschende Ports → 'public' (0.0.0.0/extern) oder 'local' (nur 127.0.0.1). */
+function listeningPorts(): Map<string, 'public' | 'local'> {
+  const out = safeExec('ss -tulnH 2>/dev/null') || privExecSafe('ss -tulnH');
+  const map = new Map<string, 'public' | 'local'>();
+  for (const line of out.split('\n')) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 5) continue;
+    const local = cols[4];
+    const portM = local.match(/:(\d+)$/);
+    if (!portM) continue;
+    const port = portM[1];
+    const addr = local.slice(0, local.lastIndexOf(':'));
+    const isLocal = addr.startsWith('127.') || addr === '[::1]' || addr.includes('127.0.0.53');
+    const scope: 'public' | 'local' = isLocal ? 'local' : 'public';
+    if (map.get(port) !== 'public') map.set(port, scope);
+  }
+  return map;
+}
+
+/** Standard-Politik für eingehenden Verkehr (deny/allow/reject). */
+function defaultIncoming(): string {
+  const v = safeExec('ufw status verbose 2>/dev/null') || privExecSafe('ufw status verbose');
+  const m = v.match(/Default:\s*(\w+)\s*\(incoming\)/i);
+  return m ? m[1].toLowerCase() : '';
+}
+
+interface FwFinding {
+  id: string;
+  severity: 'critical' | 'warn' | 'info' | 'ok';
+  title: string;
+  detail: string;
+  recommendation: string;
+  ruleNum?: number;
+  port?: string;
+  fix?: 'disable' | 'delete';
+  fixLabel?: string;
+}
+
+/** Alle Regeln gegen Risiken, offene Ports und Redundanzen prüfen. */
+function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' | 'local'>, defIncoming: string): FwFinding[] {
+  const findings: FwFinding[] = [];
+
+  // 1) Standard-Richtlinie eingehend sollte "deny" sein
+  if (defIncoming && defIncoming !== 'deny' && defIncoming !== 'reject') {
+    findings.push({
+      id: 'default-incoming',
+      severity: 'warn',
+      title: `Standard-Richtlinie (eingehend) ist „${defIncoming}"`,
+      detail: `ufw default: ${defIncoming} (incoming)`,
+      recommendation: 'Auf „deny (incoming)" stellen — dann sind nur ausdrücklich erlaubte Ports offen. (Wird beim Aktivieren der Firewall automatisch gesetzt.)',
+    });
+  }
+
+  // 2) Pro Regel prüfen
+  const seen = new Map<string, number>();
+  for (const r of rules) {
+    if (r.action === 'ALLOW' && r.direction === 'OUT') continue; // ausgehende Allows sind unkritisch
+    const pp = rulePort(r.to);
+    const fromClass = classifyFrom(r.from);
+    const key = `${r.action}|${r.to}|${r.from}|${r.direction}`;
+
+    // Doppelte Regel
+    if (seen.has(key)) {
+      findings.push({
+        id: `dup-${r.num}`, severity: 'info',
+        title: `Doppelte Regel #${r.num}`,
+        detail: r.raw,
+        recommendation: `Inhaltlich identisch mit Regel #${seen.get(key)}. Eine davon kann entfernt werden.`,
+        ruleNum: r.num, fix: 'delete', fixLabel: 'Duplikat löschen',
+      });
+      continue;
+    }
+    seen.set(key, r.num);
+
+    if (pp && r.action === 'ALLOW') {
+      const info = PORT_RISK[pp.port];
+      // Gefährliche Freigabe: LAN-only-Port für ALLE offen
+      if (info?.lanOnly && fromClass === 'any') {
+        findings.push({
+          id: `expose-${r.num}`, severity: 'critical',
+          title: `${info.name} (Port ${pp.port}) ist für ALLE erreichbar`,
+          detail: `Regel #${r.num}: ${r.raw}`,
+          recommendation: `${info.note} Auf das LAN beschränken oder die Regel parken.`,
+          ruleNum: r.num, port: pp.port, fix: 'disable', fixLabel: 'Regel parken',
+        });
+      }
+      // SSH aus dem Internet
+      else if (pp.port === '22' && fromClass === 'any') {
+        findings.push({
+          id: `ssh-${r.num}`, severity: 'warn',
+          title: 'SSH (Port 22) ist aus dem Internet erreichbar',
+          detail: `Regel #${r.num}: ${r.raw}`,
+          recommendation: 'Nur mit SSH-Schlüsseln + fail2ban betreiben — oder besser auf das LAN beschränken (z. B. von 192.168.0.0/16).',
+          ruleNum: r.num, port: '22',
+        });
+      }
+      // Verwaiste Regel: Port offen, aber kein Dienst lauscht
+      else if (!listening.has(pp.port)) {
+        findings.push({
+          id: `orphan-${r.num}`, severity: 'info',
+          title: `Port ${pp.port} ist offen, aber kein Dienst lauscht darauf`,
+          detail: `Regel #${r.num}: ${r.raw}`,
+          recommendation: 'Aktuell hört kein Programm auf diesem Port. Du kannst die Regel gefahrlos parken — sobald ein Docker-Container o. Ä. den Port braucht, einfach wieder aktivieren.',
+          ruleNum: r.num, port: pp.port, fix: 'disable', fixLabel: 'Port schließen (parken)',
+        });
+      }
+      // Dienst nur auf localhost → externe Freigabe unnötig
+      else if (listening.get(pp.port) === 'local') {
+        findings.push({
+          id: `loopback-${r.num}`, severity: 'info',
+          title: `Port ${pp.port} ist offen, aber der Dienst läuft nur auf localhost`,
+          detail: `Regel #${r.num}: ${r.raw}`,
+          recommendation: 'Der Dienst ist von außen ohnehin nicht erreichbar (nur 127.0.0.1). Die Freigabe bringt nichts und kann geparkt werden.',
+          ruleNum: r.num, port: pp.port, fix: 'disable', fixLabel: 'Regel parken',
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+export function buildFirewallAnalysis() {
+  const status = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
+  const active = /Status:\s*active/i.test(status);
+  const rules = parseUfw(status);
+  const listening = listeningPorts();
+  const def = defaultIncoming();
+  const findings = analyzeFirewall(rules, listening, def);
+  const counts = {
+    critical: findings.filter((f) => f.severity === 'critical').length,
+    warn: findings.filter((f) => f.severity === 'warn').length,
+    info: findings.filter((f) => f.severity === 'info').length,
+  };
+  return { active, ruleCount: rules.length, defaultIncoming: def, listeningCount: listening.size, findings, counts };
+}
+
 export async function firewallRoutes(fastify: FastifyInstance) {
   fastify.get('/api/firewall', { preHandler: requireAuth }, async (_req, reply) => {
     if (!hasBinary('ufw')) {
@@ -147,6 +317,16 @@ export async function firewallRoutes(fastify: FastifyInstance) {
       comment: d.comment,
     }));
     reply.send({ available: true, active, logging: readLoggingState(), rules: parseUfw(status), disabled });
+  });
+
+  // Plausibilitäts-Assistent: Regeln prüfen und Optimierungen vorschlagen
+  fastify.get('/api/firewall/analyze', { preHandler: requireAuth }, async (_req, reply) => {
+    if (!hasBinary('ufw')) return reply.send({ available: false, active: false, ruleCount: 0, findings: [], counts: { critical: 0, warn: 0, info: 0 } });
+    try {
+      reply.send({ available: true, ...buildFirewallAnalysis() });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Analyse fehlgeschlagen' });
+    }
   });
 
   fastify.post<{ Body: { action: 'allow' | 'deny' | 'reject'; port?: string; proto?: string; from?: string; direction?: string; comment?: string } }>(
