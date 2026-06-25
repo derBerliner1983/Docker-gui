@@ -117,6 +117,11 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+// Nur den letzten Pfadteil anzeigen (hf.co/user/Modell:Q8_0 → Modell:Q8_0)
+function shortName(name: string): string {
+  return name.split('/').pop() || name;
+}
+
 // Wo liegt ein geladenes Modell? (RAM / GPU-VRAM / geteilt)
 function placement(r: OllamaPsModel): { label: string; color: string } {
   if (!r.size || r.size_vram <= 0) return { label: 'RAM (CPU)', color: 'var(--color-muted)' };
@@ -171,7 +176,7 @@ function LoadModal({
   useEffect(() => { if (open) { setCtx(0); setKeep(1800); } }, [open, model]);
   if (!model) return null;
   return (
-    <Modal open={open} title={`In Speicher laden: ${model.name}`} onClose={onClose} width={520}
+    <Modal open={open} title={`In Speicher laden: ${shortName(model.name)}`} onClose={onClose} width={520}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button className="btn btn--sm btn--outline" onClick={onClose} disabled={busy}>Abbrechen</button>
@@ -310,7 +315,7 @@ function ModelDetailModal({
   const embLen = arch && info?.model_info ? (info.model_info[`${arch}.embedding_length`] as number | undefined) : undefined;
 
   return (
-    <Modal open={open} title={model.name} onClose={onClose} width={600}
+    <Modal open={open} title={shortName(model.name)} onClose={onClose} width={600}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
@@ -700,7 +705,7 @@ export function Ai() {
                     const place = placement(r);
                     return (
                       <tr key={r.name}>
-                        <td style={{ fontWeight: 600, fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>{r.name}</td>
+                        <td style={{ fontWeight: 600, fontSize: 12.5, fontFamily: 'var(--font-mono)' }} title={r.name}>{shortName(r.name)}</td>
                         <td>
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px',
@@ -767,8 +772,8 @@ export function Ai() {
                     return (
                       <tr key={m.name} style={{ cursor: 'pointer' }} onClick={() => setDetailModel(m)}>
                         <td style={{ fontWeight: 600, fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>
-                          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            {m.name}
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 5 }} title={m.name}>
+                            {shortName(m.name)}
                             {runningNames.has(m.name) && (
                               <MemoryStick size={11} style={{ color: 'var(--color-success)' }} aria-label="Aktiv im Speicher" />
                             )}
