@@ -327,7 +327,7 @@ Group=$SERVICE_USER
 WorkingDirectory=$INSTALL_DIR/backend
 Environment=NODE_ENV=production
 Environment=PORT=$PORT
-Environment=HOST=127.0.0.1
+Environment=HOST=0.0.0.0
 Environment=DATA_DIR=$DATA_DIR
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
