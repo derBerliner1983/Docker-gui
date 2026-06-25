@@ -186,6 +186,8 @@ interface InstallBody {
   templateId?: string;
   category?: string;
   icon?: string;
+  networkMode?: string;   // e.g. 'bridge', 'host', or a named macvlan network name
+  staticIp?: string;      // only used when networkMode is a named network
 }
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
@@ -298,21 +300,37 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
           return `${name}_${safe}:${v.path}`;
         });
 
-        const container = await docker.createContainer({
+        // Network config: if a named macvlan/ipvlan network is chosen we connect
+        // the container to it after creation so we can supply a static IP.
+        // If networkMode is 'host' we skip port bindings (not needed with host net).
+        const namedNetwork = body.networkMode && !['bridge', 'host', 'none', ''].includes(body.networkMode)
+          ? body.networkMode : null;
+
+        const createOpts: Parameters<typeof docker.createContainer>[0] = {
           Image: body.image,
           name,
           Env: env,
           ExposedPorts: exposedPorts,
           HostConfig: {
-            PortBindings: portBindings,
+            PortBindings: namedNetwork ? {} : portBindings,
             Binds: binds,
             RestartPolicy: { Name: body.restart ?? 'unless-stopped' },
+            NetworkMode: namedNetwork ? namedNetwork : (body.networkMode || 'bridge'),
           },
           Labels: {
             'core-hub.template': body.templateId ?? name,
             'core-hub.source': body.templateId ? 'unraid' : 'dockerhub',
           },
-        });
+        };
+
+        // For named networks with a static IP we use NetworkingConfig at create time
+        if (namedNetwork) {
+          const endpointCfg: Record<string, unknown> = {};
+          if (body.staticIp) endpointCfg.IPAMConfig = { IPv4Address: body.staticIp };
+          createOpts.NetworkingConfig = { EndpointsConfig: { [namedNetwork]: endpointCfg } };
+        }
+
+        const container = await docker.createContainer(createOpts);
         await container.start();
         if (body.category) {
           try { categoryQueries.set.run(container.id, body.category); } catch { /* */ }

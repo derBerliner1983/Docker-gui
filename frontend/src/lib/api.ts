@@ -143,6 +143,7 @@ export const api = {
       volumes?: { name: string; path: string }[];
       env?: Record<string, string>;
       restart?: string; templateId?: string; category?: string; icon?: string;
+      networkMode?: string; staticIp?: string;
     }) => req<{ ok: boolean; id: string; name: string }>('/api/app-templates/store/install', { method: 'POST', body: JSON.stringify(data) }),
   },
 

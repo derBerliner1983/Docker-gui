@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Search, Download, CheckCircle2, Star, ChevronLeft, ChevronRight, Plus, Trash2, Eye, EyeOff, RefreshCw, Loader } from 'lucide-react';
+import { Search, Download, CheckCircle2, Star, ChevronLeft, ChevronRight, Plus, Trash2, Eye, EyeOff, RefreshCw, Loader, Network, ChevronDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
-import type { StoreItem, StoreSearchResult } from '../lib/types';
+import type { StoreItem, StoreSearchResult, DockerNetwork } from '../lib/types';
 
 // ── App icon with graceful fallback ─────────────────────────────────────────
 
@@ -132,6 +132,103 @@ function EnvEditor({ rows, onChange }: { rows: EnvRow[]; onChange: (r: EnvRow[])
   );
 }
 
+// ── Network/IP Section (optional, collapsed by default) ─────────────────────
+function NetworkSection({
+  networks, networkMode, staticIp,
+  onModeChange, onIpChange,
+}: {
+  networks: DockerNetwork[];
+  networkMode: string;
+  staticIp: string;
+  onModeChange: (m: string) => void;
+  onIpChange: (ip: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  // Named networks the user could connect to (macvlan, ipvlan, or custom bridge)
+  const named = networks.filter((n) => !n.builtin);
+  const selectedNet = named.find((n) => n.name === networkMode) ?? null;
+
+  return (
+    <div style={{ marginBottom: 14, border: '1px solid var(--color-border)', borderRadius: 6 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+          color: networkMode && networkMode !== 'bridge' ? 'var(--color-accent)' : 'var(--color-muted)',
+        }}
+      >
+        <Network size={13} />
+        <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, textAlign: 'left' }}>
+          Netzwerk / IP-Adresse
+          {networkMode && networkMode !== 'bridge' && (
+            <span style={{ fontWeight: 400, color: 'var(--color-accent)', marginLeft: 6, fontSize: 11 }}>
+              {networkMode}{staticIp ? ` · ${staticIp}` : ''}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>optional</span>
+        <ChevronDown size={13} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+      </button>
+
+      {open && (
+        <div style={{ padding: '4px 12px 12px', borderTop: '1px solid var(--color-border)' }}>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 10, lineHeight: 1.6 }}>
+            Standard: Container nutzt das Docker-Bridge-Netzwerk und deine Port-Zuordnungen.
+            Mit einem eigenen Macvlan-Netzwerk bekommt der Container eine <strong>eigene IP im Heimnetz</strong> —
+            sinnvoll z. B. für AdGuard/Pi-hole (DNS Port 53 kein Konflikt), Home Assistant u. a.
+          </div>
+
+          <label className="form-label">Netzwerkmodus</label>
+          <select
+            className="input input--rect"
+            style={{ width: '100%', marginBottom: 10 }}
+            value={networkMode}
+            onChange={(e) => { onModeChange(e.target.value); onIpChange(''); }}
+          >
+            <option value="bridge">Standard (bridge)</option>
+            <option value="host">host (Ports teilen mit Host)</option>
+            {named.map((n) => (
+              <option key={n.id} value={n.name}>
+                {n.name} [{n.driver}]{n.subnet ? ` · ${n.subnet}` : ''}
+              </option>
+            ))}
+          </select>
+
+          {named.length === 0 && (
+            <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>
+              Noch keine benutzerdefinierten Netzwerke vorhanden. Erstelle unter „Netzwerke &amp; VLANs" ein Macvlan-Netzwerk.
+            </div>
+          )}
+
+          {selectedNet && (
+            <>
+              <label className="form-label">Statische IP-Adresse{selectedNet.subnet ? ` (Subnetz: ${selectedNet.subnet})` : ''}</label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  className="input input--rect"
+                  style={{ fontFamily: 'var(--font-mono)', fontSize: 12, flex: 1 }}
+                  placeholder={selectedNet.gateway ? `z.B. ${selectedNet.gateway.replace(/\.\d+$/, '.200')}` : '192.168.x.y'}
+                  value={staticIp}
+                  onChange={(e) => onIpChange(e.target.value.trim())}
+                />
+                {staticIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(staticIp) && (
+                  <span style={{ fontSize: 11, color: 'var(--color-error)', flexShrink: 0 }}>Ungültige IP</span>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 5 }}>
+                Leer lassen = automatische IP. Port-Zuordnungen entfallen bei eigener IP (unnötig).
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Install Modal ─────────────────────────────────────────────────────────────
 
 function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClose: () => void; onDone: () => void }) {
@@ -143,6 +240,9 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState('');
+  const [networkMode, setNetworkMode] = useState('bridge');
+  const [staticIp, setStaticIp] = useState('');
+  const [networks, setNetworks] = useState<DockerNetwork[]>([]);
 
   useEffect(() => {
     if (!item) return;
@@ -151,7 +251,10 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
     setPorts(item.ports.map((p) => ({ id: uid(), ...p })));
     setVols(item.volumes.map((v) => ({ id: uid(), ...v })));
     setEnvs(item.env.map((e) => ({ id: uid(), key: e.key, label: e.label, value: e.default, secret: e.secret, required: e.required })));
+    setNetworkMode('bridge'); setStaticIp('');
     setError(''); setDone('');
+    // Load Docker networks for the network section
+    api.networks.list().then((r) => setNetworks(r.networks)).catch(() => setNetworks([]));
   }, [item]);
 
   if (!item) return null;
@@ -174,6 +277,8 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
         templateId: item.source === 'unraid' ? item.id : undefined,
         category: item.category,
         icon: item.icon || undefined,
+        networkMode: networkMode !== 'bridge' ? networkMode : undefined,
+        staticIp: staticIp || undefined,
       });
       setDone(`„${res.name}" wurde installiert und gestartet.`);
       onDone();
@@ -242,6 +347,13 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
           <PortsEditor rows={ports} onChange={setPorts} />
           <VolsEditor rows={vols} onChange={setVols} />
           <EnvEditor rows={envs} onChange={setEnvs} />
+          <NetworkSection
+            networks={networks}
+            networkMode={networkMode}
+            staticIp={staticIp}
+            onModeChange={setNetworkMode}
+            onIpChange={setStaticIp}
+          />
         </div>
       )}
     </Modal>
