@@ -171,7 +171,9 @@ function FirewallAssistant({ open, onClose, rules, onChanged }: {
     const rule = rules.find((r) => r.num === f.ruleNum);
     setFixing(f.id);
     try {
-      if (f.fix === 'delete') {
+      if (f.fix === 'restrict-lan') {
+        await api.firewall.restrictLan(f.ruleNum);
+      } else if (f.fix === 'delete') {
         await api.firewall.remove(f.ruleNum);
       } else if (f.fix === 'disable' && rule) {
         const isPort = /^\d+(?::\d+)?(?:\/(tcp|udp))?$/i.test(rule.to);

@@ -259,6 +259,7 @@ export const api = {
     log: (limit = 500) => req<{ available: boolean; logging: boolean; level?: string; source?: string; entries: FirewallLogEntry[]; total?: number; blocked?: number; message?: string }>(`/api/firewall/log?limit=${limit}`),
     clearLog: () => req('/api/firewall/log', { method: 'DELETE' }),
     analyze: () => req<FirewallAnalysis>('/api/firewall/analyze'),
+    restrictLan: (num: number) => req(`/api/firewall/${num}/restrict-lan`, { method: 'POST' }),
   },
 
   settings: {

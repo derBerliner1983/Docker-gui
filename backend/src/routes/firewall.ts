@@ -191,6 +191,18 @@ function defaultIncoming(): string {
   return m ? m[1].toLowerCase() : '';
 }
 
+/** Ports aus laufenden Docker-Containern ermitteln (host-seitige Bindings). */
+function dockerPublishedPorts(): Set<string> {
+  const out = safeExec('docker ps --format "{{.Ports}}" 2>/dev/null');
+  const ports = new Set<string>();
+  for (const seg of out.split(/[\s,]+/)) {
+    // Format: 0.0.0.0:8080->80/tcp  oder  :::443->443/tcp
+    const m = seg.match(/:(\d+)->/);
+    if (m) ports.add(m[1]);
+  }
+  return ports;
+}
+
 interface FwFinding {
   id: string;
   severity: 'critical' | 'warn' | 'info' | 'ok';
@@ -199,12 +211,12 @@ interface FwFinding {
   recommendation: string;
   ruleNum?: number;
   port?: string;
-  fix?: 'disable' | 'delete';
+  fix?: 'disable' | 'delete' | 'restrict-lan';
   fixLabel?: string;
 }
 
 /** Alle Regeln gegen Risiken, offene Ports und Redundanzen prüfen. */
-function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' | 'local'>, defIncoming: string): FwFinding[] {
+function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' | 'local'>, defIncoming: string, dockerPorts: Set<string>): FwFinding[] {
   const findings: FwFinding[] = [];
 
   // 1) Standard-Richtlinie eingehend sollte "deny" sein
@@ -257,12 +269,12 @@ function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' 
           id: `ssh-${r.num}`, severity: 'warn',
           title: 'SSH (Port 22) ist aus dem Internet erreichbar',
           detail: `Regel #${r.num}: ${r.raw}`,
-          recommendation: 'Nur mit SSH-Schlüsseln + fail2ban betreiben — oder besser auf das LAN beschränken (z. B. von 192.168.0.0/16).',
-          ruleNum: r.num, port: '22',
+          recommendation: 'Auf das LAN beschränken (192.168.0.0/16 + 10.0.0.0/8). Alternativ: fail2ban + nur SSH-Schlüssel. "Auf LAN beschränken" löscht diese Regel und legt automatisch LAN-Only-Regeln an.',
+          ruleNum: r.num, port: '22', fix: 'restrict-lan', fixLabel: 'Auf LAN beschränken',
         });
       }
-      // Verwaiste Regel: Port offen, aber kein Dienst lauscht
-      else if (!listening.has(pp.port)) {
+      // Verwaiste Regel: Port offen, aber weder Dienst noch Docker-Container lauscht
+      else if (!listening.has(pp.port) && !dockerPorts.has(pp.port)) {
         findings.push({
           id: `orphan-${r.num}`, severity: 'info',
           title: `Port ${pp.port} ist offen, aber kein Dienst lauscht darauf`,
@@ -293,7 +305,8 @@ export function buildFirewallAnalysis() {
   const rules = parseUfw(status);
   const listening = listeningPorts();
   const def = defaultIncoming();
-  const findings = analyzeFirewall(rules, listening, def);
+  const dockerPorts = dockerPublishedPorts();
+  const findings = analyzeFirewall(rules, listening, def, dockerPorts);
   const counts = {
     critical: findings.filter((f) => f.severity === 'critical').length,
     warn: findings.filter((f) => f.severity === 'warn').length,
@@ -326,6 +339,25 @@ export async function firewallRoutes(fastify: FastifyInstance) {
       reply.send({ available: true, ...buildFirewallAnalysis() });
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'Analyse fehlgeschlagen' });
+    }
+  });
+
+  // SSH-Regel auf LAN beschränken: Regel löschen + LAN-only Ersatz-Regeln anlegen
+  fastify.post<{ Params: { num: string } }>('/api/firewall/:num/restrict-lan', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
+    const num = parseInt(req.params.num);
+    if (!num) return reply.status(400).send({ error: 'Ungültige Regelnummer' });
+    try {
+      // Bestehende Regel (allow 22 from Anywhere) löschen
+      privExec(`bash -c "yes | ufw delete ${num}"`, { timeout: 8000 });
+      // LAN-Ersatzregeln anlegen
+      privExec(`ufw allow from 192.168.0.0/16 to any port 22 comment 'SSH LAN-only'`, { timeout: 8000 });
+      privExec(`ufw allow from 10.0.0.0/8 to any port 22 comment 'SSH LAN-only'`, { timeout: 8000 });
+      privExec(`ufw allow from 172.16.0.0/12 to any port 22 comment 'SSH LAN-only'`, { timeout: 8000 });
+      auditQueries.log.run(req.user.id, 'firewall.restrict-lan', `SSH Port 22 Regel #${num} auf LAN beschränkt`);
+      reply.send({ ok: true });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'ufw-Fehler' });
     }
   });
 
