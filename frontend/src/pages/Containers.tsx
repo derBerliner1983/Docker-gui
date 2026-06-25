@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil, X } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
@@ -8,7 +8,7 @@ import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
 import { timeAgo, avatarColor, containerInitial, germanStatus } from '../lib/utils';
-import type { Container, CreateContainerData } from '../lib/types';
+import type { Container, CreateContainerData, DockerNetwork } from '../lib/types';
 
 /** Container-Avatar: App-Icon (aus dem Store) mit Buchstaben-Fallback. */
 function ContainerAvatar({ container }: { container: Container }) {
@@ -32,17 +32,72 @@ function ContainerAvatar({ container }: { container: Container }) {
 
 type Filter = 'all' | 'running' | 'stopped';
 
+function NetworksPicker({ networks, onChange }: {
+  networks: { id: string; name: string; ip: string }[];
+  onChange: (nets: { id: string; name: string; ip: string }[]) => void;
+}) {
+  const [available, setAvailable] = useState<DockerNetwork[]>([]);
+  const [addId, setAddId] = useState('');
+
+  useEffect(() => {
+    api.networks.list().then((r) => setAvailable(r.networks.filter((n) => !n.builtin))).catch(() => {});
+  }, []);
+
+  const add = () => {
+    if (!addId) return;
+    const net = available.find((n) => n.id === addId);
+    if (!net || networks.find((n) => n.id === addId)) return;
+    onChange([...networks, { id: net.id, name: net.name, ip: '' }]);
+    setAddId('');
+  };
+
+  const updateIp = (id: string, ip: string) => onChange(networks.map((n) => n.id === id ? { ...n, ip } : n));
+  const remove = (id: string) => onChange(networks.filter((n) => n.id !== id));
+  const unattached = available.filter((n) => !networks.find((m) => m.id === n.id));
+
+  return (
+    <div className="form-group">
+      <label className="form-label">Zusätzliche Netzwerke / Virtuelle IPs</label>
+      <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 6 }}>
+        Für eigene IP im LAN: macvlan/ipvlan-Netzwerk wählen. IP leer lassen = automatisch aus Subnetz.
+      </div>
+      {networks.map((n) => (
+        <div key={n.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+          <span style={{ flex: '0 0 160px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
+          <input className="input input--rect" style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            placeholder="Feste IP (optional, z.B. 192.168.178.50)" value={n.ip}
+            onChange={(e) => updateIp(n.id, e.target.value)} />
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen"><X size={12} /></button>
+        </div>
+      ))}
+      {unattached.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <select className="input input--rect" style={{ flex: 1, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <option value="">— Netzwerk hinzufügen …</option>
+            {unattached.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>)}
+          </select>
+          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+        </div>
+      )}
+      {available.length === 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Keine benutzerdefinierten Netzwerke vorhanden. Erst unter Netzwerke → Docker ein macvlan/ipvlan-Netzwerk anlegen.</div>
+      )}
+    </div>
+  );
+}
+
 function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [form, setForm] = useState<CreateContainerData>({ image: '', name: '', restart: 'unless-stopped' });
   const [portStr, setPortStr] = useState('');
   const [envStr, setEnvStr] = useState('');
   const [volStr, setVolStr] = useState('');
+  const [extraNets, setExtraNets] = useState<{ id: string; name: string; ip: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const reset = () => {
     setForm({ image: '', name: '', restart: 'unless-stopped' });
-    setPortStr(''); setEnvStr(''); setVolStr(''); setError('');
+    setPortStr(''); setEnvStr(''); setVolStr(''); setExtraNets([]); setError('');
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -56,11 +111,13 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
         const [host, container] = l.trim().split(':');
         if (host && container) ports[container] = host;
       });
+      const networks = extraNets.map((n) => ({ id: n.id, ip: n.ip || undefined }));
       await api.containers.create({
         ...form,
         ports: Object.keys(ports).length ? ports : undefined,
         env: envStr.split('\n').map((l) => l.trim()).filter(Boolean) || undefined,
         volumes: volStr.split('\n').map((l) => l.trim()).filter(Boolean) || undefined,
+        networks: networks.length ? networks : undefined,
       });
       reset(); onCreated(); onClose();
     } catch (err: unknown) {
@@ -167,6 +224,7 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
           style={{ height: 'auto', resize: 'vertical', padding: '8px 12px', fontFamily: 'var(--font-mono)', fontSize: 12 }}
         />
       </div>
+      <NetworksPicker networks={extraNets} onChange={setExtraNets} />
     </Modal>
   );
 }

@@ -568,6 +568,23 @@ export interface DeviceSession {
   revoked: number;
 }
 
+export interface ContainerNetworkEntry {
+  containerId: string;
+  containerName: string;
+  networkId: string;
+  networkName: string;
+  driver: string;
+  ipv4: string;
+  mac: string;
+}
+
+export interface VmIpEntry {
+  vmName: string;
+  ipv4: string;
+  mac: string;
+  networkName: string;
+}
+
 export interface CreateContainerData {
   image: string;
   name?: string;
@@ -577,4 +594,5 @@ export interface CreateContainerData {
   category?: string;
   restart?: string;
   icon?: string;
+  networks?: { id: string; ip?: string }[];
 }
