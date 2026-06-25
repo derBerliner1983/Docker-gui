@@ -365,7 +365,7 @@ export interface FirewallFinding {
   recommendation: string;
   ruleNum?: number;
   port?: string;
-  fix?: 'disable' | 'delete';
+  fix?: 'disable' | 'delete' | 'restrict-lan';
   fixLabel?: string;
 }
 
