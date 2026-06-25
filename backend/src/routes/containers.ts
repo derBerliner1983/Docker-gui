@@ -165,9 +165,17 @@ export async function containerRoutes(fastify: FastifyInstance) {
       res.setHeader('Connection', 'keep-alive');
       reply.hijack();
 
+      const qs = req.query as { since?: string; tail?: string };
+      const sinceParam = qs.since ? parseInt(qs.since) : undefined;
+      const tailParam = sinceParam ? 0 : 200;
+
       try {
         const container = docker.getContainer(req.params.id);
-        const stream = await container.logs({ follow: true, stdout: true, stderr: true, tail: 200, timestamps: true });
+        const logOpts = {
+          follow: true as const, stdout: true, stderr: true, tail: tailParam, timestamps: true,
+          ...(sinceParam ? { since: sinceParam } : {}),
+        };
+        const stream = await container.logs(logOpts);
 
         (stream as unknown as NodeJS.ReadableStream).on('data', (chunk: Buffer) => {
           for (const line of chunk.toString('utf8').split('\n')) {
