@@ -6,7 +6,7 @@ import type {
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
-  OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile,
+  OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel,
 } from './types';
 
 const getToken = () => localStorage.getItem('token');
@@ -293,6 +293,11 @@ export const api = {
     enableHttps: () => req<{ ok: boolean }>('/api/ki/https', { method: 'POST' }),
     disableHttps: () => req<{ ok: boolean }>('/api/ki/https', { method: 'DELETE' }),
     hfFiles: (id: string) => req<{ files: HFGgufFile[] }>(`/api/ki/hf-files?id=${encodeURIComponent(id)}`),
+    ps: () => req<{ models: OllamaPsModel[] }>('/api/ki/ps'),
+    load: (model: string, numCtx?: number, keepAlive?: number) =>
+      req<{ ok: boolean }>('/api/ki/load', { method: 'POST', body: JSON.stringify({ model, numCtx, keepAlive }) }),
+    unload: (model: string) =>
+      req<{ ok: boolean }>('/api/ki/unload', { method: 'POST', body: JSON.stringify({ model }) }),
   },
 
   cron: {

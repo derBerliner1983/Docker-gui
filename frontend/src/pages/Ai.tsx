@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   BrainCircuit, Download, Trash2, RefreshCw, HardDrive, Cpu, Tag,
   Search, ExternalLink, Eye, Code2, Mic, Zap, FileText, ChevronRight, MemoryStick,
-  ChevronDown, Info, Globe, WifiOff, Lock, LockOpen,
+  ChevronDown, Info, Globe, WifiOff, Lock, LockOpen, Play, Power, Timer,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Switch } from '../components/ui/Switch';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
-import type { OllamaStatus, OllamaModel, OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile } from '../lib/types';
+import type { OllamaStatus, OllamaModel, OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel } from '../lib/types';
 
 // ── capability inference from model name/family ──────────────────────────────
 type Cap = 'text' | 'code' | 'vision' | 'audio' | 'reasoning' | 'math' | 'embeddings' | 'multilingual';
@@ -115,6 +115,113 @@ function fmtCtx(n: number): string {
 }
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// Wo liegt ein geladenes Modell? (RAM / GPU-VRAM / geteilt)
+function placement(r: OllamaPsModel): { label: string; color: string } {
+  if (!r.size || r.size_vram <= 0) return { label: 'RAM (CPU)', color: 'var(--color-muted)' };
+  if (r.size_vram >= r.size) return { label: 'GPU (VRAM)', color: 'var(--color-success)' };
+  const pct = Math.round((r.size_vram / r.size) * 100);
+  return { label: `${pct}% GPU / ${100 - pct}% RAM`, color: 'var(--color-warning)' };
+}
+
+// "läuft ab in …" – Ollama setzt für keep_alive=-1 einen weit entfernten Zeitpunkt
+function fmtExpires(iso: string): string {
+  if (!iso) return '—';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '—';
+  const diffMs = t - Date.now();
+  if (diffMs > 365 * 24 * 3600 * 1000) return 'dauerhaft';
+  if (diffMs <= 0) return 'läuft ab…';
+  const min = Math.round(diffMs / 60000);
+  if (min < 60) return `in ${min} Min`;
+  const h = Math.floor(min / 60); const m = min % 60;
+  return `in ${h} Std${m ? ` ${m} Min` : ''}`;
+}
+
+// ── Modal: Modell in den Speicher laden (Kontextlänge + keep_alive) ───────────
+const CTX_PRESETS = [
+  { label: 'Standard', value: 0 },
+  { label: '2K', value: 2048 },
+  { label: '4K', value: 4096 },
+  { label: '8K', value: 8192 },
+  { label: '16K', value: 16384 },
+  { label: '32K', value: 32768 },
+  { label: '64K', value: 65536 },
+  { label: '128K', value: 131072 },
+];
+const KEEP_PRESETS = [
+  { label: '5 Min', value: 300 },
+  { label: '30 Min', value: 1800 },
+  { label: '1 Std', value: 3600 },
+  { label: 'Dauerhaft', value: -1 },
+];
+
+function LoadModal({
+  model, open, onClose, onLoad, busy,
+}: {
+  model: OllamaModel | null;
+  open: boolean;
+  onClose: () => void;
+  onLoad: (numCtx: number | undefined, keepAlive: number) => void;
+  busy: boolean;
+}) {
+  const [ctx, setCtx] = useState(0);
+  const [keep, setKeep] = useState(1800);
+  useEffect(() => { if (open) { setCtx(0); setKeep(1800); } }, [open, model]);
+  if (!model) return null;
+  return (
+    <Modal open={open} title={`In Speicher laden: ${model.name}`} onClose={onClose} width={520}
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn--sm btn--outline" onClick={onClose} disabled={busy}>Abbrechen</button>
+          <button className="btn btn--sm btn--primary" disabled={busy} onClick={() => onLoad(ctx > 0 ? ctx : undefined, keep)}>
+            {busy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />} In Speicher laden
+          </button>
+        </div>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.07em' }}>
+            Kontextlänge (num_ctx)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {CTX_PRESETS.map((p) => (
+              <button key={p.value} className={`btn btn--sm ${ctx === p.value ? 'btn--primary' : 'btn--outline'}`}
+                style={{ fontSize: 11 }} disabled={busy} onClick={() => setCtx(p.value)}>{p.label}</button>
+            ))}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Eigener Wert:</span>
+            <input className="input" type="number" min={0} step={512} style={{ width: 130, fontSize: 12 }}
+              value={ctx || ''} placeholder="z.B. 8192" disabled={busy}
+              onChange={(e) => setCtx(Math.max(0, parseInt(e.target.value) || 0))} />
+            <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>Token</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.6 }}>
+            Größerer Kontext = mehr Speicherbedarf. „Standard" nutzt den im Modell hinterlegten Wert.
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '.07em' }}>
+            Im Speicher halten (keep_alive)
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {KEEP_PRESETS.map((p) => (
+              <button key={p.value} className={`btn btn--sm ${keep === p.value ? 'btn--primary' : 'btn--outline'}`}
+                style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4 }} disabled={busy} onClick={() => setKeep(p.value)}>
+                {p.value === -1 && <Timer size={11} />}{p.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.6 }}>
+            Mehrere Modelle können gleichzeitig geladen bleiben (Ollama: bis zu 3 Modelle parallel im Speicher).
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 // ── Hardware card ─────────────────────────────────────────────────────────────
@@ -267,6 +374,7 @@ function ModelDetailModal({
 export function Ai() {
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
+  const [running, setRunning] = useState<OllamaPsModel[]>([]);
   const [hardware, setHardware] = useState<KiHardware | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -293,17 +401,29 @@ export function Ai() {
   // Detail modal
   const [detailModel, setDetailModel] = useState<OllamaModel | null>(null);
 
+  // In-memory loading state
+  const [loadTarget, setLoadTarget] = useState<OllamaModel | null>(null);  // open load modal
+  const [loadingMem, setLoadingMem] = useState<string | null>(null);       // model being loaded
+  const [unloading, setUnloading] = useState<string | null>(null);
+
   const loadModels = useCallback(async () => {
     try { const m = await api.ki.models(); setModels(m.models ?? []); } catch { /* */ }
   }, []);
 
+  const loadPs = useCallback(async () => {
+    try { const p = await api.ki.ps(); setRunning(p.models ?? []); } catch { /* */ }
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      const [s, m, hw, ac] = await Promise.allSettled([api.ki.status(), api.ki.models(), api.ki.hardware(), api.ki.access()]);
+      const [s, m, hw, ac, ps] = await Promise.allSettled([
+        api.ki.status(), api.ki.models(), api.ki.hardware(), api.ki.access(), api.ki.ps(),
+      ]);
       if (s.status === 'fulfilled') setStatus(s.value);
       if (m.status === 'fulfilled') setModels(m.value.models ?? []);
       if (hw.status === 'fulfilled') setHardware(hw.value);
       if (ac.status === 'fulfilled') setAccessState(ac.value);
+      if (ps.status === 'fulfilled') setRunning(ps.value.models ?? []);
     } catch { /* */ }
   }, []);
 
@@ -317,6 +437,13 @@ export function Ai() {
     const t = setInterval(loadModels, 5000);
     return () => clearInterval(t);
   }, [pulling, loadModels]);
+
+  // Poll loaded models (RAM/VRAM) so expiry counts down live
+  useEffect(() => {
+    if (!status?.running) return;
+    const t = setInterval(loadPs, 6000);
+    return () => clearInterval(t);
+  }, [status?.running, loadPs]);
 
   // Remove from pulling set when model appears
   useEffect(() => {
@@ -363,6 +490,23 @@ export function Ai() {
     finally { setDeleting(null); }
   };
 
+  const loadIntoMemory = async (model: string, numCtx: number | undefined, keepAlive: number) => {
+    setLoadingMem(model);
+    try {
+      await api.ki.load(model, numCtx, keepAlive);
+      setLoadTarget(null);
+      await loadPs();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Laden fehlgeschlagen'); }
+    finally { setLoadingMem(null); }
+  };
+
+  const unloadFromMemory = async (model: string) => {
+    setUnloading(model);
+    try { await api.ki.unload(model); await loadPs(); }
+    catch (err) { alert(err instanceof Error ? err.message : 'Entladen fehlgeschlagen'); }
+    finally { setUnloading(null); }
+  };
+
   const changeAccess = async (mode: 'local' | 'lan') => {
     setAccessBusy(true);
     try {
@@ -397,6 +541,7 @@ export function Ai() {
   };
 
   const installedNames = new Set(models.map((m) => m.name));
+  const runningNames = new Set(running.map((r) => r.name));
   const totalSize = models.reduce((s, m) => s + (m.size ?? 0), 0);
 
   // Filter popular models by search text
@@ -524,6 +669,75 @@ export function Ai() {
           </div>
         </div>
 
+        {/* Aktiv geladene Modelle (RAM / GPU) */}
+        <Panel
+          title="Aktiv im Speicher"
+          icon={<MemoryStick size={15} />}
+          subtitle={`${running.length} Modell${running.length !== 1 ? 'e' : ''} im RAM/VRAM · mehrere gleichzeitig möglich`}
+          storageKey="ki-running"
+        >
+          {running.length === 0 ? (
+            <div className="empty-state" style={{ padding: '24px 20px' }}>
+              <div className="empty-state__icon"><MemoryStick size={32} strokeWidth={1.2} /></div>
+              <div className="empty-state__title">Kein Modell aktiv im Speicher</div>
+              <div className="empty-state__desc">Lade unten ein installiertes Modell in den RAM oder die GPU (Play-Symbol).</div>
+            </div>
+          ) : (
+            <div className="table-scroll" style={{ marginTop: 6 }}>
+              <table className="dtable">
+                <thead>
+                  <tr>
+                    <th>Modell</th>
+                    <th>Speicherort</th>
+                    <th>Größe</th>
+                    <th>Kontext</th>
+                    <th>Läuft ab</th>
+                    <th style={{ width: 110 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {running.map((r) => {
+                    const place = placement(r);
+                    return (
+                      <tr key={r.name}>
+                        <td style={{ fontWeight: 600, fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>{r.name}</td>
+                        <td>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px',
+                            background: `${place.color}1f`, border: `1px solid ${place.color}55`,
+                            borderRadius: 4, fontSize: 10.5, color: place.color, fontWeight: 600,
+                          }}>
+                            <MemoryStick size={10} /> {place.label}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12 }}>
+                          {fmtBytes(r.size)}
+                          {r.size_vram > 0 && r.size_vram < r.size && (
+                            <span style={{ color: 'var(--color-faint)' }}> · {fmtBytes(r.size_vram)} VRAM</span>
+                          )}
+                        </td>
+                        <td style={{ fontSize: 12 }}>{r.context_length ? fmtCtx(r.context_length) : '—'}</td>
+                        <td style={{ fontSize: 11, color: 'var(--color-faint)', whiteSpace: 'nowrap' }}>{fmtExpires(r.expires_at)}</td>
+                        <td>
+                          <button
+                            className="btn btn--sm btn--outline"
+                            style={{ color: 'var(--color-error)', borderColor: 'var(--color-error)', fontSize: 11 }}
+                            disabled={unloading === r.name}
+                            onClick={() => unloadFromMemory(r.name)}
+                            title="Modell aus dem Speicher entladen"
+                          >
+                            {unloading === r.name ? <span className="spinner" style={{ width: 10, height: 10 }} /> : <Power size={11} />} Entladen
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
+
         {/* Installed models */}
         <Panel title="Installierte Modelle" icon={<Cpu size={15} />} subtitle={`${models.length} Modelle · Klicken für Details`} storageKey="ki-models">
           {models.length === 0 ? (
@@ -544,7 +758,7 @@ export function Ai() {
                     <th>Quantisierung</th>
                     <th>Familie</th>
                     <th>Aktualisiert</th>
-                    <th style={{ width: 48 }}></th>
+                    <th style={{ width: 84 }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -554,7 +768,11 @@ export function Ai() {
                       <tr key={m.name} style={{ cursor: 'pointer' }} onClick={() => setDetailModel(m)}>
                         <td style={{ fontWeight: 600, fontSize: 12.5, fontFamily: 'var(--font-mono)' }}>
                           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            {m.name} <ChevronRight size={12} style={{ color: 'var(--color-faint)' }} />
+                            {m.name}
+                            {runningNames.has(m.name) && (
+                              <MemoryStick size={11} style={{ color: 'var(--color-success)' }} aria-label="Aktiv im Speicher" />
+                            )}
+                            <ChevronRight size={12} style={{ color: 'var(--color-faint)' }} />
                           </span>
                         </td>
                         <td>
@@ -570,15 +788,38 @@ export function Ai() {
                           {m.modified_at ? fmtDate(m.modified_at) : '—'}
                         </td>
                         <td onClick={(e) => e.stopPropagation()}>
-                          <button
-                            className="btn btn--ghost btn--icon btn--sm"
-                            style={{ color: 'var(--color-error)' }}
-                            disabled={deleting === m.name}
-                            onClick={() => remove(m.name)}
-                            title="Löschen"
-                          >
-                            {deleting === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Trash2 size={12} />}
-                          </button>
+                          <div style={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                            {runningNames.has(m.name) ? (
+                              <button
+                                className="btn btn--ghost btn--icon btn--sm"
+                                style={{ color: 'var(--color-error)' }}
+                                disabled={unloading === m.name}
+                                onClick={() => unloadFromMemory(m.name)}
+                                title="Aus Speicher entladen"
+                              >
+                                {unloading === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Power size={12} />}
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn--ghost btn--icon btn--sm"
+                                style={{ color: 'var(--color-accent)' }}
+                                disabled={loadingMem === m.name}
+                                onClick={() => setLoadTarget(m)}
+                                title="In Speicher laden (RAM/GPU)"
+                              >
+                                {loadingMem === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />}
+                              </button>
+                            )}
+                            <button
+                              className="btn btn--ghost btn--icon btn--sm"
+                              style={{ color: 'var(--color-error)' }}
+                              disabled={deleting === m.name}
+                              onClick={() => remove(m.name)}
+                              title="Löschen"
+                            >
+                              {deleting === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Trash2 size={12} />}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -733,6 +974,15 @@ export function Ai() {
         onClose={() => setDetailModel(null)}
         onDelete={remove}
         deleting={deleting}
+      />
+
+      {/* Load-into-memory modal */}
+      <LoadModal
+        model={loadTarget}
+        open={!!loadTarget}
+        onClose={() => setLoadTarget(null)}
+        busy={!!loadTarget && loadingMem === loadTarget.name}
+        onLoad={(numCtx, keepAlive) => { if (loadTarget) void loadIntoMemory(loadTarget.name, numCtx, keepAlive); }}
       />
 
       {/* GGUF quantization selection modal */}

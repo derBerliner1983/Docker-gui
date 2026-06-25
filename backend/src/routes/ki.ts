@@ -91,6 +91,70 @@ export async function kiRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // ── Running models (currently loaded in RAM / VRAM) ──
+  fastify.get('/api/ki/ps', { preHandler: requireAuth }, async (_req, reply) => {
+    if (!hasBinary('ollama')) return reply.send({ models: [] });
+    try {
+      const r = await ollamaReq('/api/ps');
+      if (!r.ok) return reply.send({ models: [] });
+      reply.send(await r.json());
+    } catch { reply.send({ models: [] }); }
+  });
+
+  // ── Load a model into memory (RAM/GPU) with optional context length ──
+  fastify.post<{ Body: { model: string; numCtx?: number; keepAlive?: number } }>(
+    '/api/ki/load', { preHandler: requireAdmin }, async (req, reply) => {
+    const model = (req.body?.model ?? '').trim();
+    if (!model || !/^[a-zA-Z0-9._:/@-]+$/.test(model)) return reply.status(400).send({ error: 'Ungültiger Modellname' });
+    const numCtx = Number(req.body?.numCtx);
+    // keep_alive in Sekunden: -1 = unbegrenzt, 0 = sofort entladen, sonst Sekunden (Default 30 Min)
+    const keepAlive = req.body?.keepAlive === undefined ? 1800 : Number(req.body.keepAlive);
+    const body: Record<string, unknown> = { model, keep_alive: Number.isFinite(keepAlive) ? keepAlive : 1800 };
+    if (Number.isFinite(numCtx) && numCtx > 0) body.options = { num_ctx: Math.round(numCtx) };
+    try {
+      // Ein leerer /api/generate-Request mit keep_alive lädt das Modell in den Speicher,
+      // ohne Text zu erzeugen. Das kann je nach Modellgröße einige Sekunden dauern.
+      const r = await ollamaReq('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        return reply.status(500).send({ error: b.error ?? 'Laden fehlgeschlagen' });
+      }
+      await r.json().catch(() => ({}));
+      reply.send({ ok: true });
+    } catch (err) {
+      const msg = err instanceof Error && err.name === 'TimeoutError'
+        ? 'Zeitüberschreitung beim Laden (Modell evtl. sehr groß)'
+        : err instanceof Error ? err.message : 'Laden fehlgeschlagen';
+      reply.status(500).send({ error: msg });
+    }
+  });
+
+  // ── Unload a model from memory ──
+  fastify.post<{ Body: { model: string } }>('/api/ki/unload', { preHandler: requireAdmin }, async (req, reply) => {
+    const model = (req.body?.model ?? '').trim();
+    if (!model || !/^[a-zA-Z0-9._:/@-]+$/.test(model)) return reply.status(400).send({ error: 'Ungültiger Modellname' });
+    try {
+      const r = await ollamaReq('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, keep_alive: 0 }),
+      });
+      if (!r.ok) {
+        const b = await r.json().catch(() => ({})) as { error?: string };
+        return reply.status(500).send({ error: b.error ?? 'Entladen fehlgeschlagen' });
+      }
+      await r.json().catch(() => ({}));
+      reply.send({ ok: true });
+    } catch (err) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Entladen fehlgeschlagen' });
+    }
+  });
+
   // ── HuggingFace GGUF search proxy ──
   fastify.get<{ Querystring: { q: string } }>('/api/ki/hf-search', { preHandler: requireAuth }, async (req, reply) => {
     const q = (req.query.q ?? '').trim();

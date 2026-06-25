@@ -401,6 +401,17 @@ export interface OllamaStatus {
   port: number;
 }
 
+export interface OllamaPsModel {
+  name: string;
+  model: string;
+  size: number;        // Gesamtgröße im Speicher (Bytes)
+  size_vram: number;   // davon im GPU-VRAM (Bytes); 0 = komplett RAM/CPU
+  digest: string;
+  details: OllamaModelDetails;
+  expires_at: string;  // ISO-Zeitpunkt, ab dem das Modell entladen wird
+  context_length?: number;
+}
+
 export interface OllamaModelShow {
   details: OllamaModelDetails;
   model_info: Record<string, number | string | boolean | null>;
