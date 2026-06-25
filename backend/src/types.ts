@@ -11,6 +11,7 @@ export interface DbUser {
   role: 'admin' | 'viewer';
   totp_secret: string | null;
   totp_enabled: number;
+  totp_required: number;
   created_at: string;
 }
 

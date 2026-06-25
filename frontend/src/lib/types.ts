@@ -529,7 +529,21 @@ export interface UserPublic {
   id: number;
   username: string;
   role: string;
+  totp_enabled: number;
+  totp_required: number;
   created_at: string;
+}
+
+export interface DeviceSession {
+  id: number;
+  user_id: number;
+  username?: string;
+  device_token: string;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_seen: string;
+  revoked: number;
 }
 
 export interface CreateContainerData {

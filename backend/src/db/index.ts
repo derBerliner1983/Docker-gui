@@ -132,6 +132,23 @@ function columnExists(table: string, col: string): boolean {
 }
 if (!columnExists('users', 'totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
 if (!columnExists('users', 'totp_enabled')) db.exec("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0");
+if (!columnExists('users', 'totp_required')) db.exec("ALTER TABLE users ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0");
+
+// Device sessions for trusted-device 2FA memory
+db.exec(`
+  CREATE TABLE IF NOT EXISTS device_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    device_token TEXT NOT NULL UNIQUE,
+    user_agent TEXT,
+    ip TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen TEXT NOT NULL DEFAULT (datetime('now')),
+    revoked INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_device_sessions_token ON device_sessions(device_token);
+  CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions(user_id);
+`);
 
 // SMTP-Konfiguration für echten E-Mail-Versand (an notification_config angehängt)
 if (!columnExists('notification_config', 'smtp_host')) db.exec('ALTER TABLE notification_config ADD COLUMN smtp_host TEXT');
@@ -155,12 +172,47 @@ if (!adminExists) {
 export const userQueries = {
   getByUsername: db.prepare<[string], DbUser>('SELECT * FROM users WHERE username = ?'),
   getById: db.prepare<[number], DbUser>('SELECT * FROM users WHERE id = ?'),
-  getAll: db.prepare<[], Omit<DbUser, 'password_hash'>>('SELECT id, username, role, totp_enabled, created_at FROM users'),
+  getAll: db.prepare<[], Omit<DbUser, 'password_hash'>>('SELECT id, username, role, totp_enabled, totp_required, created_at FROM users'),
   create: db.prepare<[string, string, string]>('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'),
   delete: db.prepare<[number]>('DELETE FROM users WHERE id = ?'),
   changePassword: db.prepare<[string, number]>('UPDATE users SET password_hash = ? WHERE id = ?'),
   setTotpSecret: db.prepare<[string | null, number]>('UPDATE users SET totp_secret = ? WHERE id = ?'),
   setTotpEnabled: db.prepare<[number, number]>('UPDATE users SET totp_enabled = ? WHERE id = ?'),
+  setTotpRequired: db.prepare<[number, number]>('UPDATE users SET totp_required = ? WHERE id = ?'),
+};
+
+export interface DeviceSessionRow {
+  id: number;
+  user_id: number;
+  device_token: string;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_seen: string;
+  revoked: number;
+}
+
+export const deviceSessionQueries = {
+  create: db.prepare<[number, string, string | null, string | null]>(
+    'INSERT INTO device_sessions (user_id, device_token, user_agent, ip) VALUES (?, ?, ?, ?)'
+  ),
+  getByToken: db.prepare<[string], DeviceSessionRow>(
+    'SELECT * FROM device_sessions WHERE device_token = ? AND revoked = 0'
+  ),
+  touchLastSeen: db.prepare<[number]>(
+    "UPDATE device_sessions SET last_seen = datetime('now') WHERE id = ?"
+  ),
+  getByUser: db.prepare<[number], DeviceSessionRow>(
+    'SELECT * FROM device_sessions WHERE user_id = ? ORDER BY last_seen DESC'
+  ),
+  getAll: db.prepare<[], DeviceSessionRow & { username: string }>(
+    `SELECT ds.*, u.username FROM device_sessions ds
+     JOIN users u ON u.id = ds.user_id
+     ORDER BY ds.last_seen DESC`
+  ),
+  revoke: db.prepare<[number]>('UPDATE device_sessions SET revoked = 1 WHERE id = ?'),
+  revokeByUser: db.prepare<[number]>('UPDATE device_sessions SET revoked = 1 WHERE user_id = ?'),
+  pruneOld: db.prepare("DELETE FROM device_sessions WHERE last_seen < datetime('now', '-90 days')"),
 };
 
 export const auditQueries = {

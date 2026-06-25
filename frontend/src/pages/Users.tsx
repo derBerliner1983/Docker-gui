@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield } from 'lucide-react';
+import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield, ShieldCheck, ShieldOff, ShieldAlert, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -96,6 +96,9 @@ export function Users() {
   const [deleteAppConfirm, setDeleteAppConfirm] = useState<UserPublic | null>(null);
   const [deleteLinuxConfirm, setDeleteLinuxConfirm] = useState<string | null>(null);
   const [linuxDeleteHome, setLinuxDeleteHome] = useState(false);
+  const [actionUser, setActionUser] = useState<UserPublic | null>(null);
+  const [actionType, setActionType] = useState<'require2fa' | 'unrequire2fa' | 'reset2fa' | 'revokeSessions' | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -110,7 +113,7 @@ export function Users() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const delApp = async (user: UserPublic) => { setDeleteAppConfirm(user); };
+  const delApp = async (u: UserPublic) => { setDeleteAppConfirm(u); };
   const delLinux = async (name: string) => { setLinuxDeleteHome(false); setDeleteLinuxConfirm(name); };
 
   const setLinuxPw = async (name: string) => {
@@ -118,6 +121,49 @@ export function Users() {
     if (!pw) return;
     try { await api.linuxUsers.setPassword(name, pw); alert('Passwort geändert.'); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+  };
+
+  const startAction = (u: UserPublic, type: typeof actionType) => {
+    setActionUser(u);
+    setActionType(type);
+  };
+
+  const confirmAction = async () => {
+    if (!actionUser || !actionType) return;
+    setActionLoading(true);
+    try {
+      if (actionType === 'require2fa') await api.users.require2fa(actionUser.id, true);
+      else if (actionType === 'unrequire2fa') await api.users.require2fa(actionUser.id, false);
+      else if (actionType === 'reset2fa') await api.users.reset2fa(actionUser.id);
+      else if (actionType === 'revokeSessions') await api.users.revokeSessions(actionUser.id);
+      await load();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setActionLoading(false); setActionUser(null); setActionType(null); }
+  };
+
+  const actionMeta: Record<NonNullable<typeof actionType>, { title: string; message: (u: UserPublic) => string; label: string; danger?: boolean }> = {
+    require2fa: {
+      title: '2FA erzwingen',
+      message: (u) => `2FA für "${u.username}" als Pflicht markieren? Der Benutzer wird beim nächsten Login aufgefordert, 2FA einzurichten.`,
+      label: '2FA erzwingen',
+    },
+    unrequire2fa: {
+      title: '2FA-Pflicht aufheben',
+      message: (u) => `Die 2FA-Pflicht für "${u.username}" aufheben?`,
+      label: 'Aufheben',
+    },
+    reset2fa: {
+      title: '2FA zurücksetzen',
+      message: (u) => `2FA für "${u.username}" deaktivieren und alle vertrauenswürdigen Geräte entfernen? (z.B. bei verlorenen Gerät)`,
+      label: '2FA deaktivieren',
+      danger: true,
+    },
+    revokeSessions: {
+      title: 'Alle Sitzungen widerrufen',
+      message: (u) => `Alle vertrauenswürdigen Geräte/Sitzungen von "${u.username}" widerrufen? Er wird beim nächsten Login erneut nach 2FA gefragt.`,
+      label: 'Widerrufen',
+      danger: true,
+    },
   };
 
   return (
@@ -133,25 +179,77 @@ export function Users() {
           actions={<button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setAppModal(true); }}><Plus size={13} /> Login</button>}
         >
           <table className="dtable" style={{ marginTop: 6 }}>
-            <thead><tr><th>Benutzer</th><th>Rolle</th><th>Erstellt</th><th style={{ width: 44 }}></th></tr></thead>
+            <thead><tr><th>Benutzer</th><th>Rolle</th><th>2FA</th><th>Erstellt</th><th style={{ width: 44 }}></th></tr></thead>
             <tbody>
-              {appUsers.map((u) => (
-                <tr key={u.id}>
-                  <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div className="sidebar__avatar" style={{ background: avatarColor(u.username) }}>{u.username.charAt(0).toUpperCase()}</div>
-                    <span style={{ fontWeight: 600 }}>{u.username}</span>
-                  </div></td>
-                  <td><span className={`badge badge--${u.role === 'admin' ? 'running' : 'paused'}`}>{u.role}</span></td>
-                  <td className="text-muted">{u.created_at?.slice(0, 10)}</td>
-                  <td>
-                    {u.id !== user?.id && (
-                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delApp(u)}><Trash2 size={12} /></button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {appUsers.map((u) => {
+                const has2fa = !!u.totp_enabled;
+                const required2fa = !!u.totp_required;
+                return (
+                  <tr key={u.id}>
+                    <td><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div className="sidebar__avatar" style={{ background: avatarColor(u.username) }}>{u.username.charAt(0).toUpperCase()}</div>
+                      <span style={{ fontWeight: 600 }}>{u.username}</span>
+                    </div></td>
+                    <td><span className={`badge badge--${u.role === 'admin' ? 'running' : 'paused'}`}>{u.role}</span></td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {has2fa
+                          ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-success)', fontWeight: 600 }}><ShieldCheck size={12} /> aktiv</span>
+                          : required2fa
+                            ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--color-warning)', fontWeight: 600 }}><ShieldAlert size={12} /> erzwungen</span>
+                            : <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>–</span>
+                        }
+                        {user?.role === 'admin' && u.id !== user?.id && (
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {!required2fa && !has2fa && (
+                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA erzwingen" onClick={() => startAction(u, 'require2fa')}>
+                                <ShieldAlert size={11} />
+                              </button>
+                            )}
+                            {required2fa && !has2fa && (
+                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA-Pflicht aufheben" onClick={() => startAction(u, 'unrequire2fa')}>
+                                <ShieldOff size={11} />
+                              </button>
+                            )}
+                            {has2fa && (
+                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA zurücksetzen (z.B. Gerät verloren)" onClick={() => startAction(u, 'reset2fa')}>
+                                <ShieldOff size={11} />
+                              </button>
+                            )}
+                            <button className="btn btn--ghost btn--icon btn--sm" title="Alle Sitzungen widerrufen" onClick={() => startAction(u, 'revokeSessions')}>
+                              <LogOut size={11} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-muted">{u.created_at?.slice(0, 10)}</td>
+                    <td>
+                      {u.id !== user?.id && (
+                        <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delApp(u)}><Trash2 size={12} /></button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+
+          {/* Bulk 2FA enforce for users without 2FA */}
+          {user?.role === 'admin' && appUsers.some((u) => !u.totp_enabled && !u.totp_required && u.id !== user?.id) && (
+            <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={async () => {
+                  const targets = appUsers.filter((u) => !u.totp_enabled && !u.totp_required && u.id !== user?.id);
+                  for (const u of targets) await api.users.require2fa(u.id, true).catch(() => null);
+                  await load();
+                }}
+              >
+                <ShieldAlert size={12} /> 2FA für alle erzwingen (ohne aktives 2FA)
+              </button>
+            </div>
+          )}
         </Panel>
 
         {/* Linux Users */}
@@ -229,6 +327,19 @@ export function Users() {
         }}
         onCancel={() => setDeleteLinuxConfirm(null)}
       />
+
+      {/* 2FA / session action confirm */}
+      {actionUser && actionType && (
+        <ConfirmModal
+          open
+          title={actionMeta[actionType].title}
+          message={actionMeta[actionType].message(actionUser)}
+          confirmLabel={actionLoading ? '…' : actionMeta[actionType].label}
+          danger={actionMeta[actionType].danger}
+          onConfirm={confirmAction}
+          onCancel={() => { setActionUser(null); setActionType(null); }}
+        />
+      )}
     </>
   );
 }

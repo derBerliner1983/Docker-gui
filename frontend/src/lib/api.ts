@@ -1,5 +1,5 @@
 import type {
-  User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData,
+  User, Container, SystemStats, DockerImage, SystemService, UserPublic, CreateContainerData, DeviceSession,
   ProcessInfo, CronJob, VM, AutostartUnit, PackageUpdate, Backup, BackupSource, Share, LinuxUser,
   ProxyHost, ProxyCandidate, DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, SecurityScan, SshStatus, VmNetwork,
   AntivirusStatus, BackupSchedule, AppTemplate, NotificationItem, NotificationConfig, VersionInfo,
@@ -327,5 +327,18 @@ export const api = {
     create: (data: { username: string; password: string; role: string }) =>
       req('/api/users', { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: number) => req(`/api/users/${id}`, { method: 'DELETE' }),
+    require2fa: (id: number, required: boolean) =>
+      req(`/api/users/${id}/2fa/require`, { method: 'POST', body: JSON.stringify({ required }) }),
+    reset2fa: (id: number) =>
+      req(`/api/users/${id}/2fa/reset`, { method: 'POST' }),
+    revokeSessions: (id: number) =>
+      req(`/api/users/${id}/sessions`, { method: 'DELETE' }),
+  },
+
+  sessions: {
+    list: (userId?: number) =>
+      req<{ sessions: DeviceSession[] }>(`/api/auth/sessions${userId != null ? `?userId=${userId}` : ''}`),
+    listAll: () => req<{ sessions: DeviceSession[] }>('/api/auth/sessions/all'),
+    revoke: (id: number) => req(`/api/auth/sessions/${id}`, { method: 'DELETE' }),
   },
 };
