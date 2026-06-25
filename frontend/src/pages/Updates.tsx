@@ -49,6 +49,7 @@ export function Updates() {
       const res = await api.system.applyUpdates(packages);
       setOutput(res.output || 'Fertig.');
       setOutputOpen(true);
+      setTimeout(() => setOutputOpen(false), 4000);
       // Optimistically clear the installed packages immediately so the UI
       // reflects the new state without waiting for apt's cache to settle.
       if (packages) {
@@ -151,6 +152,9 @@ export function Updates() {
 
       <Modal open={outputOpen} title="Update-Ausgabe" onClose={() => setOutputOpen(false)} width={680}>
         <div className="log-viewer" style={{ maxHeight: 460 }}>{output}</div>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)', textAlign: 'right' }}>
+          ✓ Fertig – Fenster schließt automatisch…
+        </div>
       </Modal>
     </>
   );

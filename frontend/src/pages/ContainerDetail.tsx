@@ -178,12 +178,8 @@ export function ContainerDetail() {
   const logEndRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logsOpen, setLogsOpen] = useState(true);
-  // logSince: unix timestamp (seconds) – nur Logs ab diesem Zeitpunkt laden; in sessionStorage gespeichert
-  const logSinceKey = `log-since-${id}`;
-  const [logSince, setLogSince] = useState<number | null>(() => {
-    const stored = sessionStorage.getItem(`log-since-${id}`);
-    return stored ? parseInt(stored) : null;
-  });
+  // logSince: unix timestamp (seconds) – nur gesetzt wenn "Leeren" geklickt; wird beim Navigieren zurückgesetzt
+  const [logSince, setLogSince] = useState<number | null>(null);
   const [infoOpen, setInfoOpen] = useState(true);
 
   // Actions
@@ -497,9 +493,7 @@ export function ContainerDetail() {
                 title="Logs ab jetzt leeren (ältere Einträge dauerhaft ausblenden)"
                 onClick={(e) => {
                   e.stopPropagation();
-                  const now = Math.floor(Date.now() / 1000);
-                  sessionStorage.setItem(logSinceKey, String(now));
-                  setLogSince(now);
+                  setLogSince(Math.floor(Date.now() / 1000));
                   setLogs([]);
                 }}
               >

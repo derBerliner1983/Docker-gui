@@ -105,6 +105,7 @@ export function Packages() {
       const res = await api.packages.remove(names, purge);
       setOutput(res.output || 'Fertig.');
       setOutputOpen(true);
+      setTimeout(() => setOutputOpen(false), 4000);
       setSelected(new Set());
       setTimeout(() => { void load(false); }, 2000);
     } catch (err) {
@@ -166,6 +167,7 @@ export function Packages() {
       const res = await api.packages.install([name]);
       setOutput(res.output || 'Fertig.');
       setOutputOpen(true);
+      setTimeout(() => setOutputOpen(false), 4000);
       setInstallOpen(false); setQuery(''); setResults([]);
       setTimeout(() => { void load(false); }, 2000);
     } catch (err) {
@@ -352,6 +354,9 @@ export function Packages() {
 
       <Modal open={outputOpen} title="Ausgabe" onClose={() => setOutputOpen(false)} width={680}>
         <div className="log-viewer" style={{ maxHeight: 460 }}>{output}</div>
+        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)', textAlign: 'right' }}>
+          ✓ Fertig – Fenster schließt automatisch…
+        </div>
       </Modal>
     </>
   );
