@@ -270,7 +270,9 @@ Font: Inter.
 | Prinzip **„Deutsch = Schlüssel"**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel | ✅ |
 | Modulweite `tt()`-Funktion – Übersetzung auch in Unterkomponenten/Helfern ohne Hook | ✅ |
 | Panels, Dialoge, Buttons, Tooltips, `confirm()`/`alert()` auf `tt()` umgestellt | ✅ |
-| ~470 Texte in EN/FR/ES/IT übersetzt (`frontend/src/lib/locales/*.ts`) | ✅ |
+| ~470 UI-Texte in EN/FR/ES/IT übersetzt (`frontend/src/lib/locales/*.ts`) | ✅ |
+| **Backend-Fehlermeldungen** werden zentral in `api.ts` (`req()`) via `tt()` übersetzt; Originaltext bleibt als `err.raw` erhalten | ✅ |
+| 77 Backend-Meldungen in EN/FR/ES/IT übersetzt | ✅ |
 | Neue Sprache/Anpassung = nur Locale-Datei mit `deutsch → übersetzt` editieren | ✅ |
 
 ### ⏳ Geplant / Ideen

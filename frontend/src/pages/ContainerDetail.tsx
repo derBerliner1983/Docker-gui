@@ -103,7 +103,7 @@ function NetworksPicker({ networks, onChange }: {
     try {
       await api.networks.create({ name: netName, driver: 'macvlan', parent: newParent, subnet: newSubnet, gateway: newGw || undefined, vlan: newVlan || undefined });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
+      const msg = (e as { raw?: string }).raw ?? (e instanceof Error ? e.message : '');
       if (!/exists|in use/i.test(msg)) { setCreateErr(`Fehler: ${msg}`); setCreateBusy(false); return; }
     }
     // Netzwerke neu laden und das neue direkt hinzufügen

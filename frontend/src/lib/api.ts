@@ -9,6 +9,8 @@ import type {
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel,
 } from './types';
 
+import { tt } from './i18n';
+
 const getToken = () => localStorage.getItem('token');
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -27,7 +29,11 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const err = new Error((body as { error?: string }).error ?? `HTTP ${res.status}`) as Error & { data?: unknown; status?: number };
+    const rawMsg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
+    // Backend-Meldungen sind auf Deutsch verfasst – sie dienen als i18n-Schlüssel
+    // und werden hier in die gewählte Sprache übersetzt (Fallback = Deutsch).
+    const err = new Error(tt(rawMsg)) as Error & { data?: unknown; status?: number; raw?: string };
+    err.raw = rawMsg;         // Originaltext (z.B. für substring-Prüfungen)
     err.data = body;          // Zusatzdaten (z.B. Port-Konflikt-Vorschläge) erhalten
     err.status = res.status;
     throw err;

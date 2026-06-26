@@ -337,7 +337,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
           });
         } catch (e) {
           // „already exists" tolerieren – dann einfach das vorhandene nutzen
-          const msg = e instanceof Error ? e.message : '';
+          const msg = (e as { raw?: string }).raw ?? (e instanceof Error ? e.message : '');
           if (!/exists|in use/i.test(msg)) { setError(`Netzwerk konnte nicht angelegt werden: ${msg}`); setBusy(false); return; }
         }
         effectiveMode = netName;
