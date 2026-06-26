@@ -260,6 +260,7 @@ function LogsModal({ container, open, onClose }: { container: Container | null; 
 export function Containers() {
   const [containers, setContainers] = useState<Container[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
+  const [catFilter, setCatFilter] = useState<string>('');   // '' = alle Kategorien
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState<Record<string, string>>({});
@@ -343,16 +344,30 @@ export function Containers() {
     });
   };
 
+  const GROUP_NONE = 'Ohne Gruppe';
+
+  // Vorhandene Kategorien (dynamisch aus den Containern) – für die Tab-Leiste oben
+  const allCategories = [...new Set(containers.map((c) => (c.category && c.category.trim()) || GROUP_NONE))]
+    .sort((a, b) => {
+      if (a === GROUP_NONE) return 1;
+      if (b === GROUP_NONE) return -1;
+      return a.localeCompare(b, 'de');
+    });
+
   const filtered = containers.filter((c) => {
-    if (filter === 'running') return c.state === 'running';
-    if (filter === 'stopped') return c.state !== 'running';
+    if (filter === 'running' && c.state !== 'running') return false;
+    if (filter === 'stopped' && c.state === 'running') return false;
+    if (catFilter) {
+      const cat = (c.category && c.category.trim()) || GROUP_NONE;
+      if (cat !== catFilter) return false;
+    }
     return true;
   });
 
   const running = containers.filter((c) => c.state === 'running').length;
+  const catCount = (cat: string) => containers.filter((c) => ((c.category && c.category.trim()) || GROUP_NONE) === cat).length;
 
   // Container nach Gruppe/Kategorie bündeln (ohne Kategorie → "Ohne Gruppe", ganz unten)
-  const GROUP_NONE = 'Ohne Gruppe';
   const groupMap = new Map<string, Container[]>();
   for (const c of filtered) {
     const key = (c.category && c.category.trim()) || GROUP_NONE;
@@ -543,6 +558,27 @@ export function Containers() {
             </button>
           ))}
         </div>
+
+        {/* Dynamische Kategorie-Tabs – erscheinen automatisch, sobald Gruppen vergeben sind */}
+        {allCategories.length > 1 && (
+          <div className="filter-tabs" style={{ flexWrap: 'wrap', gap: 4, marginTop: -4 }}>
+            <button
+              className={`filter-tab${!catFilter ? ' filter-tab--active' : ''}`}
+              onClick={() => setCatFilter('')}
+            >
+              Alle Gruppen
+            </button>
+            {allCategories.map((c) => (
+              <button
+                key={c}
+                className={`filter-tab${catFilter === c ? ' filter-tab--active' : ''}`}
+                onClick={() => setCatFilter(catFilter === c ? '' : c)}
+              >
+                {c} ({catCount(c)})
+              </button>
+            ))}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>

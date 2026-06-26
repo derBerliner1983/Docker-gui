@@ -176,6 +176,21 @@ async function pullImage(image: string): Promise<void> {
   });
 }
 
+/** Belegte Host-Ports aller (auch gestoppter) Container ermitteln → Map port/proto → Container-Name. */
+async function usedHostPorts(): Promise<Map<string, string>> {
+  const used = new Map<string, string>();
+  try {
+    const cs = await docker.listContainers({ all: true });
+    for (const c of cs) {
+      const cname = (c.Names?.[0] ?? c.Id.slice(0, 12)).replace(/^\//, '');
+      for (const p of c.Ports ?? []) {
+        if (p.PublicPort) used.set(`${p.PublicPort}/${(p.Type || 'tcp').toLowerCase()}`, cname);
+      }
+    }
+  } catch { /* docker nicht erreichbar */ }
+  return used;
+}
+
 interface InstallBody {
   name?: string;
   image: string;
@@ -282,6 +297,35 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
       const name = (body.name || body.image.split('/').pop()?.replace(/:.*$/, '') || 'container')
         .replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 64);
 
+      // Bei eigener IP (named network) werden keine Host-Ports gebunden → keine Konfliktprüfung nötig
+      const usesOwnIp = !!(body.networkMode && !['bridge', 'host', 'none', ''].includes(body.networkMode));
+
+      // ── Vorab-Prüfung: schon belegte Host-Ports erkennen (bevor wir das Image ziehen) ──
+      if (!usesOwnIp && body.networkMode !== 'host') {
+        const used = await usedHostPorts();
+        const conflicts: string[] = [];
+        for (const p of body.ports ?? []) {
+          const proto = (p.proto === 'udp' ? 'udp' : 'tcp');
+          const owner = used.get(`${p.host}/${proto}`);
+          if (owner) conflicts.push(`Port ${p.host}/${proto} (belegt von „${owner}")`);
+        }
+        if (conflicts.length) {
+          return reply.status(409).send({
+            error: `Host-Port bereits belegt: ${conflicts.join(', ')}. ` +
+              `Wähle einen anderen Host-Port – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).`,
+          });
+        }
+      }
+
+      // Existiert bereits ein Container mit diesem Namen? (sonst „name already in use")
+      try {
+        const existing = await docker.listContainers({ all: true, filters: { name: [`^/${name}$`] } });
+        if (existing.length) {
+          return reply.status(409).send({ error: `Ein Container namens „${name}" existiert bereits. Bitte einen anderen Namen wählen.` });
+        }
+      } catch { /* weiter */ }
+
+      let createdId: string | null = null;
       try {
         await pullImage(body.image);
 
@@ -331,6 +375,7 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
         }
 
         const container = await docker.createContainer(createOpts);
+        createdId = container.id;
         await container.start();
         if (body.category) {
           try { categoryQueries.set.run(container.id, body.category); } catch { /* */ }
@@ -342,7 +387,18 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
         void notify('success', `App „${name}" installiert`, `Container „${name}" wurde aus dem Store gestartet.`, 'container');
         reply.status(201).send({ ok: true, id: container.id, name });
       } catch (err: unknown) {
-        reply.status(500).send({ error: err instanceof Error ? err.message : 'Installation fehlgeschlagen' });
+        // Aufräumen: ein bereits erstellter (aber nicht gestarteter) Container darf
+        // nicht als „Erstellt"-Leiche zurückbleiben.
+        if (createdId) {
+          try { await docker.getContainer(createdId).remove({ force: true }); } catch { /* schon weg */ }
+        }
+        const raw = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
+        // Häufigsten Docker-Fehler in Klartext übersetzen
+        const friendly = /address already in use|port is already allocated/i.test(raw)
+          ? 'Ein benötigter Host-Port ist bereits belegt (z. B. Port 53 durch systemd-resolved). ' +
+            'Wähle einen anderen Host-Port oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP.'
+          : raw;
+        reply.status(500).send({ error: friendly });
       }
     },
   );
