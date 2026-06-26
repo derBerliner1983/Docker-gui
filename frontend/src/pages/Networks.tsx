@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Wand2, ShieldCheck, XCircle, Info, CheckCircle2 } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Wand2, ShieldCheck, XCircle, Info, CheckCircle2, EyeOff } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
@@ -206,6 +206,8 @@ function FirewallAssistant({ open, onClose, rules, onChanged }: {
         await api.firewall.remove(a.ruleNum);
       } else if (a.kind === 'restrict-lan' && a.ruleNum != null) {
         await api.firewall.restrictLan(a.ruleNum);
+      } else if (a.kind === 'ignore' && a.port) {
+        await api.firewall.ignorePort(a.port);
       }
       await onChanged();
       await analyze();
@@ -282,14 +284,16 @@ function FirewallAssistant({ open, onClose, rules, onChanged }: {
                     {f.actions?.map((a) => (
                       <button
                         key={a.id}
-                        className={`btn btn--sm ${a.kind === 'allow-any' ? 'btn--ghost' : a.kind === 'delete' ? 'btn--outline' : 'btn--primary'}`}
-                        style={{ whiteSpace: 'nowrap' }}
+                        className={`btn btn--sm ${a.kind === 'allow-any' ? 'btn--ghost' : a.kind === 'delete' ? 'btn--outline' : a.kind === 'ignore' ? 'btn--ghost' : 'btn--primary'}`}
+                        style={{ whiteSpace: 'nowrap', opacity: a.kind === 'ignore' ? 0.7 : 1 }}
                         disabled={fixing === a.id}
                         onClick={() => applyAction(a)}
+                        title={a.kind === 'ignore' ? 'Port als absichtlich blockiert markieren – wird nicht mehr angezeigt' : undefined}
                       >
                         {fixing === a.id ? <span className="spinner" style={{ width: 12, height: 12 }} />
                           : a.kind === 'allow-lan' ? <Lock size={12} />
                           : a.kind === 'allow-any' ? <Network size={12} />
+                          : a.kind === 'ignore' ? <EyeOff size={12} />
                           : <Trash2 size={12} />} {a.label}
                       </button>
                     ))}

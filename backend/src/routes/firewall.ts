@@ -14,6 +14,19 @@ interface FirewallRule {
   comment: string;
 }
 
+// ── Ignorierte Ports: vom Assistenten ausgeblendet (absichtlich blockiert, nicht mehr fragen) ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS firewall_ignored_ports (
+    port       TEXT PRIMARY KEY,
+    ignored_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+const ipq = {
+  list:   db.prepare(`SELECT port FROM firewall_ignored_ports`),
+  insert: db.prepare(`INSERT OR IGNORE INTO firewall_ignored_ports (port) VALUES (?)`),
+  del:    db.prepare(`DELETE FROM firewall_ignored_ports WHERE port = ?`),
+};
+
 // ── Deaktivierte Regeln (Parkbucht): aus ufw entfernt, aber gemerkt zum Reaktivieren ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS firewall_disabled (
@@ -230,10 +243,21 @@ function dockerPublishedPorts(): Set<string> {
   return ports;
 }
 
+/** Ist Samba mit mindestens einer Freigabe konfiguriert? */
+function sambaHasShares(): boolean {
+  try {
+    const fs = require('fs') as typeof import('fs');
+    const conf = fs.readFileSync('/etc/samba/smb.conf', 'utf8');
+    // Prüfe auf Abschnitte, die keine Standard-Abschnitte sind
+    const shareSection = /^\[(?!global\]|homes\]|printers\]|print\$\]|ipc\$\])/im;
+    return shareSection.test(conf);
+  } catch { return false; }
+}
+
 /** Eine konkrete Aktion, die der Assistent auf Knopfdruck ausführen kann. */
 interface FwAction {
   id: string;
-  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan';
+  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan' | 'ignore';
   label: string;
   port?: string;
   proto?: string;
@@ -260,6 +284,7 @@ function analyzeFirewall(
   defIncoming: string,
   dockerPorts: Set<string>,
   conns: Map<string, number>,
+  ignoredPorts: Set<string>,
 ): FwFinding[] {
   const findings: FwFinding[] = [];
   const defaultBlocks = defIncoming === 'deny' || defIncoming === 'reject';
@@ -357,10 +382,15 @@ function analyzeFirewall(
   }
 
   // 3) Port-Scan: lauschende Dienste, die (noch) nicht freigegeben sind → zur Freigabe anbieten
+  const sambaActive = sambaHasShares();
+  const SAMBA_PORTS = new Set(['139', '445']);
   const sortedListen = [...listening.entries()].sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
   for (const [port, info] of sortedListen) {
     if (info.scope !== 'public') continue;       // nur extern lauschende Dienste
     if (allowedPorts.has(port)) continue;        // schon per Regel freigegeben
+    if (ignoredPorts.has(port)) continue;        // vom Nutzer als „ignorieren" markiert
+    // Samba-Ports nur zeigen, wenn tatsächlich Freigaben eingerichtet sind
+    if (SAMBA_PORTS.has(port) && !sambaActive) continue;
     const proto = info.protos.size === 1 ? [...info.protos][0] : '';
     const svc = info.proc || PORT_RISK[port]?.name || '';
     const nConn = conns.get(port) ?? 0;
@@ -375,11 +405,12 @@ function analyzeFirewall(
       detail: `Dienst lauscht auf 0.0.0.0:${port}${proto ? '/' + proto : ''} — ${state}.`,
       recommendation: risky
         ? `${PORT_RISK[port]!.note} Falls überhaupt nötig, nur im LAN freigeben.`
-        : 'Soll dieser Dienst erreichbar sein? „Nur im LAN" (empfohlen) oder „Überall" (Internet). Wenn nicht gebraucht: nichts tun – bleibt blockiert.',
+        : 'Soll dieser Dienst erreichbar sein? „Nur im LAN" (empfohlen) oder „Überall" (Internet). „Ignorieren" blendet diesen Port dauerhaft aus.',
       port,
       actions: [
         { id: `${port}-lan`, kind: 'allow-lan', label: 'Nur im LAN freigeben', port, proto },
         { id: `${port}-any`, kind: 'allow-any', label: 'Überall freigeben', port, proto },
+        { id: `${port}-ignore`, kind: 'ignore', label: 'Ignorieren', port },
       ],
     });
   }
@@ -395,7 +426,8 @@ export function buildFirewallAnalysis() {
   const def = defaultIncoming();
   const dockerPorts = dockerPublishedPorts();
   const conns = establishedConns();
-  const findings = analyzeFirewall(rules, listening, def, dockerPorts, conns);
+  const ignoredPorts = new Set<string>((ipq.list.all() as { port: string }[]).map((r) => r.port));
+  const findings = analyzeFirewall(rules, listening, def, dockerPorts, conns, ignoredPorts);
   const counts = {
     critical: findings.filter((f) => f.severity === 'critical').length,
     warn: findings.filter((f) => f.severity === 'warn').length,
@@ -590,6 +622,23 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'ufw-Fehler' });
     }
+  });
+
+  // Ignorierte Ports: Port dauerhaft aus dem Assistenten-Scan ausblenden
+  fastify.post<{ Body: { port: string } }>('/api/firewall/ignore-port', { preHandler: requireAdmin }, async (req, reply) => {
+    const port = (req.body?.port ?? '').replace(/[^0-9]/g, '');
+    if (!port) return reply.status(400).send({ error: 'Port erforderlich' });
+    ipq.insert.run(port);
+    auditQueries.log.run(req.user.id, 'firewall.ignore-port', port);
+    reply.send({ ok: true, port });
+  });
+
+  fastify.delete<{ Params: { port: string } }>('/api/firewall/ignore-port/:port', { preHandler: requireAdmin }, async (req, reply) => {
+    const port = (req.params.port ?? '').replace(/[^0-9]/g, '');
+    if (!port) return reply.status(400).send({ error: 'Port erforderlich' });
+    ipq.del.run(port);
+    auditQueries.log.run(req.user.id, 'firewall.unignore-port', port);
+    reply.send({ ok: true });
   });
 
   // Protokollierung (Verbindungsversuche) ein-/ausschalten oder Stufe setzen

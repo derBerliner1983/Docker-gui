@@ -262,6 +262,8 @@ export const api = {
     clearLog: () => req('/api/firewall/log', { method: 'DELETE' }),
     analyze: () => req<FirewallAnalysis>('/api/firewall/analyze'),
     restrictLan: (num: number) => req(`/api/firewall/${num}/restrict-lan`, { method: 'POST' }),
+    ignorePort: (port: string) => req('/api/firewall/ignore-port', { method: 'POST', body: JSON.stringify({ port }) }),
+    unignorePort: (port: string) => req(`/api/firewall/ignore-port/${port}`, { method: 'DELETE' }),
   },
 
   settings: {
