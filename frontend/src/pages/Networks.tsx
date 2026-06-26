@@ -6,7 +6,7 @@ import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { portInfo } from '../lib/utils';
-import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, FirewallFinding, Container, VmNetwork, VM } from '../lib/types';
+import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, FirewallFinding, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
   const [name, setName] = useState('');
@@ -922,7 +922,108 @@ function VmNetworksView() {
   );
 }
 
-type NetTab = 'docker' | 'vm' | 'firewall' | 'connections';
+const DRIVER_BADGE: Record<string, string> = { macvlan: 'running', ipvlan: 'restarting', bridge: 'paused', host: 'paused', overlay: 'stopped' };
+
+function VirtualIpsPanel() {
+  const [entries, setEntries] = useState<ContainerNetworkEntry[]>([]);
+  const [vmEntries, setVmEntries] = useState<VmIpEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'macvlan' | 'ipvlan' | 'bridge'>('all');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api.containers.virtualIps();
+      setEntries(r.entries);
+      setVmEntries(r.vmEntries);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { void load(); }, [load]);
+
+  const filtered = entries.filter((e) => filter === 'all' || e.driver === filter);
+  const drivers = [...new Set(entries.map((e) => e.driver))].filter((d) => ['macvlan', 'ipvlan', 'bridge'].includes(d));
+
+  return (
+    <Panel title="Virtuelle IPs — Übersicht" icon={<Network size={15} />} storageKey="vips-panel">
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="filter-tabs" style={{ margin: 0 }}>
+          <button className={`filter-tab${filter === 'all' ? ' filter-tab--active' : ''}`} onClick={() => setFilter('all')}>Alle</button>
+          {drivers.map((d) => (
+            <button key={d} className={`filter-tab${filter === d ? ' filter-tab--active' : ''}`} onClick={() => setFilter(d as typeof filter)}>{d}</button>
+          ))}
+        </div>
+        <button className="btn btn--ghost btn--sm" style={{ marginLeft: 'auto' }} onClick={load} disabled={loading}>
+          {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={12} />} Aktualisieren
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 32 }}><span className="spinner" style={{ width: 24, height: 24 }} /></div>
+      ) : filtered.length === 0 && vmEntries.length === 0 ? (
+        <div className="empty-state" style={{ padding: '32px 20px' }}>
+          <div className="empty-state__icon"><Network size={36} strokeWidth={1.2} /></div>
+          <div className="empty-state__title">Keine Einträge</div>
+          <div className="empty-state__desc">
+            Noch kein Container mit einem benutzerdefinierten Netzwerk verbunden.<br />
+            Für eine echte LAN-IP: erst ein <b>macvlan</b>- oder <b>ipvlan</b>-Netzwerk anlegen (Docker-Tab), dann im Container-Bearbeiten-Dialog das Netzwerk hinzufügen.
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="table-scroll">
+            <table className="dtable">
+              <thead>
+                <tr>
+                  <th>Container</th>
+                  <th>Netzwerk</th>
+                  <th>Treiber</th>
+                  <th>IP-Adresse</th>
+                  <th>MAC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((e, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{e.containerName}</td>
+                    <td>{e.networkName}</td>
+                    <td><span className={`badge badge--${DRIVER_BADGE[e.driver] ?? 'paused'}`}>{e.driver}</span></td>
+                    <td className="dtable__mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{e.ipv4 ? e.ipv4.replace(/\/\d+$/, '') : '—'}</td>
+                    <td className="dtable__mono text-muted" style={{ fontSize: 11 }}>{e.mac || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {vmEntries.length > 0 && (
+            <>
+              <div style={{ margin: '16px 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Virtuelle Maschinen (DHCP-Leases)</div>
+              <div className="table-scroll">
+                <table className="dtable">
+                  <thead><tr><th>VM / Hostname</th><th>IP-Adresse</th><th>MAC</th><th>Netzwerk</th></tr></thead>
+                  <tbody>
+                    {vmEntries.map((v, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 600 }}>{v.vmName}</td>
+                        <td className="dtable__mono" style={{ color: 'var(--color-accent)', fontWeight: 600 }}>{v.ipv4}</td>
+                        <td className="dtable__mono text-muted" style={{ fontSize: 11 }}>{v.mac}</td>
+                        <td className="text-muted">{v.networkName}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
 
 export function Networks() {
   const [view, setView] = useState<NetTab>('docker');
@@ -970,11 +1071,13 @@ export function Networks() {
           <button className={`filter-tab${view === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setView('vm')}>VMs</button>
           <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>Firewall</button>
           <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>Verbindungen</button>
+          <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>Virtuelle IPs</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
         {view === 'firewall' && <FirewallPanel />}
         {view === 'connections' && <ConnectionsPanel />}
+        {view === 'vips' && <VirtualIpsPanel />}
         {view === 'docker' && networks.map((n) => (
           <Panel
             key={n.id}

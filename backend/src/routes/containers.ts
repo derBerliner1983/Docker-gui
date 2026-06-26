@@ -50,6 +50,20 @@ function buildCreateOptions(cfg: {
   };
 }
 
+/** Verbindet einen Container nach dem Starten mit zusätzlichen Netzwerken (optionale feste IP). */
+async function connectExtraNetworks(containerId: string, networks: { id: string; ip?: string }[]) {
+  for (const net of networks) {
+    const id = net.id.replace(/[^a-zA-Z0-9_.-]/g, '');
+    if (!id) continue;
+    await docker.getNetwork(id).connect({
+      Container: containerId,
+      EndpointConfig: net.ip
+        ? { IPAMConfig: { IPv4Address: net.ip.replace(/[^0-9.]/g, '') } }
+        : undefined,
+    });
+  }
+}
+
 export async function containerRoutes(fastify: FastifyInstance) {
   fastify.get('/api/containers', { preHandler: requireAuth }, async (_req, reply) => {
     try {
@@ -245,12 +259,49 @@ export async function containerRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.post<{ Body: { image: string; name?: string; ports?: Record<string, string>; env?: string[]; volumes?: string[]; category?: string; restart?: string; icon?: string } }>(
+  // Alle Container mit ihren IPs in allen Docker-Netzwerken (für Virtuelle-IPs-Tab)
+  fastify.get('/api/containers/virtual-ips', { preHandler: requireAuth }, async (_req, reply) => {
+    try {
+      const nets = await docker.listNetworks();
+      const entries: {
+        containerId: string; containerName: string;
+        networkId: string; networkName: string; driver: string;
+        ipv4: string; mac: string;
+      }[] = [];
+      for (const n of nets) {
+        const info = await docker.getNetwork(n.Id).inspect().catch(() => null);
+        if (!info?.Containers) continue;
+        for (const [cid, c] of Object.entries(info.Containers)) {
+          const cc = c as { Name: string; IPv4Address: string; MacAddress: string };
+          entries.push({
+            containerId: cid, containerName: cc.Name,
+            networkId: n.Id, networkName: n.Name, driver: n.Driver,
+            ipv4: cc.IPv4Address, mac: cc.MacAddress,
+          });
+        }
+      }
+      // VM-Leases (best-effort via virsh)
+      const vmEntries: { vmName: string; ipv4: string; mac: string; networkName: string }[] = [];
+      try {
+        const { execFileSync } = await import('child_process');
+        const leaseOut = execFileSync('virsh', ['net-dhcp-leases', '--all'], { timeout: 4000 }).toString();
+        for (const line of leaseOut.split('\n')) {
+          const m = line.match(/^\s*\S+\s+(\S+)\s+ipv4\s+([\d.]+)\/\d+\s+(\S+)/);
+          if (m) vmEntries.push({ mac: m[1], ipv4: m[2], vmName: m[3], networkName: 'libvirt' });
+        }
+      } catch { /* virsh nicht verfügbar */ }
+      reply.send({ entries, vmEntries });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Docker-Fehler' });
+    }
+  });
+
+  fastify.post<{ Body: { image: string; name?: string; ports?: Record<string, string>; env?: string[]; volumes?: string[]; category?: string; restart?: string; icon?: string; networks?: { id: string; ip?: string }[] } }>(
     '/api/containers/create',
     { preHandler: requireAuth },
     async (req, reply) => {
       try {
-        const { image, name, ports, env, volumes, category, restart, icon } = req.body ?? {};
+        const { image, name, ports, env, volumes, category, restart, icon, networks } = req.body ?? {};
         if (!image) return reply.status(400).send({ error: 'Image erforderlich' });
 
         // Ports kommen als Record<containerPort, hostPort> (tcp) vom Standard-Formular
@@ -263,6 +314,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
         );
 
         await container.start();
+        if (networks?.length) await connectExtraNetworks(container.id, networks);
         if (category) categoryQueries.set.run(container.id, category);
         if (icon) categoryQueries.setIcon.run(container.id, icon);
         auditQueries.log.run(req.user.id, 'container.create', name ?? image);
@@ -284,6 +336,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
       name?: string; image: string;
       ports?: PortSpec[]; env?: string[]; volumes?: string[];
       restart?: string; category?: string;
+      networks?: { id: string; ip?: string }[];
     };
   }>(
     '/api/containers/:id/recreate',
@@ -310,6 +363,7 @@ export async function containerRoutes(fastify: FastifyInstance) {
 
         const container = await docker.createContainer(opts);
         await container.start();
+        if (body.networks?.length) await connectExtraNetworks(container.id, body.networks);
 
         if (category) categoryQueries.set.run(container.id, category);
         if (icon) categoryQueries.setIcon.run(container.id, icon);

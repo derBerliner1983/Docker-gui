@@ -65,7 +65,9 @@ export const api = {
       name?: string; image: string;
       ports?: { host: number; container: number; proto?: string }[];
       env?: string[]; volumes?: string[]; restart?: string; category?: string;
+      networks?: { id: string; ip?: string }[];
     }) => req<{ ok: boolean; id: string }>(`/api/containers/${id}/recreate`, { method: 'POST', body: JSON.stringify(data) }),
+    virtualIps: () => req<{ entries: import('./types').ContainerNetworkEntry[]; vmEntries: import('./types').VmIpEntry[] }>('/api/containers/virtual-ips'),
     pull: (id: string) => req(`/api/containers/${id}/pull`, { method: 'POST' }),
     setCategory: (id: string, category: string) =>
       req(`/api/containers/${id}/category`, { method: 'POST', body: JSON.stringify({ category }) }),

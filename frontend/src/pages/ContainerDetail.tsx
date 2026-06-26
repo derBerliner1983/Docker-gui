@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink, Plus, X } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
@@ -9,7 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
 import { formatBytes, germanStatus, germanRestart } from '../lib/utils';
-import type { Container } from '../lib/types';
+import type { Container, DockerNetwork } from '../lib/types';
 
 const HISTORY_LEN = 40;
 const STATS_INTERVAL_MS = 3000;
@@ -28,7 +28,10 @@ interface ContainerInspect {
     Binds: string[] | null;
     PortBindings?: Record<string, Array<{ HostIp: string; HostPort: string }> | null> | null;
   };
-  NetworkSettings: { Ports: Record<string, Array<{ HostIp: string; HostPort: string }> | null> };
+  NetworkSettings: {
+    Ports: Record<string, Array<{ HostIp: string; HostPort: string }> | null>;
+    Networks: Record<string, { NetworkID: string; IPAddress: string; MacAddress: string }>;
+  };
   Created: string;
 }
 
@@ -52,6 +55,74 @@ function readPortLines(inspect: ContainerInspect | null): PortLine[] {
 
 // ── Reconfigure / Edit modal ─────────────────────────────────────────────────
 
+function NetworksPicker({ networks, onChange }: {
+  networks: { id: string; name: string; ip: string }[];
+  onChange: (nets: { id: string; name: string; ip: string }[]) => void;
+}) {
+  const [available, setAvailable] = useState<DockerNetwork[]>([]);
+  const [addId, setAddId] = useState('');
+
+  useEffect(() => {
+    api.networks.list().then((r) => {
+      setAvailable(r.networks.filter((n) => !n.builtin));
+    }).catch(() => {});
+  }, []);
+
+  const add = () => {
+    if (!addId) return;
+    const net = available.find((n) => n.id === addId);
+    if (!net || networks.find((n) => n.id === addId)) return;
+    onChange([...networks, { id: net.id, name: net.name, ip: '' }]);
+    setAddId('');
+  };
+
+  const updateIp = (id: string, ip: string) => {
+    onChange(networks.map((n) => n.id === id ? { ...n, ip } : n));
+  };
+
+  const remove = (id: string) => onChange(networks.filter((n) => n.id !== id));
+
+  const unattached = available.filter((n) => !networks.find((m) => m.id === n.id));
+
+  return (
+    <div className="form-group">
+      <label className="form-label">Zusätzliche Netzwerke / Virtuelle IPs</label>
+      <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 6 }}>
+        Für eigene IP im LAN: macvlan/ipvlan-Netzwerk wählen. IP leer lassen = automatisch aus Subnetz.
+      </div>
+      {networks.map((n) => (
+        <div key={n.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+          <span style={{ flex: '0 0 160px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
+          <input
+            className="input input--rect"
+            style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            placeholder="Feste IP (optional, z.B. 192.168.178.50)"
+            value={n.ip}
+            onChange={(e) => updateIp(n.id, e.target.value)}
+          />
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen">
+            <X size={12} />
+          </button>
+        </div>
+      ))}
+      {unattached.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+          <select className="input input--rect" style={{ flex: 1, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <option value="">— Netzwerk hinzufügen …</option>
+            {unattached.map((n) => (
+              <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>
+            ))}
+          </select>
+          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+        </div>
+      )}
+      {available.length === 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Keine benutzerdefinierten Netzwerke vorhanden. Erst unter Netzwerke → Docker ein macvlan/ipvlan-Netzwerk anlegen.</div>
+      )}
+    </div>
+  );
+}
+
 function EditModal({ container, inspect, onClose, onDone }: {
   container: Container;
   inspect: ContainerInspect | null;
@@ -64,6 +135,7 @@ function EditModal({ container, inspect, onClose, onDone }: {
   const [portStr, setPortStr] = useState('');
   const [envStr, setEnvStr] = useState('');
   const [volStr, setVolStr] = useState('');
+  const [extraNets, setExtraNets] = useState<{ id: string; name: string; ip: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -75,6 +147,11 @@ function EditModal({ container, inspect, onClose, onDone }: {
     const env = (inspect?.Config.Env ?? []).filter((e) => !e.startsWith('PATH=') && !e.startsWith('HOME='));
     setEnvStr(env.join('\n'));
     setVolStr((inspect?.HostConfig.Binds ?? []).join('\n'));
+    // Pre-populate extra networks from current inspect (non-default)
+    const currentNets = Object.entries(inspect?.NetworkSettings.Networks ?? {})
+      .filter(([netName]) => netName !== 'bridge' && netName !== 'host' && netName !== 'none')
+      .map(([netName, info]) => ({ id: info.NetworkID, name: netName, ip: info.IPAddress || '' }));
+    setExtraNets(currentNets);
     setError('');
   }, [container, inspect]);
 
@@ -89,11 +166,13 @@ function EditModal({ container, inspect, onClose, onDone }: {
       }).filter((p) => p.host && p.container);
       const env = envStr.split('\n').map((l) => l.trim()).filter(Boolean);
       const volumes = volStr.split('\n').map((l) => l.trim()).filter(Boolean);
+      const networks = extraNets.map((n) => ({ id: n.id, ip: n.ip || undefined }));
       const res = await api.containers.recreate(container.id, {
         name: name.trim() || container.name,
         image: image.trim(),
         ports, env, volumes, restart,
         category: container.category ?? undefined,
+        networks: networks.length ? networks : undefined,
       });
       onDone(res.id);
     } catch (err) {
@@ -108,7 +187,7 @@ function EditModal({ container, inspect, onClose, onDone }: {
       open
       title="Container neu konfigurieren"
       onClose={onClose}
-      width={620}
+      width={660}
       footer={
         <>
           <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
@@ -153,6 +232,7 @@ function EditModal({ container, inspect, onClose, onDone }: {
         <label className="form-label">Volumes (eine pro Zeile: host_oder_name:/container)</label>
         <textarea className="input input--rect" value={volStr} onChange={(e) => setVolStr(e.target.value)} rows={3} style={ta} placeholder={'/opt/appdata/app:/config\nmein_vol:/data'} />
       </div>
+      <NetworksPicker networks={extraNets} onChange={setExtraNets} />
     </Modal>
   );
 }
