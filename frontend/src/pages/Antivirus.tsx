@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Bug, Download, RefreshCw, Play, Search, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
@@ -8,6 +9,7 @@ import { api } from '../lib/api';
 import type { AntivirusStatus } from '../lib/types';
 
 export function Antivirus() {
+  const t = useT();
   const [av, setAv] = useState<AntivirusStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState('');
@@ -54,7 +56,7 @@ export function Antivirus() {
   return (
     <>
       <Topbar
-        title="Virenschutz"
+        title={t('nav.antivirus')}
         subtitle={av?.installed ? av.version || 'ClamAV' : undefined}
         onRefresh={load}
         refreshing={refreshing}

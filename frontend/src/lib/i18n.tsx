@@ -7,16 +7,22 @@ import { createContext, useContext, useState, useCallback, useEffect } from 'rea
 export const LANGUAGES = [
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
   { code: 'en', label: 'English', flag: '🇬🇧' },
+  { code: 'fr', label: 'Français', flag: '🇫🇷' },
+  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'it', label: 'Italiano', flag: '🇮🇹' },
 ] as const;
 
 export type LangCode = (typeof LANGUAGES)[number]['code'];
 
 import { de } from './locales/de';
 import { en } from './locales/en';
+import { fr } from './locales/fr';
+import { es } from './locales/es';
+import { it } from './locales/it';
 
 export type TranslationDict = Record<string, string>;
 
-const DICTS: Record<LangCode, TranslationDict> = { de, en };
+const DICTS: Record<LangCode, TranslationDict> = { de, en, fr, es, it };
 
 const STORAGE_KEY = 'lang';
 

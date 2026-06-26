@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Power, Plus, Trash2, Play, Square } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
@@ -91,6 +92,7 @@ function CronModal({ open, onClose, onSaved }: { open: boolean; onClose: () => v
 }
 
 export function Automation() {
+  const t = useT();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [units, setUnits] = useState<AutostartUnit[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -135,7 +137,7 @@ export function Automation() {
 
   return (
     <>
-      <Topbar title="Automatisierung" subtitle="Cronjobs & Autostart" onRefresh={load} refreshing={refreshing} />
+      <Topbar title={t('nav.automation')} subtitle={t('page.automation.subtitle')} onRefresh={load} refreshing={refreshing} />
       <main className="page">
         <SortablePanels storageKey="automation" items={[
           { id: 'cron', node: (

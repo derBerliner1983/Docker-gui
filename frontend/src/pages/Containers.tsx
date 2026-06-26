@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil, X, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -342,6 +343,7 @@ function LogsModal({ container, open, onClose }: { container: Container | null; 
 }
 
 export function Containers() {
+  const t = useT();
   const [containers, setContainers] = useState<Container[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [catFilter, setCatFilter] = useState<string>('');   // '' = alle Kategorien
@@ -612,8 +614,8 @@ export function Containers() {
   return (
     <>
       <Topbar
-        title="Container"
-        subtitle={`${running} läuft · ${containers.length} gesamt`}
+        title={t('nav.containers')}
+        subtitle={t('page.containers.subtitle', { running, total: containers.length })}
         onRefresh={() => load()}
         refreshing={refreshing}
         actions={

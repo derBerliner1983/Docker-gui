@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Lock, Unlock, ShieldCheck, Plus, Trash2, ExternalLink, Download, RefreshCw, Globe } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
@@ -101,6 +102,7 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
 }
 
 export function Proxy() {
+  const t = useT();
   const [hosts, setHosts] = useState<ProxyHost[]>([]);
   const [available, setAvailable] = useState(true);
   const [running, setRunning] = useState(false);
@@ -155,8 +157,8 @@ export function Proxy() {
   return (
     <>
       <Topbar
-        title="HTTPS & Reverse-Proxy"
-        subtitle={available ? `Caddy ${running ? 'läuft' : 'gestoppt'} · ${httpsCount}/${hosts.length} mit HTTPS` : undefined}
+        title={t('page.proxy.title')}
+        subtitle={available ? t('page.proxy.subtitle', { state: running ? t('page.proxy.running') : t('page.proxy.stopped'), https: httpsCount, total: hosts.length }) : undefined}
         onRefresh={load}
         refreshing={refreshing}
         actions={available && (

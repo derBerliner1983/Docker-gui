@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
@@ -902,6 +903,7 @@ function VirtualIpsPanel() {
 type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
 
 export function Networks() {
+  const t = useT();
   const [view, setView] = useState<NetTab>('docker');
   const [networks, setNetworks] = useState<DockerNetwork[]>([]);
   const [interfaces, setInterfaces] = useState<HostInterface[]>([]);
@@ -935,8 +937,8 @@ export function Networks() {
   return (
     <>
       <Topbar
-        title="Netzwerke & VLANs"
-        subtitle={`${networks.length} Docker-Netzwerke`}
+        title={t('nav.networks')}
+        subtitle={t('page.networks.subtitle', { n: networks.length })}
         onRefresh={load}
         refreshing={refreshing}
         actions={view === 'docker' && <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> Netzwerk</button>}

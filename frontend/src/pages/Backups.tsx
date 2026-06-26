@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Plus, Trash2, Download, Container, FolderArchive, MonitorPlay, Play, CalendarClock } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
@@ -292,6 +293,7 @@ function SchedulesPanel() {
 }
 
 export function Backups() {
+  const t = useT();
   const [backups, setBackups] = useState<Backup[]>([]);
   const [dir, setDir] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -324,8 +326,8 @@ export function Backups() {
   return (
     <>
       <Topbar
-        title="Backups"
-        subtitle={`${backups.length} Backups · ${formatBytes(totalSize)} · ${dir}`}
+        title={t('nav.backups')}
+        subtitle={t('page.backups.subtitle', { n: backups.length, size: formatBytes(totalSize), dir })}
         onRefresh={load}
         refreshing={refreshing}
         actions={

@@ -5,6 +5,7 @@ import {
   ChevronDown, Info, Globe, WifiOff, Lock, LockOpen, Play, Power, Timer,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
@@ -378,6 +379,7 @@ function ModelDetailModal({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function Ai() {
+  const t = useT();
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [running, setRunning] = useState<OllamaPsModel[]>([]);
@@ -560,7 +562,7 @@ export function Ai() {
   if (!status) {
     return (
       <>
-        <Topbar title="KI-Modelle" />
+        <Topbar title={t('nav.ai')} />
         <main className="page"><div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner" style={{ width: 28, height: 28 }} /></div></main>
       </>
     );
@@ -569,7 +571,7 @@ export function Ai() {
   if (!status.installed) {
     return (
       <>
-        <Topbar title="KI-Modelle" />
+        <Topbar title={t('nav.ai')} />
         <main className="page">
           <div className="card">
             <div className="card-body" style={{ textAlign: 'center', padding: '48px 24px' }}>
@@ -592,8 +594,8 @@ export function Ai() {
   return (
     <>
       <Topbar
-        title="KI-Modelle"
-        subtitle={`${models.length} Modell${models.length !== 1 ? 'e' : ''} · ${fmtBytes(totalSize)} belegt`}
+        title={t('nav.ai')}
+        subtitle={t('page.ai.subtitle', { n: models.length, size: fmtBytes(totalSize) })}
         onRefresh={refresh}
         refreshing={loading}
       />

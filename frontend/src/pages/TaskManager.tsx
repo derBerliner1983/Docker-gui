@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown, Power } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { api } from '../lib/api';
@@ -37,6 +38,7 @@ function SortTh({ label, k, num, sortKey, sortDir, onSort }: {
 }
 
 export function TaskManager() {
+  const t = useT();
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [services, setServices] = useState<SystemService[]>([]);
   const [procMeta, setProcMeta] = useState({ total: 0, running: 0 });
@@ -142,8 +144,8 @@ export function TaskManager() {
   return (
     <>
       <Topbar
-        title="Taskmanager"
-        subtitle={`${procMeta.running} aktiv · ${procMeta.total} Prozesse gesamt`}
+        title={t('nav.taskmanager')}
+        subtitle={t('page.taskmanager.subtitle', { running: procMeta.running, total: procMeta.total })}
         onRefresh={load}
         refreshing={refreshing}
       />

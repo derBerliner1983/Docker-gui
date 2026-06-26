@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink, Plus, X, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -311,6 +312,7 @@ function EditModal({ container, inspect, onClose, onDone }: {
 }
 
 export function ContainerDetail() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -444,7 +446,7 @@ export function ContainerDetail() {
 
   if (loading) return (
     <>
-      <Topbar title="Container" />
+      <Topbar title={t('nav.containers')} />
       <main className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="spinner" style={{ width: 28, height: 28 }} />
       </main>
@@ -453,10 +455,10 @@ export function ContainerDetail() {
 
   if (error || !container) return (
     <>
-      <Topbar title="Container" />
+      <Topbar title={t('nav.containers')} />
       <main className="page">
-        <div className="empty-state"><div className="empty-state__title">{error || 'Container nicht gefunden'}</div>
-          <Link to="/containers" className="btn btn--primary btn--md" style={{ marginTop: 16 }}>← Zurück</Link></div>
+        <div className="empty-state"><div className="empty-state__title">{error || t('page.notFound')}</div>
+          <Link to="/containers" className="btn btn--primary btn--md" style={{ marginTop: 16 }}>{t('page.back')}</Link></div>
       </main>
     </>
   );

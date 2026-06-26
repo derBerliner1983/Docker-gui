@@ -1,6 +1,6 @@
 # Core-Hub – Konzept & Roadmap
 
-> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.4`
+> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.5`
 
 ## Vision
 
@@ -252,13 +252,23 @@ Font: Inter.
 | Firewall-Assistent (proaktiver Port-Scan) entfernt – Freigaben rein benutzergesteuert | ✅ |
 | Update-Flow: sofortiger „Seite neu laden"-Button nach Installation (kein manuelles F5) | ✅ |
 
+### ✅ Phase 16 – Mehrsprachigkeit & Proxy-Gating (`v0.7.5`)
+
+| Feature | Status |
+|---|---|
+| **5 Sprachen**: Deutsch, English, Français, Español, Italiano | ✅ |
+| Navigation, Sidebar, Seitentitel/-untertitel auf i18n-Schlüssel | ✅ |
+| Fehlende Schlüssel fallen automatisch auf Deutsch zurück | ✅ |
+| **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard: aus) | ✅ |
+| Proxy-Eintrag erscheint nur in der Sidebar, wenn aktiviert (`app_settings`) | ✅ |
+| Backend-Auswahl vorbereitet: Caddy aktiv, nginx/Traefik als „geplant" | ✅ |
+
 ### ⏳ Geplant / Ideen
 
 | Feature | Status |
 |---|---|
-| Weitere Sprachen (FR, ES, …) | ⏳ |
-| Reverse-Proxy: weitere Backends (nginx/Traefik) | ⏳ |
-| Alle Seiteninhalte auf i18n-Schlüssel umstellen | ⏳ |
+| Tiefere i18n-Abdeckung (Panel-Inhalte, Dialoge, Tooltips) | ⏳ |
+| Reverse-Proxy: nginx/Traefik tatsächlich anbinden | ⏳ |
 
 ---
 

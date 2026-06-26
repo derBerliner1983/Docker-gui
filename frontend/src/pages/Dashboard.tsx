@@ -7,6 +7,7 @@ import { SortablePanels } from '../components/ui/SortablePanels';
 import { Donut, donutColor } from '../components/ui/Donut';
 import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
+import { useT } from '../lib/i18n';
 import { formatBytes, formatUptime } from '../lib/utils';
 import type { SystemStats, OptimizeSuggestion } from '../lib/types';
 
@@ -30,6 +31,7 @@ function fmtRate(bytesPerSec: number): string {
 }
 
 export function Dashboard() {
+  const t = useT();
   const navigate = useNavigate();
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [dockerVersion, setDockerVersion] = useState('');
@@ -88,7 +90,7 @@ export function Dashboard() {
   return (
     <>
       <Topbar
-        title="Dashboard"
+        title={t('nav.dashboard')}
         subtitle={stats ? `${stats.os.hostname} · ${stats.os.distro} ${stats.os.release} · Uptime ${formatUptime(stats.os.uptime)}` : undefined}
         onRefresh={load}
         refreshing={refreshing}

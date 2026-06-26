@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FolderOpen, Plus, Trash2, Play, Square, RotateCcw, UserPlus, ShieldOff, ShieldCheck, Info } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
@@ -113,6 +114,7 @@ function SmbUserModal({ open, onClose }: { open: boolean; onClose: () => void })
 }
 
 export function Shares() {
+  const t = useT();
   const [shares, setShares] = useState<Share[]>([]);
   const [available, setAvailable] = useState(true);
   const [running, setRunning] = useState(false);
@@ -164,7 +166,7 @@ export function Shares() {
   return (
     <>
       <Topbar
-        title="SMB-Freigaben"
+        title={t('nav.shares')}
         subtitle={topbarSubtitle}
         onRefresh={load}
         refreshing={refreshing}

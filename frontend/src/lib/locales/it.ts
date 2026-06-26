@@ -1,0 +1,90 @@
+// Dizionario italiano. Le chiavi rispecchiano de.ts — le chiavi mancanti
+// ricadono sul tedesco (lingua di base).
+export const it: Record<string, string> = {
+  // ── Navigazione: sezioni ──
+  'nav.section.overview': 'Panoramica',
+  'nav.section.workloads': 'Carichi di lavoro',
+  'nav.section.system': 'Sistema',
+  'nav.section.ai': 'IA',
+
+  // ── Navigazione: voci ──
+  'nav.dashboard': 'Dashboard',
+  'nav.taskmanager': 'Gestione attività',
+  'nav.terminal': 'Terminale',
+  'nav.containers': 'Container',
+  'nav.apps': 'Modelli di app',
+  'nav.vms': 'Macchine virtuali',
+  'nav.networks': 'Reti e VLAN',
+  'nav.proxy': 'HTTPS e proxy',
+  'nav.security': 'Sicurezza',
+  'nav.antivirus': 'Antivirus',
+  'nav.updates': 'Aggiornamenti di sistema',
+  'nav.packages': 'Gestione pacchetti',
+  'nav.automation': 'Automazione',
+  'nav.backups': 'Backup',
+  'nav.files': 'Gestore file',
+  'nav.shares': 'Condivisioni SMB',
+  'nav.users': 'Utenti',
+  'nav.settings': 'Impostazioni',
+  'nav.ai': 'Modelli IA',
+
+  // ── Sidebar / chrome ──
+  'sidebar.updateAvailable': 'Aggiornamento disponibile',
+  'sidebar.expand': 'Espandi',
+  'sidebar.collapse': 'Comprimi',
+  'sidebar.toggleTheme': 'Cambia tema',
+  'sidebar.logout': 'Disconnetti',
+
+  // ── Azioni comuni ──
+  'common.save': 'Salva',
+  'common.cancel': 'Annulla',
+  'common.delete': 'Elimina',
+  'common.create': 'Crea',
+  'common.edit': 'Modifica',
+  'common.close': 'Chiudi',
+  'common.refresh': 'Aggiorna',
+  'common.search': 'Cerca',
+  'common.loading': 'Caricamento…',
+  'common.error': 'Errore',
+  'common.confirm': 'Conferma',
+  'common.yes': 'Sì',
+  'common.no': 'No',
+  'common.all': 'Tutti',
+  'common.optional': 'facoltativo',
+  'common.required': 'obbligatorio',
+
+  // ── Lingua (impostazioni) ──
+  'settings.language': 'Lingua',
+  'settings.language.desc': 'Lingua dell’interfaccia. La scelta viene salvata nel browser.',
+
+  // ── Titoli e sottotitoli pagina ──
+  'page.proxy.title': 'HTTPS e reverse proxy',
+  'page.terminal.subtitle': 'Shell root sul server',
+  'page.automation.subtitle': 'Cron job e avvio automatico',
+  'page.containers.subtitle': '{running} in esecuzione · {total} totali',
+  'page.taskmanager.subtitle': '{running} attivi · {total} processi totali',
+  'page.vms.subtitle': '{running} in esecuzione · {total} totali',
+  'page.users.subtitle': '{logins} account · {linux} utenti Linux',
+  'page.networks.subtitle': '{n} reti Docker',
+  'page.updates.subtitle': 'Gestore pacchetti: {manager}',
+  'page.security.subtitle': 'Verificato: {time}',
+  'page.settings.subtitle': 'Core-Hub v{version}',
+  'page.proxy.subtitle': 'Caddy {state} · {https}/{total} con HTTPS',
+  'page.proxy.running': 'in esecuzione',
+  'page.proxy.stopped': 'arrestato',
+  'page.backups.subtitle': '{n} backup · {size} · {dir}',
+  'page.packages.subtitle': '{manager} · {n} installati · {size}',
+  'page.ai.subtitle': '{n} modelli · {size} occupati',
+  'page.notFound': 'Container non trovato',
+  'page.back': '← Indietro',
+
+  // ── Reverse proxy (impostazioni) ──
+  'settings.proxy': 'Reverse proxy',
+  'settings.proxy.desc': 'Mostra la pagina «HTTPS e reverse proxy» nella navigazione. Nascosta per impostazione predefinita.',
+  'settings.proxy.enable': 'Mostra reverse proxy',
+  'settings.proxy.backend': 'Backend',
+  'settings.proxy.backend.caddy': 'Caddy (HTTPS automatico)',
+  'settings.proxy.backend.nginx': 'nginx (previsto)',
+  'settings.proxy.backend.traefik': 'Traefik (previsto)',
+  'settings.proxy.backend.hint': 'Caddy offre HTTPS automatico tramite una CA interna, senza dominio. nginx/Traefik sono previsti ma non ancora disponibili.',
+};

@@ -55,4 +55,35 @@ export const en: Record<string, string> = {
   // ── Language (settings) ──
   'settings.language': 'Language',
   'settings.language.desc': 'Interface language. Your choice is stored in the browser.',
+
+  // ── Page titles & subtitles (topbar) ──
+  'page.proxy.title': 'HTTPS & Reverse Proxy',
+  'page.terminal.subtitle': 'Root shell on the server',
+  'page.automation.subtitle': 'Cron jobs & autostart',
+  'page.containers.subtitle': '{running} running · {total} total',
+  'page.taskmanager.subtitle': '{running} active · {total} processes total',
+  'page.vms.subtitle': '{running} running · {total} total',
+  'page.users.subtitle': '{logins} logins · {linux} Linux users',
+  'page.networks.subtitle': '{n} Docker networks',
+  'page.updates.subtitle': 'Package manager: {manager}',
+  'page.security.subtitle': 'Checked: {time}',
+  'page.settings.subtitle': 'Core-Hub v{version}',
+  'page.proxy.subtitle': 'Caddy {state} · {https}/{total} with HTTPS',
+  'page.proxy.running': 'running',
+  'page.proxy.stopped': 'stopped',
+  'page.backups.subtitle': '{n} backups · {size} · {dir}',
+  'page.packages.subtitle': '{manager} · {n} installed · {size}',
+  'page.ai.subtitle': '{n} models · {size} used',
+  'page.notFound': 'Container not found',
+  'page.back': '← Back',
+
+  // ── Reverse proxy (settings) ──
+  'settings.proxy': 'Reverse proxy',
+  'settings.proxy.desc': 'Shows the "HTTPS & Reverse Proxy" page in the navigation. Hidden by default.',
+  'settings.proxy.enable': 'Show reverse proxy',
+  'settings.proxy.backend': 'Backend',
+  'settings.proxy.backend.caddy': 'Caddy (automatic HTTPS)',
+  'settings.proxy.backend.nginx': 'nginx (planned)',
+  'settings.proxy.backend.traefik': 'Traefik (planned)',
+  'settings.proxy.backend.hint': 'Caddy provides automatic HTTPS via an internal CA – without a domain. nginx/Traefik are planned but not yet available.',
 };

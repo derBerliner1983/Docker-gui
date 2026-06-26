@@ -454,4 +454,25 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'IPv6 konnte nicht umgestellt werden' });
     }
   });
+
+  // ── Reverse-Proxy-Sichtbarkeit (Standard: aus → nicht in der Navigation) ──
+  fastify.get('/api/settings/proxy-visibility', { preHandler: requireAuth }, async (_req, reply) => {
+    const enabled = appSettingsQueries.get.get('proxy_enabled')?.value === '1';
+    const backend = appSettingsQueries.get.get('proxy_backend')?.value || 'caddy';
+    reply.send({ enabled, backend });
+  });
+
+  fastify.post<{ Body: { enabled?: boolean; backend?: string } }>(
+    '/api/settings/proxy-visibility',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const enabled = !!req.body?.enabled;
+      // Nur Caddy ist tatsächlich funktional; nginx/Traefik sind reserviert.
+      const backend = ['caddy', 'nginx', 'traefik'].includes(req.body?.backend ?? '') ? req.body!.backend! : 'caddy';
+      appSettingsQueries.set.run('proxy_enabled', enabled ? '1' : '0');
+      appSettingsQueries.set.run('proxy_backend', backend);
+      auditQueries.log.run(req.user.id, 'settings.proxy-visibility', `${enabled ? 'on' : 'off'}/${backend}`);
+      reply.send({ ok: true, enabled, backend });
+    },
+  );
 }

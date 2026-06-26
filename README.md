@@ -2,7 +2,7 @@
 
 # ⬡ Core-Hub
 
-**Die Zentrale deines Linux-Servers.** · `v0.7.4`
+**Die Zentrale deines Linux-Servers.** · `v0.7.5`
 
 Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Firewall, Sicherheit, KI & mehr.
 Alles im Browser. Ohne SSH, ohne Desktop.
@@ -88,7 +88,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
   - Port-Freigaben **pro Port als LAN/Internet-Schalter** unter „Sicherheit"
 - **Verbindungsprotokoll** (persistente DB): zeigt blockierte/erlaubte Verbindungen, filterbar, CSV-Export
 
-### 🔒 HTTPS & Reverse-Proxy (Caddy)
+### 🔒 HTTPS & Reverse-Proxy (Caddy) — optional einblendbar
+- **Standardmäßig ausgeblendet**: erst über Einstellungen → Reverse-Proxy aktivieren, dann erscheint der Eintrag in der Navigation
+- Backend-Auswahl vorbereitet (Caddy aktiv; nginx/Traefik als „geplant")
 - Pro Container HTTPS per Schalter aktivieren oder alle auf einmal
 - Automatische Zertifikate über interne CA (kein Let's Encrypt/Domain nötig)
 - Root-CA-Download → einmal auf Geräten installieren, überall grünes Schloss
@@ -129,8 +131,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Mehrere Modelle parallel laden
 
 ### 🌍 Mehrsprachigkeit
-- **Deutsch und Englisch** umschaltbar (Einstellungen → Sprache)
+- **5 Sprachen** umschaltbar: Deutsch, Englisch, Français, Español, Italiano (Einstellungen → Sprache)
 - Browsersprache wird automatisch erkannt; Wahl im Browser gespeichert
+- Navigation & Seitentitel sind übersetzt; fehlende Schlüssel fallen automatisch auf Deutsch zurück
 - Erweiterbar: neue Sprache = ein Wörterbuch anlegen, fertig
 
 ### ⚙️ Einstellungen
@@ -252,9 +255,10 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **13** | GPU-Dashboard, KI/Ollama (HTTPS, GGUF, parallele Downloads), Samba Auto-Lifecycle, SSE-Logs | ✅ |
 | **14** | **Virtuelle IPs** (macvlan/ipvlan, mehrere Netzwerke pro Container, IP-Übersicht-Tab), **App-Store** (Unraid Community + Docker Hub, Port-Konflikt-Erkennung, Aufräumen bei Fehler), **Dynamische Kategorie-Tabs** (Container-Übersicht), **Mehrsprachigkeit** (DE/EN, erweiterbar) | ✅ `v0.7.3` |
 | **15** | **IPv4/IPv6-Umschalter** (Standard nur IPv4), **Drag-&-Drop-Sortierung** von Sidebar & Panels (pro Benutzer, serverseitig), **Inline-Macvlan** im Container-/App-Dialog, **Firewall ohne Auto-Schutzregeln** (nur LAN-only-Freigabe für SSH/443 beim Aktivieren), Host-Port-Konflikterkennung inkl. Nicht-Docker-Dienste, Update mit sofortigem Reload-Button | ✅ `v0.7.4` |
+| **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
 
 ### Geplant / Ideen
-- ⏳ Weitere Sprachen (FR, ES, …)
-- ⏳ Reverse-Proxy: weitere Backends (nginx/Traefik)
+- ⏳ Tiefere i18n-Abdeckung (Panel-Inhalte, Dialoge, Tooltips)
+- ⏳ Reverse-Proxy: nginx/Traefik tatsächlich anbinden
 
 Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).

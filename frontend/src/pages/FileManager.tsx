@@ -4,6 +4,7 @@ import {
   FolderPlus, Edit3, Save, X, Shield, ArrowLeft, Terminal,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { formatBytes } from '../lib/utils';
 
 interface Entry {
@@ -36,6 +37,7 @@ function FileIcon({ entry }: { entry: Entry }) {
 const TEXT_EXTS = new Set(['txt', 'md', 'json', 'yaml', 'yml', 'toml', 'conf', 'cfg', 'ini', 'sh', 'env', 'log', 'xml', 'html', 'css', 'js', 'ts', 'py', 'rb', 'php', 'sql', 'csv', 'dockerfile', 'Dockerfile']);
 
 export function FileManager() {
+  const t = useT();
   const [cwd, setCwd] = useState('/');
   const [entries, setEntries] = useState<Entry[]>([]);
   const [parent, setParent] = useState<string | null>(null);
@@ -159,7 +161,7 @@ export function FileManager() {
   return (
     <>
       <Topbar
-        title="Datei-Manager"
+        title={t('nav.files')}
         subtitle={cwd}
         onRefresh={() => void load(cwd)}
         refreshing={loading}

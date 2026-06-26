@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield, ShieldCheck, ShieldOff, ShieldAlert, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
@@ -88,6 +89,7 @@ function LinuxUserModal({ open, onClose, onDone }: { open: boolean; onClose: () 
 }
 
 export function Users() {
+  const t = useT();
   const { user } = useAuth();
   const [appUsers, setAppUsers] = useState<UserPublic[]>([]);
   const [linuxUsers, setLinuxUsers] = useState<LinuxUser[]>([]);
@@ -169,7 +171,7 @@ export function Users() {
 
   return (
     <>
-      <Topbar title="Benutzer" subtitle={`${appUsers.length} Logins · ${linuxUsers.length} Linux-Benutzer`} onRefresh={load} refreshing={refreshing} />
+      <Topbar title={t('nav.users')} subtitle={t('page.users.subtitle', { logins: appUsers.length, linux: linuxUsers.length })} onRefresh={load} refreshing={refreshing} />
       <main className="page">
         <SortablePanels storageKey="users" items={[
           { id: 'corehub', node: (

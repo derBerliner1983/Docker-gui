@@ -4,10 +4,12 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 
 type Conn = 'connecting' | 'open' | 'closed';
 
 export function Terminal() {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -95,8 +97,8 @@ export function Terminal() {
   return (
     <>
       <Topbar
-        title="Terminal"
-        subtitle="Root-Shell auf dem Server"
+        title={t('nav.terminal')}
+        subtitle={t('page.terminal.subtitle')}
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {statusBadge}

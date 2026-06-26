@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Power, RotateCcw, Plus, Trash2, Camera, Star, MonitorPlay } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
@@ -93,6 +94,7 @@ function CreateVMModal({ open, onClose, onCreated }: { open: boolean; onClose: (
 }
 
 export function VMs() {
+  const t = useT();
   const [vms, setVms] = useState<VM[]>([]);
   const [available, setAvailable] = useState(true);
   const [message, setMessage] = useState('');
@@ -129,8 +131,8 @@ export function VMs() {
   return (
     <>
       <Topbar
-        title="Virtuelle Maschinen"
-        subtitle={available ? `${vms.filter((v) => v.state.includes('running')).length} laufen · ${vms.length} gesamt` : undefined}
+        title={t('nav.vms')}
+        subtitle={available ? t('page.vms.subtitle', { running: vms.filter((v) => v.state.includes('running')).length, total: vms.length }) : undefined}
         onRefresh={load}
         refreshing={refreshing}
         actions={available && (

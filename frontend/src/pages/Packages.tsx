@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle, FileDown, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
@@ -8,6 +9,7 @@ import { formatBytes } from '../lib/utils';
 import type { InstalledPackage, PackageSearchResult } from '../lib/types';
 
 export function Packages() {
+  const t = useT();
   const [packages, setPackages] = useState<InstalledPackage[]>([]);
   const [manager, setManager] = useState<string | null>(null);
   const [available, setAvailable] = useState(true);
@@ -182,8 +184,8 @@ export function Packages() {
   return (
     <>
       <Topbar
-        title="Paketverwaltung"
-        subtitle={manager ? `${manager} · ${packages.length} installiert · ${formatBytes(totalSize)}` : undefined}
+        title={t('nav.packages')}
+        subtitle={manager ? t('page.packages.subtitle', { manager, n: packages.length, size: formatBytes(totalSize) }) : undefined}
         onRefresh={() => load()}
         refreshing={loading}
         actions={

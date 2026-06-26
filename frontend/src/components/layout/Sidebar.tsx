@@ -72,6 +72,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [kiInstalled, setKiInstalled] = useState(false);
+  const [proxyVisible, setProxyVisible] = useState(false);
   const { prefs, setPref } = usePrefs();
   const order = (prefs.sidebarOrder as Record<string, string[]>) || {};
   // Aktuell gezogener Eintrag: Abschnitt + Ziel-Pfad
@@ -83,6 +84,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
       .then((v) => { setVersion(v.current); setUpdateAvailable(v.updateAvailable); })
       .catch(() => {});
     api.ki.status().then((s) => setKiInstalled(s.installed)).catch(() => {});
+    api.settings.getProxyVisibility().then((p) => setProxyVisible(p.enabled)).catch(() => {});
   }, []);
 
   const handleLogout = async () => {
@@ -127,7 +129,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         {NAV.map((section) => (
           <div className="sidebar__section" key={section.labelKey}>
             <div className="sidebar__section-label">{t(section.labelKey)}</div>
-            {orderItems(section.items, order[section.labelKey]).map(({ to, icon: Icon, labelKey }) => {
+            {orderItems(section.items.filter((it) => it.to !== '/proxy' || proxyVisible), order[section.labelKey]).map(({ to, icon: Icon, labelKey }) => {
               const label = t(labelKey);
               const isDragging = drag?.to === to;
               const isOver = dragOver === to && drag?.section === section.labelKey && drag?.to !== to;

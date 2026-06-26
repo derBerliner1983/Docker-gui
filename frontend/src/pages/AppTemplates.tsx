@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Search, Download, CheckCircle2, Star, ChevronLeft, ChevronRight, Plus, Trash2, Eye, EyeOff, RefreshCw, Loader, Network, ChevronDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import type { StoreItem, StoreSearchResult, DockerNetwork, HostInterface } from '../lib/types';
@@ -505,6 +506,7 @@ function AppCard({ item, onInstall }: { item: StoreItem; onInstall: (item: Store
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export function AppTemplates() {
+  const t = useT();
   const [source, setSource] = useState<'unraid' | 'dockerhub'>('unraid');
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -566,7 +568,7 @@ export function AppTemplates() {
   return (
     <>
       <Topbar
-        title="App-Vorlagen"
+        title={t('nav.apps')}
         subtitle={subtitle}
         onRefresh={() => { void search(debouncedQuery, source, page, category); }}
         refreshing={loading}

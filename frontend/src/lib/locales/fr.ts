@@ -1,0 +1,90 @@
+// Dictionnaire français. Les clés reflètent de.ts — les clés manquantes
+// retombent sur l'allemand (langue de base).
+export const fr: Record<string, string> = {
+  // ── Navigation : sections ──
+  'nav.section.overview': 'Vue d’ensemble',
+  'nav.section.workloads': 'Charges de travail',
+  'nav.section.system': 'Système',
+  'nav.section.ai': 'IA',
+
+  // ── Navigation : éléments ──
+  'nav.dashboard': 'Tableau de bord',
+  'nav.taskmanager': 'Gestionnaire de tâches',
+  'nav.terminal': 'Terminal',
+  'nav.containers': 'Conteneurs',
+  'nav.apps': 'Modèles d’applications',
+  'nav.vms': 'Machines virtuelles',
+  'nav.networks': 'Réseaux & VLAN',
+  'nav.proxy': 'HTTPS & Proxy',
+  'nav.security': 'Sécurité',
+  'nav.antivirus': 'Antivirus',
+  'nav.updates': 'Mises à jour système',
+  'nav.packages': 'Gestion des paquets',
+  'nav.automation': 'Automatisation',
+  'nav.backups': 'Sauvegardes',
+  'nav.files': 'Gestionnaire de fichiers',
+  'nav.shares': 'Partages SMB',
+  'nav.users': 'Utilisateurs',
+  'nav.settings': 'Paramètres',
+  'nav.ai': 'Modèles d’IA',
+
+  // ── Sidebar / chrome ──
+  'sidebar.updateAvailable': 'Mise à jour disponible',
+  'sidebar.expand': 'Déplier',
+  'sidebar.collapse': 'Replier',
+  'sidebar.toggleTheme': 'Changer de thème',
+  'sidebar.logout': 'Déconnexion',
+
+  // ── Actions communes ──
+  'common.save': 'Enregistrer',
+  'common.cancel': 'Annuler',
+  'common.delete': 'Supprimer',
+  'common.create': 'Créer',
+  'common.edit': 'Modifier',
+  'common.close': 'Fermer',
+  'common.refresh': 'Actualiser',
+  'common.search': 'Rechercher',
+  'common.loading': 'Chargement…',
+  'common.error': 'Erreur',
+  'common.confirm': 'Confirmer',
+  'common.yes': 'Oui',
+  'common.no': 'Non',
+  'common.all': 'Tous',
+  'common.optional': 'facultatif',
+  'common.required': 'requis',
+
+  // ── Langue (paramètres) ──
+  'settings.language': 'Langue',
+  'settings.language.desc': 'Langue de l’interface. Votre choix est enregistré dans le navigateur.',
+
+  // ── Titres & sous-titres de page ──
+  'page.proxy.title': 'HTTPS & reverse proxy',
+  'page.terminal.subtitle': 'Shell root sur le serveur',
+  'page.automation.subtitle': 'Tâches cron & démarrage auto',
+  'page.containers.subtitle': '{running} en cours · {total} au total',
+  'page.taskmanager.subtitle': '{running} actifs · {total} processus au total',
+  'page.vms.subtitle': '{running} en cours · {total} au total',
+  'page.users.subtitle': '{logins} comptes · {linux} utilisateurs Linux',
+  'page.networks.subtitle': '{n} réseaux Docker',
+  'page.updates.subtitle': 'Gestionnaire de paquets : {manager}',
+  'page.security.subtitle': 'Vérifié : {time}',
+  'page.settings.subtitle': 'Core-Hub v{version}',
+  'page.proxy.subtitle': 'Caddy {state} · {https}/{total} en HTTPS',
+  'page.proxy.running': 'en cours',
+  'page.proxy.stopped': 'arrêté',
+  'page.backups.subtitle': '{n} sauvegardes · {size} · {dir}',
+  'page.packages.subtitle': '{manager} · {n} installés · {size}',
+  'page.ai.subtitle': '{n} modèles · {size} utilisés',
+  'page.notFound': 'Conteneur introuvable',
+  'page.back': '← Retour',
+
+  // ── Reverse proxy (paramètres) ──
+  'settings.proxy': 'Reverse proxy',
+  'settings.proxy.desc': 'Affiche la page « HTTPS & reverse proxy » dans la navigation. Masquée par défaut.',
+  'settings.proxy.enable': 'Afficher le reverse proxy',
+  'settings.proxy.backend': 'Backend',
+  'settings.proxy.backend.caddy': 'Caddy (HTTPS automatique)',
+  'settings.proxy.backend.nginx': 'nginx (prévu)',
+  'settings.proxy.backend.traefik': 'Traefik (prévu)',
+  'settings.proxy.backend.hint': 'Caddy fournit un HTTPS automatique via une CA interne – sans domaine. nginx/Traefik sont prévus mais pas encore disponibles.',
+};

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Download, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import type { PackageUpdate } from '../lib/types';
 
 export function Updates() {
+  const t = useT();
   const [updates, setUpdates] = useState<PackageUpdate[]>([]);
   const [manager, setManager] = useState<string | null>(null);
   const [available, setAvailable] = useState(true);
@@ -69,8 +71,8 @@ export function Updates() {
   return (
     <>
       <Topbar
-        title="System-Updates"
-        subtitle={manager ? `Paketmanager: ${manager}` : undefined}
+        title={t('nav.updates')}
+        subtitle={manager ? t('page.updates.subtitle', { manager }) : undefined}
         onRefresh={load}
         refreshing={loading}
         actions={

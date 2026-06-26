@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil, Monitor, Trash2, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -370,6 +371,7 @@ function SessionsPanel() {
 }
 
 export function Security() {
+  const t = useT();
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState<string | null>(null);
@@ -417,8 +419,8 @@ export function Security() {
   return (
     <>
       <Topbar
-        title="Sicherheit"
-        subtitle={scan ? `Geprüft: ${new Date(scan.scannedAt).toLocaleTimeString('de-DE')}` : undefined}
+        title={t('nav.security')}
+        subtitle={scan ? t('page.security.subtitle', { time: new Date(scan.scannedAt).toLocaleTimeString() }) : undefined}
         onRefresh={run}
         refreshing={loading}
         actions={

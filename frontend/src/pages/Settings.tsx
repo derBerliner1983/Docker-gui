@@ -571,7 +571,60 @@ function NetworkPanel() {
   );
 }
 
+function ProxyVisibilityPanel() {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [backend, setBackend] = useState('caddy');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { const r = await api.settings.getProxyVisibility(); setEnabled(r.enabled); setBackend(r.backend || 'caddy'); }
+    catch { setEnabled(null); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async (nextEnabled: boolean, nextBackend: string) => {
+    setBusy(true);
+    try { await api.settings.setProxyVisibility(nextEnabled, nextBackend); setEnabled(nextEnabled); setBackend(nextBackend); }
+    catch (e) { alert(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={t('settings.proxy')} icon={<ShieldCheck size={15} />} subtitle={enabled == null ? undefined : (enabled ? backend : t('common.no'))} storageKey="set-proxy" defaultCollapsed>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 0' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t('settings.proxy.enable')}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.desc')}</div>
+          </div>
+          {enabled == null ? (
+            <span className="spinner" style={{ width: 16, height: 16 }} />
+          ) : (
+            <div onClick={(e) => e.stopPropagation()} style={{ opacity: busy ? 0.5 : 1 }}>
+              <Switch checked={enabled} onChange={(v) => void save(v, backend)} />
+            </div>
+          )}
+        </div>
+        {enabled && (
+          <div style={{ paddingTop: 6 }}>
+            <label className="form-label">{t('settings.proxy.backend')}</label>
+            <select className="input input--rect" style={{ width: '100%', maxWidth: 320 }} value={backend} disabled={busy}
+              onChange={(e) => void save(true, e.target.value)}>
+              <option value="caddy">{t('settings.proxy.backend.caddy')}</option>
+              <option value="nginx" disabled>{t('settings.proxy.backend.nginx')}</option>
+              <option value="traefik" disabled>{t('settings.proxy.backend.traefik')}</option>
+            </select>
+            <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.backend.hint')}</div>
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
+  const { t } = useI18n();
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.settings.info>> | null>(null);
 
   const load = useCallback(async () => {
@@ -581,11 +634,12 @@ export function Settings() {
 
   return (
     <>
-      <Topbar title="Einstellungen" subtitle={info ? `Core-Hub v${info.version}` : undefined} />
+      <Topbar title={t('nav.settings')} subtitle={info ? t('page.settings.subtitle', { version: info.version }) : undefined} />
       <main className="page">
         <SortablePanels storageKey="settings" items={[
           { id: 'language', node: <LanguagePanel /> },
           { id: 'network', node: <NetworkPanel /> },
+          { id: 'proxy', node: <ProxyVisibilityPanel /> },
           { id: 'version', node: <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} /> },
           { id: 'password', node: <PasswordPanel /> },
           { id: '2fa', node: <TwoFactorPanel /> },
