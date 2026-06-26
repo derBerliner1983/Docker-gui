@@ -399,7 +399,18 @@ function FirewallPanel() {
           <button className="btn btn--outline btn--sm" onClick={() => setAssistantOpen(true)} title="Regeln prüfen und optimieren">
             <Wand2 size={13} /> Assistent
           </button>
-          <Switch checked={active} onChange={async (v) => { await api.firewall.toggle(v).catch((e) => alert(e.message)); load(); }} />
+          <Switch checked={active} onChange={async (v) => {
+            if (v) {
+              const ok = confirm(
+                'Firewall aktivieren?\n\n' +
+                'Ports 22, 80 und 443 werden nur dann automatisch freigegeben, wenn noch keine Regel dafür existiert. ' +
+                'Bestehende LAN-Regeln oder andere Einschränkungen bleiben unberührt.'
+              );
+              if (!ok) return;
+            }
+            await api.firewall.toggle(v).catch((e: Error) => alert(e.message));
+            load();
+          }} />
         </div>
       )}
     >
