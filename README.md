@@ -2,7 +2,7 @@
 
 # ⬡ Core-Hub
 
-**Die Zentrale deines Linux-Servers.** · `v0.7.5`
+**Die Zentrale deines Linux-Servers.** · `v0.7.6`
 
 Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Firewall, Sicherheit, KI & mehr.
 Alles im Browser. Ohne SSH, ohne Desktop.
@@ -133,8 +133,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 🌍 Mehrsprachigkeit
 - **5 Sprachen** umschaltbar: Deutsch, Englisch, Français, Español, Italiano (Einstellungen → Sprache)
 - Browsersprache wird automatisch erkannt; Wahl im Browser gespeichert
-- Navigation & Seitentitel sind übersetzt; fehlende Schlüssel fallen automatisch auf Deutsch zurück
-- Erweiterbar: neue Sprache = ein Wörterbuch anlegen, fertig
+- **Tiefe Abdeckung**: Navigation, Seitentitel, Panels, Dialoge, Buttons & Tooltips übersetzt
+- **Deutsch = Schlüssel**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel – fehlt eine Übersetzung, erscheint automatisch der deutsche Originaltext
+- **Sprache leicht anpassbar**: neue Sprache = eine Locale-Datei mit `deutsch → übersetzt`-Zuordnungen, fertig (`frontend/src/lib/locales/`)
 
 ### ⚙️ Einstellungen
 - Passwort & 2FA, System-Info, Version & Update-Prüfung (git + GitHub-Releases)
@@ -256,9 +257,10 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **14** | **Virtuelle IPs** (macvlan/ipvlan, mehrere Netzwerke pro Container, IP-Übersicht-Tab), **App-Store** (Unraid Community + Docker Hub, Port-Konflikt-Erkennung, Aufräumen bei Fehler), **Dynamische Kategorie-Tabs** (Container-Übersicht), **Mehrsprachigkeit** (DE/EN, erweiterbar) | ✅ `v0.7.3` |
 | **15** | **IPv4/IPv6-Umschalter** (Standard nur IPv4), **Drag-&-Drop-Sortierung** von Sidebar & Panels (pro Benutzer, serverseitig), **Inline-Macvlan** im Container-/App-Dialog, **Firewall ohne Auto-Schutzregeln** (nur LAN-only-Freigabe für SSH/443 beim Aktivieren), Host-Port-Konflikterkennung inkl. Nicht-Docker-Dienste, Update mit sofortigem Reload-Button | ✅ `v0.7.4` |
 | **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
+| **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
 
 ### Geplant / Ideen
-- ⏳ Tiefere i18n-Abdeckung (Panel-Inhalte, Dialoge, Tooltips)
+- ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen
 - ⏳ Reverse-Proxy: nginx/Traefik tatsächlich anbinden
 
 Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).

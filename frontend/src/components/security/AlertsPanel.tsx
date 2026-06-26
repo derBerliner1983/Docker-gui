@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Mail, BellRing, Plus, Trash2, Send, Server } from 'lucide-react';
+import { tt } from '../../lib/i18n';
 import { Panel } from '../ui/Panel';
 import { Switch } from '../ui/Switch';
 import { api } from '../../lib/api';
@@ -46,7 +47,7 @@ export function SmtpPanel() {
 
   return (
     <Panel
-      title="E-Mail-Versand (SMTP)"
+      title={tt('E-Mail-Versand (SMTP)')}
       icon={<Server size={15} />}
       subtitle={cfg?.smtpConfigured ? 'konfiguriert' : 'nicht konfiguriert'}
       storageKey="sec-smtp"
@@ -55,22 +56,22 @@ export function SmtpPanel() {
       <div style={{ marginTop: 8 }}>
         <div className="form-hint" style={{ marginBottom: 12 }}>
           Trage hier deinen Mail-Anbieter ein (z.B. Gmail: smtp.gmail.com, Port 465 SSL; oder dein eigener Server).
-          Für Gmail brauchst du ein <b>App-Passwort</b>.
+          Für Gmail brauchst du ein <b>{tt('App-Passwort')}</b>.
         </div>
         <div className="form-row">
           <div className="form-group" style={{ flex: 2 }}>
-            <label className="form-label">SMTP-Server</label>
-            <input className="input input--rect" placeholder="smtp.gmail.com" value={form.smtpHost} onChange={(e) => setForm({ ...form, smtpHost: e.target.value })} />
+            <label className="form-label">{tt('SMTP-Server')}</label>
+            <input className="input input--rect" placeholder={tt('smtp.gmail.com')} value={form.smtpHost} onChange={(e) => setForm({ ...form, smtpHost: e.target.value })} />
           </div>
           <div className="form-group" style={{ flex: 1 }}>
-            <label className="form-label">Port</label>
+            <label className="form-label">{tt('Port')}</label>
             <input className="input input--rect" type="number" value={form.smtpPort} onChange={(e) => setForm({ ...form, smtpPort: +e.target.value })} />
           </div>
         </div>
         <div className="form-row">
           <div className="form-group">
-            <label className="form-label">Benutzer</label>
-            <input className="input input--rect" placeholder="dein@gmail.com" value={form.smtpUser} onChange={(e) => setForm({ ...form, smtpUser: e.target.value })} />
+            <label className="form-label">{tt('Benutzer')}</label>
+            <input className="input input--rect" placeholder={tt('dein@gmail.com')} value={form.smtpUser} onChange={(e) => setForm({ ...form, smtpUser: e.target.value })} />
           </div>
           <div className="form-group">
             <label className="form-label">Passwort {cfg?.smtpConfigured && <span style={{ color: 'var(--color-faint)' }}>(leer = unverändert)</span>}</label>
@@ -80,7 +81,7 @@ export function SmtpPanel() {
         <div className="form-row">
           <div className="form-group" style={{ flex: 2 }}>
             <label className="form-label">Absender (From)</label>
-            <input className="input input--rect" placeholder="core-hub@deine-domain.de" value={form.smtpFrom} onChange={(e) => setForm({ ...form, smtpFrom: e.target.value })} />
+            <input className="input input--rect" placeholder={tt('core-hub@deine-domain.de')} value={form.smtpFrom} onChange={(e) => setForm({ ...form, smtpFrom: e.target.value })} />
           </div>
           <div className="form-group" style={{ flex: 1, justifyContent: 'flex-end' }}>
             <label className="form-label">SSL (Port 465)</label>
@@ -93,8 +94,8 @@ export function SmtpPanel() {
           <button className="btn btn--primary btn--sm" onClick={save} disabled={saving}>
             {saving && <span className="spinner" style={{ width: 12, height: 12 }} />} Speichern
           </button>
-          <input className="input input--rect" style={{ width: 200 }} placeholder="Test an … (optional)" value={testTo} onChange={(e) => setTestTo(e.target.value)} />
-          <button className="btn btn--outline btn--sm" onClick={test}><Send size={12} /> Test-E-Mail</button>
+          <input className="input input--rect" style={{ width: 200 }} placeholder={tt('Test an … (optional)')} value={testTo} onChange={(e) => setTestTo(e.target.value)} />
+          <button className="btn btn--outline btn--sm" onClick={test}><Send size={12} /> {tt('Test-E-Mail')}</button>
         </div>
         {msg && <div className="form-hint" style={{ marginTop: 10, color: msg.startsWith('✓') ? 'var(--color-success)' : 'var(--color-error)' }}>{msg}</div>}
       </div>
@@ -168,11 +169,11 @@ export function AlertsPanel() {
 
   return (
     <Panel
-      title="Alarm-Regeln (E-Mail bei Auffälligkeiten)"
+      title={tt('Alarm-Regeln (E-Mail bei Auffälligkeiten)')}
       icon={<BellRing size={15} />}
       subtitle={`${rules.length} Regel(n)`}
       storageKey="sec-alerts"
-      actions={<button className="btn btn--primary btn--sm" onClick={() => setAdding((v) => !v)}><Plus size={13} /> Regel</button>}
+      actions={<button className="btn btn--primary btn--sm" onClick={() => setAdding((v) => !v)}><Plus size={13} /> {tt('Regel')}</button>}
     >
       <div style={{ marginTop: 6 }}>
         {adding && (
@@ -180,22 +181,22 @@ export function AlertsPanel() {
             <div className="card-body">
               <div className="form-row">
                 <div className="form-group">
-                  <label className="form-label">Art</label>
+                  <label className="form-label">{tt('Art')}</label>
                   <select className="input input--rect" value={kind} onChange={(e) => setKind(e.target.value as 'predefined' | 'metric')} style={{ cursor: 'pointer' }}>
-                    <option value="predefined">Vordefinierte Auffälligkeit</option>
-                    <option value="metric">Eigener Schwellwert</option>
+                    <option value="predefined">{tt('Vordefinierte Auffälligkeit')}</option>
+                    <option value="metric">{tt('Eigener Schwellwert')}</option>
                   </select>
                 </div>
                 {kind === 'predefined' ? (
                   <div className="form-group">
-                    <label className="form-label">Auffälligkeit</label>
+                    <label className="form-label">{tt('Auffälligkeit')}</label>
                     <select className="input input--rect" value={ruleKey} onChange={(e) => setRuleKey(e.target.value)} style={{ cursor: 'pointer' }}>
                       {predefined.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
                     </select>
                   </div>
                 ) : (
                   <div className="form-group">
-                    <label className="form-label">Metrik</label>
+                    <label className="form-label">{tt('Metrik')}</label>
                     <select className="input input--rect" value={metric} onChange={(e) => setMetric(e.target.value)} style={{ cursor: 'pointer' }}>
                       {metrics.map((m) => <option key={m.key} value={m.key}>{m.name}</option>)}
                     </select>
@@ -224,12 +225,12 @@ export function AlertsPanel() {
 
               <div className="form-group">
                 <label className="form-label">Empfänger-E-Mails (mehrere mit Komma; leer = globale Adresse)</label>
-                <input className="input input--rect" placeholder="admin@firma.de, technik@firma.de" value={recipients} onChange={(e) => setRecipients(e.target.value)} />
+                <input className="input input--rect" placeholder={tt('admin@firma.de, technik@firma.de')} value={recipients} onChange={(e) => setRecipients(e.target.value)} />
               </div>
 
               <div style={{ display: 'flex', gap: 8 }}>
-                <button className="btn btn--primary btn--sm" onClick={create}>Regel anlegen</button>
-                <button className="btn btn--ghost btn--sm" onClick={() => setAdding(false)}>Abbrechen</button>
+                <button className="btn btn--primary btn--sm" onClick={create}>{tt('Regel anlegen')}</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => setAdding(false)}>{tt('Abbrechen')}</button>
               </div>
             </div>
           </div>
@@ -252,8 +253,8 @@ export function AlertsPanel() {
                     {r.lastTriggered && <> · zuletzt ausgelöst {new Date(r.lastTriggered).toLocaleString('de-DE')}</>}
                   </div>
                 </div>
-                <button className="btn btn--outline btn--sm" disabled={busy === r.id} onClick={() => test(r)} title="Test-E-Mail"><Send size={12} /></button>
-                <button className="btn btn--danger btn--icon btn--sm" disabled={busy === r.id} onClick={() => remove(r)} title="Löschen"><Trash2 size={12} /></button>
+                <button className="btn btn--outline btn--sm" disabled={busy === r.id} onClick={() => test(r)} title={tt('Test-E-Mail')}><Send size={12} /></button>
+                <button className="btn btn--danger btn--icon btn--sm" disabled={busy === r.id} onClick={() => remove(r)} title={tt('Löschen')}><Trash2 size={12} /></button>
               </div>
             ))}
           </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Play, Square, Power, RotateCcw, Plus, Trash2, Camera, Star, MonitorPlay } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
@@ -46,11 +46,11 @@ function CreateVMModal({ open, onClose, onCreated }: { open: boolean; onClose: (
   return (
     <Modal
       open={open}
-      title="Neue VM erstellen"
+      title={tt('Neue VM erstellen')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={create} disabled={loading}>
             {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} VM erstellen
           </button>
@@ -59,8 +59,8 @@ function CreateVMModal({ open, onClose, onCreated }: { open: boolean; onClose: (
     >
       {error && <div className="login-error">{error}</div>}
       <div className="form-group">
-        <label className="form-label">Name *</label>
-        <input className="input input--rect" placeholder="meine-vm" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <label className="form-label">{tt('Name *')}</label>
+        <input className="input input--rect" placeholder={tt('meine-vm')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </div>
       <div className="form-row">
         <div className="form-group">
@@ -78,7 +78,7 @@ function CreateVMModal({ open, onClose, onCreated }: { open: boolean; onClose: (
           <input className="input input--rect" type="number" value={form.diskSize} onChange={(e) => setForm({ ...form, diskSize: +e.target.value })} />
         </div>
         <div className="form-group">
-          <label className="form-label">Betriebssystem</label>
+          <label className="form-label">{tt('Betriebssystem')}</label>
           <select className="input input--rect" value={form.osVariant} onChange={(e) => setForm({ ...form, osVariant: e.target.value })} style={{ cursor: 'pointer' }}>
             {OS_VARIANTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -86,7 +86,7 @@ function CreateVMModal({ open, onClose, onCreated }: { open: boolean; onClose: (
       </div>
       <div className="form-group">
         <label className="form-label">ISO-Pfad (optional, zum Installieren)</label>
-        <input className="input input--rect" placeholder="/var/lib/libvirt/images/ubuntu.iso" value={form.iso} onChange={(e) => setForm({ ...form, iso: e.target.value })} style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+        <input className="input input--rect" placeholder={tt('/var/lib/libvirt/images/ubuntu.iso')} value={form.iso} onChange={(e) => setForm({ ...form, iso: e.target.value })} style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
         <div className="form-hint">Ohne ISO wird die VM mit leerer Festplatte erstellt (--import).</div>
       </div>
     </Modal>
@@ -157,8 +157,8 @@ export function VMs() {
         ) : vms.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state__icon"><MonitorPlay size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Keine VMs vorhanden</div>
-            <div className="empty-state__desc">Erstelle deine erste virtuelle Maschine mit dem Button oben rechts.</div>
+            <div className="empty-state__title">{tt('Keine VMs vorhanden')}</div>
+            <div className="empty-state__desc">{tt('Erstelle deine erste virtuelle Maschine mit dem Button oben rechts.')}</div>
           </div>
         ) : (
           <div className="container-grid">
@@ -175,7 +175,7 @@ export function VMs() {
                       <div className="container-card__name">{vm.name}</div>
                       <div className="container-card__image">
                         {vm.vcpus} vCPU · {formatBytes(vm.memory * 1024)}
-                        {vm.autostart && <span style={{ color: 'var(--color-warning)' }}> · ★ Autostart</span>}
+                        {vm.autostart && <span style={{ color: 'var(--color-warning)' }}> {tt('· ★ Autostart')}</span>}
                       </div>
                     </div>
                     <span className={`badge badge--${stateBadge(vm.state)}`}>
@@ -186,29 +186,29 @@ export function VMs() {
                   <div className="container-card__footer">
                     <span className="container-card__status-text">{vm.state}</span>
                     {!running ? (
-                      <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={!!b} onClick={() => action(vm.name, 'start', () => api.vms.start(vm.name))}>
+                      <button className="btn btn--ghost btn--icon btn--sm" title={tt('Starten')} disabled={!!b} onClick={() => action(vm.name, 'start', () => api.vms.start(vm.name))}>
                         {b === 'start' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Play size={12} />}
                       </button>
                     ) : (
                       <>
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Herunterfahren" disabled={!!b} onClick={() => action(vm.name, 'shutdown', () => api.vms.shutdown(vm.name))}>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Herunterfahren')} disabled={!!b} onClick={() => action(vm.name, 'shutdown', () => api.vms.shutdown(vm.name))}>
                           {b === 'shutdown' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Power size={12} />}
                         </button>
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Hart ausschalten" disabled={!!b} onClick={() => action(vm.name, 'stop', () => api.vms.stop(vm.name))}>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Hart ausschalten')} disabled={!!b} onClick={() => action(vm.name, 'stop', () => api.vms.stop(vm.name))}>
                           <Square size={12} />
                         </button>
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={!!b} onClick={() => action(vm.name, 'reboot', () => api.vms.reboot(vm.name))}>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Neustart')} disabled={!!b} onClick={() => action(vm.name, 'reboot', () => api.vms.reboot(vm.name))}>
                           <RotateCcw size={12} />
                         </button>
                       </>
                     )}
-                    <button className="btn btn--ghost btn--icon btn--sm" title="Snapshot erstellen" disabled={!!b} onClick={() => action(vm.name, 'snap', () => api.vms.snapshot(vm.name))}>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Snapshot erstellen')} disabled={!!b} onClick={() => action(vm.name, 'snap', () => api.vms.snapshot(vm.name))}>
                       {b === 'snap' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Camera size={12} />}
                     </button>
-                    <button className="btn btn--ghost btn--icon btn--sm" title="Autostart umschalten" disabled={!!b} onClick={() => action(vm.name, 'auto', () => api.vms.toggleAutostart(vm.name))} style={vm.autostart ? { color: 'var(--color-warning)' } : undefined}>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Autostart umschalten')} disabled={!!b} onClick={() => action(vm.name, 'auto', () => api.vms.toggleAutostart(vm.name))} style={vm.autostart ? { color: 'var(--color-warning)' } : undefined}>
                       <Star size={12} fill={vm.autostart ? 'currentColor' : 'none'} />
                     </button>
-                    <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={!!b} onClick={() => setDeleteConfirm(vm.name)}>
+                    <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} disabled={!!b} onClick={() => setDeleteConfirm(vm.name)}>
                       {b === 'del' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
                     </button>
                   </div>
@@ -222,7 +222,7 @@ export function VMs() {
       <CreateVMModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={load} />
       <ConfirmModal
         open={!!deleteConfirm}
-        title="VM löschen"
+        title={tt('VM löschen')}
         message={`Soll "${deleteConfirm}" inkl. Festplatte unwiderruflich gelöscht werden?`}
         confirmLabel="Löschen"
         danger

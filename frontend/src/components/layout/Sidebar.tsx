@@ -5,7 +5,7 @@ import {
   Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes, Files, BrainCircuit,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
-import { useT } from '../../lib/i18n';
+import { useT, tt } from '../../lib/i18n';
 import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 
@@ -112,7 +112,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         <div className="sidebar__logo">⬡</div>
         {!collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-            <span className="sidebar__title">Core-Hub</span>
+            <span className="sidebar__title">{tt('Core-Hub')}</span>
             {version && (
               <NavLink to="/settings" style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)', textDecoration: 'none' }} title={updateAvailable ? t('sidebar.updateAvailable') : undefined}>
                 v{version}{updateAvailable ? ' · Update ▲' : ''}

@@ -4,7 +4,7 @@ import {
   FolderPlus, Edit3, Save, X, Shield, ArrowLeft, Terminal,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { formatBytes } from '../lib/utils';
 
 interface Entry {
@@ -188,8 +188,8 @@ export function FileManager() {
 
         {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
-          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => navigate('/')} title="Root"><Home size={13} /></button>
-          {parent && <button className="btn btn--ghost btn--icon btn--sm" onClick={() => navigate(parent)} title="Zurück"><ArrowLeft size={13} /></button>}
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => navigate('/')} title={tt('Root')}><Home size={13} /></button>
+          {parent && <button className="btn btn--ghost btn--icon btn--sm" onClick={() => navigate(parent)} title={tt('Zurück')}><ArrowLeft size={13} /></button>}
           {crumbs.map((seg, i) => {
             const to = '/' + crumbs.slice(0, i + 1).join('/');
             return (
@@ -204,10 +204,10 @@ export function FileManager() {
         {/* New folder input */}
         {showNewFolder && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <input className="input input--rect" placeholder="Ordnername…" value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+            <input className="input input--rect" placeholder={tt('Ordnername…')} value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && void createFolder()} style={{ width: 220, height: 32 }} autoFocus />
-            <button className="btn btn--primary btn--sm" onClick={() => void createFolder()}>Erstellen</button>
-            <button className="btn btn--ghost btn--sm" onClick={() => setShowNewFolder(false)}>Abbrechen</button>
+            <button className="btn btn--primary btn--sm" onClick={() => void createFolder()}>{tt('Erstellen')}</button>
+            <button className="btn btn--ghost btn--sm" onClick={() => setShowNewFolder(false)}>{tt('Abbrechen')}</button>
           </div>
         )}
 
@@ -218,19 +218,19 @@ export function FileManager() {
               <thead>
                 <tr>
                   <th style={{ width: 24 }}></th>
-                  <th>Name</th>
-                  <th style={{ width: 100 }}>Rechte</th>
-                  <th style={{ width: 90 }}>Benutzer</th>
-                  <th style={{ width: 90 }}>Gruppe</th>
-                  <th className="dtable__num" style={{ width: 80 }}>Größe</th>
-                  <th style={{ width: 80 }}>Ausführbar</th>
-                  <th style={{ width: 130 }}>Geändert</th>
+                  <th>{tt('Name')}</th>
+                  <th style={{ width: 100 }}>{tt('Rechte')}</th>
+                  <th style={{ width: 90 }}>{tt('Benutzer')}</th>
+                  <th style={{ width: 90 }}>{tt('Gruppe')}</th>
+                  <th className="dtable__num" style={{ width: 80 }}>{tt('Größe')}</th>
+                  <th style={{ width: 80 }}>{tt('Ausführbar')}</th>
+                  <th style={{ width: 130 }}>{tt('Geändert')}</th>
                   <th style={{ width: 150 }}></th>
                 </tr>
               </thead>
               <tbody>
                 {entries.length === 0 && !loading && (
-                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: 'var(--color-faint)', fontSize: 13 }}>Verzeichnis ist leer</td></tr>
+                  <tr><td colSpan={9} style={{ textAlign: 'center', padding: '20px', color: 'var(--color-faint)', fontSize: 13 }}>{tt('Verzeichnis ist leer')}</td></tr>
                 )}
                 {entries.map(entry => {
                   const isText = !entry.isDir && TEXT_EXTS.has(entry.name.split('.').pop()?.toLowerCase() ?? '');
@@ -257,31 +257,31 @@ export function FileManager() {
                       <td className="dtable__num" style={{ fontSize: 12 }}>{entry.isDir ? '–' : formatBytes(entry.size)}</td>
                       <td style={{ fontSize: 11.5 }}>
                         <span style={{ display: 'flex', gap: 4 }}>
-                          {entry.ownerExecutable && <span style={{ background: 'rgba(34,197,94,.15)', color: 'var(--color-success)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title="Benutzer kann ausführen">u+x</span>}
-                          {entry.groupExecutable && <span style={{ background: 'rgba(99,102,241,.12)', color: 'var(--color-accent)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title="Gruppe kann ausführen">g+x</span>}
-                          {entry.otherExecutable && <span style={{ background: 'rgba(234,179,8,.12)', color: 'var(--color-warning)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title="Alle können ausführen">o+x</span>}
+                          {entry.ownerExecutable && <span style={{ background: 'rgba(34,197,94,.15)', color: 'var(--color-success)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title={tt('Benutzer kann ausführen')}>u+x</span>}
+                          {entry.groupExecutable && <span style={{ background: 'rgba(99,102,241,.12)', color: 'var(--color-accent)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title={tt('Gruppe kann ausführen')}>g+x</span>}
+                          {entry.otherExecutable && <span style={{ background: 'rgba(234,179,8,.12)', color: 'var(--color-warning)', padding: '1px 5px', borderRadius: 3, fontSize: 10.5 }} title={tt('Alle können ausführen')}>o+x</span>}
                         </span>
                       </td>
                       <td style={{ fontSize: 11, color: 'var(--color-faint)' }}>{new Date(entry.mtime).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</td>
                       <td onClick={e => e.stopPropagation()}>
                         <div className="dtable__actions">
                           {isText && (
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Bearbeiten" onClick={() => void openEdit(entry)}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Bearbeiten')} onClick={() => void openEdit(entry)}>
                               <Edit3 size={12} />
                             </button>
                           )}
-                          <button className="btn btn--ghost btn--icon btn--sm" title="Berechtigungen" onClick={() => { setChmodPath(entry.path); setChmodMode(entry.permissions); }}>
+                          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Berechtigungen')} onClick={() => { setChmodPath(entry.path); setChmodMode(entry.permissions); }}>
                             <Shield size={12} />
                           </button>
-                          <button className="btn btn--ghost btn--icon btn--sm" title="Umbenennen" onClick={() => { setRenamePath(entry.path); setRenameTo(entry.name); }}>
+                          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Umbenennen')} onClick={() => { setRenamePath(entry.path); setRenameTo(entry.name); }}>
                             <Terminal size={12} />
                           </button>
                           {!entry.isDir && (
-                            <a className="btn btn--ghost btn--icon btn--sm" href={`/api/files/download?path=${encodeURIComponent(entry.path)}`} download title="Herunterladen">
+                            <a className="btn btn--ghost btn--icon btn--sm" href={`/api/files/download?path=${encodeURIComponent(entry.path)}`} download title={tt('Herunterladen')}>
                               <Download size={12} />
                             </a>
                           )}
-                          <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => void deleteEntry(entry)}>
+                          <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} onClick={() => void deleteEntry(entry)}>
                             <Trash2 size={12} />
                           </button>
                         </div>
@@ -300,12 +300,12 @@ export function FileManager() {
             onClick={() => setChmodPath(null)}>
             <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, minWidth: 340 }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>Berechtigungen ändern</div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{tt('Berechtigungen ändern')}</div>
               <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 14 }}>{chmodPath}</div>
               <ChmodEditor mode={chmodMode} onChange={setChmodMode} />
               <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-                <button className="btn btn--primary btn--sm" onClick={() => void applyChmod()}>Anwenden</button>
-                <button className="btn btn--ghost btn--sm" onClick={() => setChmodPath(null)}>Abbrechen</button>
+                <button className="btn btn--primary btn--sm" onClick={() => void applyChmod()}>{tt('Anwenden')}</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => setChmodPath(null)}>{tt('Abbrechen')}</button>
               </div>
             </div>
           </div>
@@ -317,13 +317,13 @@ export function FileManager() {
             onClick={() => setRenamePath(null)}>
             <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 12, padding: 24, minWidth: 340 }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ fontWeight: 600, marginBottom: 12 }}>Umbenennen</div>
+              <div style={{ fontWeight: 600, marginBottom: 12 }}>{tt('Umbenennen')}</div>
               <input className="input input--rect" value={renameTo} onChange={e => setRenameTo(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && void applyRename()}
                 style={{ width: '100%', height: 34 }} autoFocus />
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button className="btn btn--primary btn--sm" onClick={() => void applyRename()}>Umbenennen</button>
-                <button className="btn btn--ghost btn--sm" onClick={() => setRenamePath(null)}>Abbrechen</button>
+                <button className="btn btn--primary btn--sm" onClick={() => void applyRename()}>{tt('Umbenennen')}</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => setRenamePath(null)}>{tt('Abbrechen')}</button>
               </div>
             </div>
           </div>
@@ -337,7 +337,7 @@ export function FileManager() {
                 <FileText size={14} />
                 <span style={{ fontWeight: 600, fontSize: 13, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{editPath}</span>
                 <button className="btn btn--primary btn--sm" onClick={() => void saveEdit()} disabled={editSaving}>
-                  {editSaving ? <><span className="spinner" style={{ width: 11, height: 11 }} /> Speichern…</> : <><Save size={12} /> Speichern</>}
+                  {editSaving ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Speichern…')}</> : <><Save size={12} /> {tt('Speichern')}</>}
                 </button>
                 <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setEditPath(null)}><X size={14} /></button>
               </div>

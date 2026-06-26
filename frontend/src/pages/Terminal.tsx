@@ -4,7 +4,7 @@ import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 
 type Conn = 'connecting' | 'open' | 'closed';
 
@@ -102,7 +102,7 @@ export function Terminal() {
         actions={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {statusBadge}
-            <button className="btn btn--outline btn--sm" onClick={reconnect} title="Neu verbinden">
+            <button className="btn btn--outline btn--sm" onClick={reconnect} title={tt('Neu verbinden')}>
               {status === 'closed' ? <Power size={13} /> : <RotateCcw size={13} />} Neu verbinden
             </button>
           </div>
@@ -113,7 +113,7 @@ export function Terminal() {
         <div className="card" style={{ padding: 0, overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--color-border)', color: 'var(--color-subtle)', fontSize: 12.5, flexShrink: 0 }}>
             <TerminalSquare size={15} />
-            <span>Interaktive Shell – Befehle werden direkt auf dem Server ausgeführt.</span>
+            <span>{tt('Interaktive Shell – Befehle werden direkt auf dem Server ausgeführt.')}</span>
           </div>
           {/* position:relative needed for xterm-viewport (absolute). No padding: FitAddon clipping. */}
           <div ref={containerRef} style={{ flex: 1, background: '#1C1C1F', minHeight: 0, position: 'relative', overflow: 'hidden' }} />

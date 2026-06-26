@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield, ShieldCheck, ShieldOff, ShieldAlert, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
@@ -29,19 +29,19 @@ function AppUserModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
   };
 
   return (
-    <Modal open={open} title="Neuer Core-Hub Login" onClose={onClose}
+    <Modal open={open} title={tt('Neuer Core-Hub Login')} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Erstellen
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
-      <div className="form-group"><label className="form-label">Benutzername</label>
+      <div className="form-group"><label className="form-label">{tt('Benutzername')}</label>
         <input className="input input--rect" value={username} onChange={(e) => setUsername(e.target.value)} /></div>
-      <div className="form-group"><label className="form-label">Passwort</label>
+      <div className="form-group"><label className="form-label">{tt('Passwort')}</label>
         <input className="input input--rect" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-      <div className="form-group"><label className="form-label">Rolle</label>
+      <div className="form-group"><label className="form-label">{tt('Rolle')}</label>
         <select className="input input--rect" value={role} onChange={(e) => setRole(e.target.value)} style={{ cursor: 'pointer' }}>
           <option value="viewer">Viewer (nur ansehen)</option>
           <option value="admin">Admin (volle Rechte)</option>
@@ -68,21 +68,21 @@ function LinuxUserModal({ open, onClose, onDone }: { open: boolean; onClose: () 
   };
 
   return (
-    <Modal open={open} title="Neuer Linux-Benutzer" onClose={onClose}
+    <Modal open={open} title={tt('Neuer Linux-Benutzer')} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Anlegen
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
-      <div className="form-group"><label className="form-label">Benutzername</label>
+      <div className="form-group"><label className="form-label">{tt('Benutzername')}</label>
         <input className="input input--rect" value={username} onChange={(e) => setUsername(e.target.value)} /></div>
       <div className="form-group"><label className="form-label">Passwort (optional)</label>
         <input className="input input--rect" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
       <label className="legend__item" style={{ cursor: 'pointer' }}>
         <input type="checkbox" checked={sudo} onChange={(e) => setSudo(e.target.checked)} />
-        <span><Shield size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <b>sudo-Rechte</b> — Administrator</span>
+        <span><Shield size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <b>{tt('sudo-Rechte')}</b> {tt('— Administrator')}</span>
       </label>
     </Modal>
   );
@@ -122,7 +122,7 @@ export function Users() {
   const setLinuxPw = async (name: string) => {
     const pw = prompt(`Neues Passwort für "${name}":`);
     if (!pw) return;
-    try { await api.linuxUsers.setPassword(name, pw); alert('Passwort geändert.'); }
+    try { await api.linuxUsers.setPassword(name, pw); alert(tt('Passwort geändert.')); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
 
@@ -176,14 +176,14 @@ export function Users() {
         <SortablePanels storageKey="users" items={[
           { id: 'corehub', node: (
         <Panel
-          title="Core-Hub Logins"
+          title={tt('Core-Hub Logins')}
           icon={<UsersIcon size={15} />}
-          subtitle="Zugänge zur Weboberfläche"
+          subtitle={tt('Zugänge zur Weboberfläche')}
           storageKey="appusers"
-          actions={<button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setAppModal(true); }}><Plus size={13} /> Login</button>}
+          actions={<button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setAppModal(true); }}><Plus size={13} /> {tt('Login')}</button>}
         >
           <table className="dtable" style={{ marginTop: 6 }}>
-            <thead><tr><th>Benutzer</th><th>Rolle</th><th>2FA</th><th>Erstellt</th><th style={{ width: 44 }}></th></tr></thead>
+            <thead><tr><th>{tt('Benutzer')}</th><th>{tt('Rolle')}</th><th>2FA</th><th>{tt('Erstellt')}</th><th style={{ width: 44 }}></th></tr></thead>
             <tbody>
               {appUsers.map((u) => {
                 const has2fa = !!u.totp_enabled;
@@ -206,21 +206,21 @@ export function Users() {
                         {user?.role === 'admin' && u.id !== user?.id && (
                           <div style={{ display: 'flex', gap: 4 }}>
                             {!required2fa && !has2fa && (
-                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA erzwingen" onClick={() => startAction(u, 'require2fa')}>
+                              <button className="btn btn--ghost btn--icon btn--sm" title={tt('2FA erzwingen')} onClick={() => startAction(u, 'require2fa')}>
                                 <ShieldAlert size={11} />
                               </button>
                             )}
                             {required2fa && !has2fa && (
-                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA-Pflicht aufheben" onClick={() => startAction(u, 'unrequire2fa')}>
+                              <button className="btn btn--ghost btn--icon btn--sm" title={tt('2FA-Pflicht aufheben')} onClick={() => startAction(u, 'unrequire2fa')}>
                                 <ShieldOff size={11} />
                               </button>
                             )}
                             {has2fa && (
-                              <button className="btn btn--ghost btn--icon btn--sm" title="2FA zurücksetzen (z.B. Gerät verloren)" onClick={() => startAction(u, 'reset2fa')}>
+                              <button className="btn btn--ghost btn--icon btn--sm" title={tt('2FA zurücksetzen (z.B. Gerät verloren)')} onClick={() => startAction(u, 'reset2fa')}>
                                 <ShieldOff size={11} />
                               </button>
                             )}
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Alle Sitzungen widerrufen" onClick={() => startAction(u, 'revokeSessions')}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Alle Sitzungen widerrufen')} onClick={() => startAction(u, 'revokeSessions')}>
                               <LogOut size={11} />
                             </button>
                           </div>
@@ -230,7 +230,7 @@ export function Users() {
                     <td className="text-muted">{u.created_at?.slice(0, 10)}</td>
                     <td>
                       {u.id !== user?.id && (
-                        <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delApp(u)}><Trash2 size={12} /></button>
+                        <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} onClick={() => delApp(u)}><Trash2 size={12} /></button>
                       )}
                     </td>
                   </tr>
@@ -258,16 +258,16 @@ export function Users() {
           ) },
           { id: 'linux', node: (
         <Panel
-          title="Linux-Benutzer"
+          title={tt('Linux-Benutzer')}
           icon={<Terminal size={15} />}
-          subtitle="Systembenutzer des Servers"
+          subtitle={tt('Systembenutzer des Servers')}
           storageKey="linuxusers"
           defaultCollapsed
-          actions={<button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setLinuxModal(true); }}><Plus size={13} /> Benutzer</button>}
+          actions={<button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setLinuxModal(true); }}><Plus size={13} /> {tt('Benutzer')}</button>}
         >
           <div className="table-scroll" style={{ marginTop: 6 }}>
             <table className="dtable">
-              <thead><tr><th>Benutzer</th><th>UID</th><th>Gruppen</th><th>Shell</th><th style={{ width: 80 }}></th></tr></thead>
+              <thead><tr><th>{tt('Benutzer')}</th><th>UID</th><th>{tt('Gruppen')}</th><th>{tt('Shell')}</th><th style={{ width: 80 }}></th></tr></thead>
               <tbody>
                 {linuxUsers.map((u) => (
                   <tr key={u.username}>
@@ -280,8 +280,8 @@ export function Users() {
                     <td className="dtable__mono text-muted">{u.shell}</td>
                     <td>
                       <div className="dtable__actions">
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Passwort ändern" onClick={() => setLinuxPw(u.username)}><KeyRound size={12} /></button>
-                        <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => delLinux(u.username)}><Trash2 size={12} /></button>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Passwort ändern')} onClick={() => setLinuxPw(u.username)}><KeyRound size={12} /></button>
+                        <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} onClick={() => delLinux(u.username)}><Trash2 size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -299,7 +299,7 @@ export function Users() {
 
       <ConfirmModal
         open={!!deleteAppConfirm}
-        title="Login löschen"
+        title={tt('Login löschen')}
         message={`Soll der Login "${deleteAppConfirm?.username}" wirklich gelöscht werden?`}
         confirmLabel="Löschen"
         danger
@@ -315,7 +315,7 @@ export function Users() {
       {/* Linux user delete – extra option to keep/remove home */}
       <ConfirmModal
         open={!!deleteLinuxConfirm}
-        title="Linux-Benutzer löschen"
+        title={tt('Linux-Benutzer löschen')}
         message={`Soll der Benutzer "${deleteLinuxConfirm}" gelöscht werden?`}
         extra={
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-muted)', cursor: 'pointer' }}>

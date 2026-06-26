@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
@@ -34,18 +34,18 @@ function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; 
   const isVlan = driver === 'macvlan' || driver === 'ipvlan';
 
   return (
-    <Modal open={open} title="Neues Netzwerk" onClose={onClose}
+    <Modal open={open} title={tt('Neues Netzwerk')} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Erstellen
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
       <div className="form-row">
-        <div className="form-group"><label className="form-label">Name</label>
-          <input className="input input--rect" placeholder="dmz-netz" value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="form-group"><label className="form-label">Treiber</label>
+        <div className="form-group"><label className="form-label">{tt('Name')}</label>
+          <input className="input input--rect" placeholder={tt('dmz-netz')} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-group"><label className="form-label">{tt('Treiber')}</label>
           <select className="input input--rect" value={driver} onChange={(e) => setDriver(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="bridge">bridge (Standard)</option>
             <option value="macvlan">macvlan (eigene IP im LAN)</option>
@@ -60,19 +60,19 @@ function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; 
       </div>
       {isVlan && (
         <div className="form-row">
-          <div className="form-group"><label className="form-label">Eltern-Schnittstelle</label>
+          <div className="form-group"><label className="form-label">{tt('Eltern-Schnittstelle')}</label>
             <select className="input input--rect" value={parent} onChange={(e) => setParent(e.target.value)} style={{ cursor: 'pointer' }}>
-              <option value="">— wählen —</option>
+              <option value="">{tt('— wählen —')}</option>
               {interfaces.map((i) => <option key={i.iface} value={i.iface}>{i.iface} ({i.ip4 || 'keine IP'})</option>)}
             </select></div>
           <div className="form-group"><label className="form-label">VLAN-ID (optional)</label>
-            <input className="input input--rect" placeholder="z.B. 100" value={vlan} onChange={(e) => setVlan(e.target.value)} />
+            <input className="input input--rect" placeholder={tt('z.B. 100')} value={vlan} onChange={(e) => setVlan(e.target.value)} />
             <div className="form-hint">Erzeugt Tag {parent || 'ethX'}.{vlan || 'ID'}</div></div>
         </div>
       )}
       <label className="legend__item" style={{ cursor: 'pointer', marginTop: 4 }}>
         <Switch checked={internal} onChange={setInternal} />
-        <span><Lock size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <b>Isoliert (internal)</b> — <span className="text-muted">kein Zugriff nach außen, sichert unsichere Container ab</span></span>
+        <span><Lock size={12} style={{ display: 'inline', verticalAlign: 'middle' }} /> <b>Isoliert (internal)</b> — <span className="text-muted">{tt('kein Zugriff nach außen, sichert unsichere Container ab')}</span></span>
       </label>
     </Modal>
   );
@@ -100,13 +100,13 @@ function ConnectModal({ net, open, onClose, onDone, containers }: { net: DockerN
   return (
     <Modal open={open} title={`Container verbinden → ${net?.name ?? ''}`} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Verbinden
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
-      <div className="form-group"><label className="form-label">Container</label>
+      <div className="form-group"><label className="form-label">{tt('Container')}</label>
         <select className="input input--rect" value={container} onChange={(e) => setContainer(e.target.value)} style={{ cursor: 'pointer' }}>
           {containers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select></div>
@@ -114,7 +114,7 @@ function ConnectModal({ net, open, onClose, onDone, containers }: { net: DockerN
         <input className="input input--rect" placeholder={net?.subnet ? net.subnet.replace(/0\/\d+$/, '50') : '192.168.50.50'} value={ip} onChange={(e) => setIp(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
         <div className="form-hint">Muss im Subnetz {net?.subnet || '—'} liegen.</div></div>
       <div className="form-group"><label className="form-label">Alias-Namen / weitere IPs (Komma-getrennt)</label>
-        <input className="input input--rect" placeholder="web, api, db" value={aliases} onChange={(e) => setAliases(e.target.value)} /></div>
+        <input className="input input--rect" placeholder={tt('web, api, db')} value={aliases} onChange={(e) => setAliases(e.target.value)} /></div>
     </Modal>
   );
 }
@@ -159,7 +159,7 @@ function FirewallPanel() {
   const cancelEdit = () => { setEditNum(null); setForm(EMPTY_FW_FORM); };
 
   const submit = async () => {
-    if (!form.port && !form.from) { alert('Port oder Quell-IP angeben'); return; }
+    if (!form.port && !form.from) { alert(tt('Port oder Quell-IP angeben')); return; }
     setBusy(true);
     const payload = { action: form.action, port: form.port || undefined, proto: form.proto || undefined, from: form.from || undefined, direction: form.direction || undefined, comment: form.comment || undefined };
     try {
@@ -172,7 +172,7 @@ function FirewallPanel() {
   };
 
   const del = async (num: number) => {
-    if (!confirm('Regel löschen?')) return;
+    if (!confirm(tt('Regel löschen?'))) return;
     try { await api.firewall.remove(num); if (editNum === num) cancelEdit(); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
@@ -197,7 +197,7 @@ function FirewallPanel() {
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
   const discardDisabled = async (id: number) => {
-    if (!confirm('Deaktivierte Regel endgültig verwerfen?')) return;
+    if (!confirm(tt('Deaktivierte Regel endgültig verwerfen?'))) return;
     try { await api.firewall.removeDisabled(id); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
@@ -212,7 +212,7 @@ function FirewallPanel() {
 
   return (
     <Panel
-      title="Firewall (ufw)"
+      title={tt('Firewall (ufw)')}
       icon={<Shield size={15} />}
       subtitle={available ? (active ? 'aktiv' : 'inaktiv') : 'nicht installiert'}
       storageKey="firewall"
@@ -247,37 +247,37 @@ function FirewallPanel() {
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 8, marginBottom: 6 }}>
-            <input className="input input--rect" placeholder="Name (optional)" value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} style={{ width: 150 }} title="Name / Bezeichnung der Regel" />
-            <select className="input input--rect" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' })} style={{ width: 92, cursor: 'pointer' }} title="Aktion">
+            <input className="input input--rect" placeholder={tt('Name (optional)')} value={form.comment} onChange={(e) => setForm({ ...form, comment: e.target.value })} style={{ width: 150 }} title={tt('Name / Bezeichnung der Regel')} />
+            <select className="input input--rect" value={form.action} onChange={(e) => setForm({ ...form, action: e.target.value as 'allow' })} style={{ width: 92, cursor: 'pointer' }} title={tt('Aktion')}>
               <option value="allow">allow</option><option value="deny">deny</option><option value="reject">reject</option>
             </select>
-            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 152, cursor: 'pointer' }} title="Richtung – Beide legt je eine Regel für ein- und ausgehend an">
-              <option value="">Richtung: –</option><option value="in">Eingehend (in)</option><option value="out">Ausgehend (out)</option><option value="both">Beide (ein + aus)</option>
+            <select className="input input--rect" value={form.direction} onChange={(e) => setForm({ ...form, direction: e.target.value })} style={{ width: 152, cursor: 'pointer' }} title={tt('Richtung – Beide legt je eine Regel für ein- und ausgehend an')}>
+              <option value="">{tt('Richtung: –')}</option><option value="in">Eingehend (in)</option><option value="out">Ausgehend (out)</option><option value="both">Beide (ein + aus)</option>
             </select>
-            <input className="input input--rect" placeholder="Port (z.B. 443)" value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} style={{ width: 110 }} />
+            <input className="input input--rect" placeholder={tt('Port (z.B. 443)')} value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} style={{ width: 110 }} />
             <select className="input input--rect" value={form.proto} onChange={(e) => setForm({ ...form, proto: e.target.value })} style={{ width: 86, cursor: 'pointer' }}>
               <option value="">tcp+udp</option><option value="tcp">tcp</option><option value="udp">udp</option>
             </select>
-            <input className="input input--rect" placeholder="von IP(s), mit Komma trennen" value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} style={{ width: 200, fontFamily: 'var(--font-mono)' }} title="Mehrere Quell-Adressen mit Komma/Leerzeichen trennen → je eine Regel" />
+            <input className="input input--rect" placeholder={tt('von IP(s), mit Komma trennen')} value={form.from} onChange={(e) => setForm({ ...form, from: e.target.value })} style={{ width: 200, fontFamily: 'var(--font-mono)' }} title={tt('Mehrere Quell-Adressen mit Komma/Leerzeichen trennen → je eine Regel')} />
             <button className="btn btn--primary btn--sm" onClick={submit} disabled={busy}>
-              {editNum !== null ? <><Pencil size={13} /> Speichern</> : <><Plus size={13} /> Regel</>}
+              {editNum !== null ? <><Pencil size={13} /> {tt('Speichern')}</> : <><Plus size={13} /> {tt('Regel')}</>}
             </button>
-            {editNum !== null && <button className="btn btn--ghost btn--sm" onClick={cancelEdit}><X size={13} /> Abbrechen</button>}
+            {editNum !== null && <button className="btn btn--ghost btn--sm" onClick={cancelEdit}><X size={13} /> {tt('Abbrechen')}</button>}
           </div>
 
           {(rules.length > 0 || disabled.length > 0) && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0 10px' }}>
-              <input className="input input--rect" placeholder="Regeln filtern (Name, Port, IP …)" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 260 }} />
+              <input className="input input--rect" placeholder={tt('Regeln filtern (Name, Port, IP …)')} value={filter} onChange={(e) => setFilter(e.target.value)} style={{ width: 260 }} />
               {filter && <button className="btn btn--ghost btn--sm" onClick={() => setFilter('')}><X size={12} /></button>}
               <span style={{ fontSize: 11.5, color: 'var(--color-faint)', marginLeft: 'auto' }}>{shownRules.length} aktiv{disabled.length ? ` · ${shownDisabled.length} deaktiviert` : ''}</span>
             </div>
           )}
 
           {rules.length === 0 ? (
-            <div className="text-muted text-sm" style={{ padding: '10px 0' }}>Keine Regeln.</div>
+            <div className="text-muted text-sm" style={{ padding: '10px 0' }}>{tt('Keine Regeln.')}</div>
           ) : (
             <table className="dtable">
-              <thead><tr><th style={{ width: 30 }}>#</th><th>Name</th><th>Ziel</th><th>Aktion</th><th>Richtung</th><th>Von</th><th style={{ width: 56 }}>Aktiv</th><th style={{ width: 70 }}></th></tr></thead>
+              <thead><tr><th style={{ width: 30 }}>#</th><th>{tt('Name')}</th><th>{tt('Ziel')}</th><th>{tt('Aktion')}</th><th>{tt('Richtung')}</th><th>{tt('Von')}</th><th style={{ width: 56 }}>{tt('Aktiv')}</th><th style={{ width: 70 }}></th></tr></thead>
               <tbody>
                 {shownRules.map((r) => (
                   <tr key={r.num} style={editNum === r.num ? { background: 'var(--color-accent-subtle, rgba(99,102,241,.08))' } : undefined}>
@@ -290,8 +290,8 @@ function FirewallPanel() {
                     <td><div onClick={(e) => e.stopPropagation()}><Switch checked onChange={() => void disableRule(r)} /></div></td>
                     <td>
                       <div style={{ display: 'flex', gap: 4 }}>
-                        <button className="btn btn--ghost btn--icon btn--sm" title="Bearbeiten" onClick={() => startEdit(r)}><Pencil size={12} /></button>
-                        <button className="btn btn--danger btn--icon btn--sm" title="Löschen" onClick={() => del(r.num)}><Trash2 size={12} /></button>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Bearbeiten')} onClick={() => startEdit(r)}><Pencil size={12} /></button>
+                        <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} onClick={() => del(r.num)}><Trash2 size={12} /></button>
                       </div>
                     </td>
                   </tr>
@@ -316,7 +316,7 @@ function FirewallPanel() {
                       <td className="text-muted" style={{ fontSize: 12 }}>{DIR_LABEL[d.direction] ?? d.direction}</td>
                       <td className="dtable__mono text-muted">{/anywhere/i.test(d.from) || !d.from ? 'Anywhere' : d.from}</td>
                       <td style={{ width: 56 }}><div onClick={(e) => e.stopPropagation()}><Switch checked={false} onChange={() => void enableRule(d.id)} /></div></td>
-                      <td style={{ width: 40 }}><button className="btn btn--danger btn--icon btn--sm" title="Verwerfen" onClick={() => discardDisabled(d.id)}><Trash2 size={12} /></button></td>
+                      <td style={{ width: 40 }}><button className="btn btn--danger btn--icon btn--sm" title={tt('Verwerfen')} onClick={() => discardDisabled(d.id)}><Trash2 size={12} /></button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -396,9 +396,9 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
   };
 
   return (
-    <Modal open={open} title="Firewall-Regel aus Verbindung erstellen" onClose={onClose}
+    <Modal open={open} title={tt('Firewall-Regel aus Verbindung erstellen')} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className={`btn btn--${action === 'allow' ? 'primary' : 'danger'} btn--sm`} onClick={submit} disabled={busy}>
           {busy && <span className="spinner" style={{ width: 12, height: 12 }} />} Regel anlegen
         </button>
@@ -409,7 +409,7 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Aktion</label>
+          <label className="form-label">{tt('Aktion')}</label>
           <select className="input input--rect" value={action} onChange={(e) => setAction(e.target.value as 'allow' | 'deny' | 'reject')} style={{ cursor: 'pointer' }}>
             <option value="allow">Erlauben (allow)</option>
             <option value="deny">Blockieren (deny)</option>
@@ -417,7 +417,7 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
           </select>
         </div>
         <div className="form-group">
-          <label className="form-label">Richtung</label>
+          <label className="form-label">{tt('Richtung')}</label>
           <select className="input input--rect" value={direction} onChange={(e) => setDirection(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="in">Eingehend (in)</option>
             <option value="out">Ausgehend (out)</option>
@@ -427,15 +427,15 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
       </div>
       <div className="form-group">
         <label className="form-label">Von IP (Quelle)</label>
-        <input className="input input--rect" value={from} onChange={(e) => setFrom(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder="leer = alle Quellen" />
+        <input className="input input--rect" value={from} onChange={(e) => setFrom(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder={tt('leer = alle Quellen')} />
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Ziel-Port</label>
-          <input className="input input--rect" value={port} onChange={(e) => setPort(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder="z.B. 443" />
+          <label className="form-label">{tt('Ziel-Port')}</label>
+          <input className="input input--rect" value={port} onChange={(e) => setPort(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} placeholder={tt('z.B. 443')} />
         </div>
         <div className="form-group">
-          <label className="form-label">Protokoll</label>
+          <label className="form-label">{tt('Protokoll')}</label>
           <select className="input input--rect" value={proto} onChange={(e) => setProto(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="">tcp+udp</option>
             <option value="tcp">tcp</option>
@@ -445,7 +445,7 @@ function QuickRuleModal({ entry, open, onClose, onDone }: {
       </div>
       <div className="form-group">
         <label className="form-label">Name / Bezeichnung (optional)</label>
-        <input className="input input--rect" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="z.B. Heimnetz erlauben" />
+        <input className="input input--rect" value={comment} onChange={(e) => setComment(e.target.value)} placeholder={tt('z.B. Heimnetz erlauben')} />
       </div>
     </Modal>
   );
@@ -491,7 +491,7 @@ function ConnectionsPanel() {
   };
 
   const clearLog = async () => {
-    if (!confirm('Das gesamte Verbindungsprotokoll löschen?')) return;
+    if (!confirm(tt('Das gesamte Verbindungsprotokoll löschen?'))) return;
     try { await api.firewall.clearLog(); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
@@ -518,23 +518,23 @@ function ConnectionsPanel() {
 
   return (
     <Panel
-      title="Verbindungsversuche"
+      title={tt('Verbindungsversuche')}
       icon={<Activity size={15} />}
       subtitle={available ? `${total} im Protokoll · ${blocked} blockiert (geladen)` : 'nicht verfügbar'}
       storageKey="fw-connections"
       actions={
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
-          <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Protokollierung</span>
+          <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>{tt('Protokollierung')}</span>
           <Switch checked={logging} onChange={toggleLogging} />
           {logging && (
-            <select className="input input--rect" value={level} onChange={(e) => void changeLevel(e.target.value)} style={{ width: 188, cursor: 'pointer', fontSize: 12 }} title="Logging-Stufe – ab Mittel werden auch erlaubte Verbindungen protokolliert">
+            <select className="input input--rect" value={level} onChange={(e) => void changeLevel(e.target.value)} style={{ width: 188, cursor: 'pointer', fontSize: 12 }} title={tt('Logging-Stufe – ab Mittel werden auch erlaubte Verbindungen protokolliert')}>
               <option value="low">Stufe: Niedrig (nur blockiert)</option>
               <option value="medium">Stufe: Mittel (auch erlaubt)</option>
               <option value="high">Stufe: Hoch (alles)</option>
               <option value="full">Stufe: Voll (alles, ungedrosselt)</option>
             </select>
           )}
-          <button className="btn btn--ghost btn--icon btn--sm" title="Aktualisieren" onClick={() => void load()}>
+          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Aktualisieren')} onClick={() => void load()}>
             {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />}
           </button>
         </div>
@@ -554,20 +554,20 @@ function ConnectionsPanel() {
           )}
           {logging && level === 'low' && (
             <div style={{ background: 'rgba(59,130,246,.1)', border: '1px solid var(--color-accent)', borderRadius: 8, padding: '10px 14px', margin: '8px 0 12px', fontSize: 12.5, color: 'var(--color-accent)' }}>
-              ℹ Auf Stufe <b>Niedrig</b> protokolliert ufw nur <b>blockierte</b> Pakete – deshalb siehst du hier nur <b>BLOCK</b>.
-              Stelle die Stufe oben rechts auf <b>Mittel</b> (oder höher), damit auch <b>erlaubte</b> Verbindungen (ALLOW) erscheinen.
-              <span style={{ color: 'var(--color-muted)' }}> Hinweis: Höhere Stufen erzeugen deutlich mehr Logeinträge.</span>
+              ℹ Auf Stufe <b>{tt('Niedrig')}</b> protokolliert ufw nur <b>blockierte</b> {tt('Pakete – deshalb siehst du hier nur')} <b>BLOCK</b>.
+              Stelle die Stufe oben rechts auf <b>{tt('Mittel')}</b> (oder höher), damit auch <b>erlaubte</b> Verbindungen (ALLOW) erscheinen.
+              <span style={{ color: 'var(--color-muted)' }}> {tt('Hinweis: Höhere Stufen erzeugen deutlich mehr Logeinträge.')}</span>
             </div>
           )}
 
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', margin: '4px 0 10px' }}>
             <select className="input input--rect" value={actionFilter} onChange={(e) => setActionFilter(e.target.value as 'all')} style={{ width: 150, cursor: 'pointer' }}>
-              <option value="all">Alle Aktionen</option><option value="BLOCK">Nur blockiert</option><option value="ALLOW">Nur erlaubt</option>
+              <option value="all">{tt('Alle Aktionen')}</option><option value="BLOCK">{tt('Nur blockiert')}</option><option value="ALLOW">{tt('Nur erlaubt')}</option>
             </select>
             <select className="input input--rect" value={dirFilter} onChange={(e) => setDirFilter(e.target.value as 'all')} style={{ width: 140, cursor: 'pointer' }}>
-              <option value="all">Beide Richtungen</option><option value="IN">Eingehend</option><option value="OUT">Ausgehend</option>
+              <option value="all">{tt('Beide Richtungen')}</option><option value="IN">{tt('Eingehend')}</option><option value="OUT">{tt('Ausgehend')}</option>
             </select>
-            <input className="input input--rect" placeholder="Filter: IP, Port, Protokoll…" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200, fontFamily: 'var(--font-mono)' }} />
+            <input className="input input--rect" placeholder={tt('Filter: IP, Port, Protokoll…')} value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200, fontFamily: 'var(--font-mono)' }} />
             <span style={{ fontSize: 11.5, color: 'var(--color-faint)', marginLeft: 'auto' }}>{filtered.length} angezeigt{selRows.length ? ` · ${selRows.length} ausgewählt` : ''}</span>
           </div>
 
@@ -592,8 +592,8 @@ function ConnectionsPanel() {
             <div className="table-scroll">
               <table className="dtable">
                 <thead><tr>
-                  <th style={{ width: 30 }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title="Alle (angezeigten) auswählen" /></th>
-                  <th>Zeit</th><th>Aktion</th><th>Richtung</th><th>Quell-IP</th><th>Ziel-Port</th><th>Dienst</th><th>Protokoll</th><th>Schnittstelle</th><th style={{ width: 44 }}></th>
+                  <th style={{ width: 30 }}><input type="checkbox" checked={allSelected} onChange={toggleAll} title={tt('Alle (angezeigten) auswählen')} /></th>
+                  <th>{tt('Zeit')}</th><th>{tt('Aktion')}</th><th>{tt('Richtung')}</th><th>{tt('Quell-IP')}</th><th>{tt('Ziel-Port')}</th><th>{tt('Dienst')}</th><th>{tt('Protokoll')}</th><th>{tt('Schnittstelle')}</th><th style={{ width: 44 }}></th>
                 </tr></thead>
                 <tbody>
                   {filtered.map((e, i) => {
@@ -615,7 +615,7 @@ function ConnectionsPanel() {
                         <td>
                           <button
                             className="btn btn--ghost btn--icon btn--sm"
-                            title="Firewall-Regel aus dieser Verbindung erstellen"
+                            title={tt('Firewall-Regel aus dieser Verbindung erstellen')}
                             onClick={() => setQuickRule(e)}
                           >
                             <ShieldPlus size={12} />
@@ -655,18 +655,18 @@ function CreateVmNetModal({ open, onClose, onDone }: { open: boolean; onClose: (
   };
 
   return (
-    <Modal open={open} title="Neues VM-Netzwerk" onClose={onClose}
+    <Modal open={open} title={tt('Neues VM-Netzwerk')} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Erstellen
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
       <div className="form-row">
-        <div className="form-group"><label className="form-label">Name</label>
-          <input className="input input--rect" placeholder="vm-dmz" value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="form-group"><label className="form-label">Modus</label>
+        <div className="form-group"><label className="form-label">{tt('Name')}</label>
+          <input className="input input--rect" placeholder={tt('vm-dmz')} value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-group"><label className="form-label">{tt('Modus')}</label>
           <select className="input input--rect" value={mode} onChange={(e) => setMode(e.target.value)} style={{ cursor: 'pointer' }}>
             <option value="nat">NAT (Internet über Host)</option>
             <option value="isolated">Isoliert (kein Außenzugriff)</option>
@@ -674,15 +674,15 @@ function CreateVmNetModal({ open, onClose, onDone }: { open: boolean; onClose: (
           </select></div>
       </div>
       {mode !== 'bridge' ? (
-        <div className="form-group"><label className="form-label">Subnetz</label>
+        <div className="form-group"><label className="form-label">{tt('Subnetz')}</label>
           <input className="input input--rect" placeholder="192.168.123.0" value={subnet} onChange={(e) => setSubnet(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
           <div className="form-hint">DHCP wird automatisch eingerichtet (.2–.254).</div></div>
       ) : (
         <div className="form-row">
-          <div className="form-group"><label className="form-label">Host-Bridge</label>
-            <input className="input input--rect" placeholder="br0" value={bridge} onChange={(e) => setBridge(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
+          <div className="form-group"><label className="form-label">{tt('Host-Bridge')}</label>
+            <input className="input input--rect" placeholder={tt('br0')} value={bridge} onChange={(e) => setBridge(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} /></div>
           <div className="form-group"><label className="form-label">VLAN-ID (optional)</label>
-            <input className="input input--rect" placeholder="z.B. 100" value={vlan} onChange={(e) => setVlan(e.target.value)} /></div>
+            <input className="input input--rect" placeholder={tt('z.B. 100')} value={vlan} onChange={(e) => setVlan(e.target.value)} /></div>
         </div>
       )}
     </Modal>
@@ -711,15 +711,15 @@ function AttachVmModal({ net, open, onClose, onDone }: { net: VmNetwork | null; 
   return (
     <Modal open={open} title={`VM anhängen → ${net?.name ?? ''}`} onClose={onClose}
       footer={<>
-        <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
         <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Anhängen
         </button>
       </>}>
       {error && <div className="login-error">{error}</div>}
-      <div className="form-group"><label className="form-label">Virtuelle Maschine</label>
+      <div className="form-group"><label className="form-label">{tt('Virtuelle Maschine')}</label>
         <select className="input input--rect" value={vm} onChange={(e) => setVm(e.target.value)} style={{ cursor: 'pointer' }}>
-          {vms.length === 0 && <option value="">Keine VMs</option>}
+          {vms.length === 0 && <option value="">{tt('Keine VMs')}</option>}
           {vms.map((v) => <option key={v.id} value={v.name}>{v.name}</option>)}
         </select>
         <div className="form-hint">Hängt eine virtio-Netzwerkkarte an (config + live).</div></div>
@@ -761,14 +761,14 @@ function VmNetworksView() {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-        <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> VM-Netzwerk</button>
+        <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> {tt('VM-Netzwerk')}</button>
       </div>
       {networks.length === 0 ? (
-        <div className="empty-state"><div className="empty-state__desc">Keine VM-Netzwerke. Erstelle eins mit dem Button oben.</div></div>
+        <div className="empty-state"><div className="empty-state__desc">{tt('Keine VM-Netzwerke. Erstelle eins mit dem Button oben.')}</div></div>
       ) : (
-        <Panel title="libvirt-Netzwerke" icon={<Network size={15} />} subtitle={`${networks.length}`} storageKey="vmnets">
+        <Panel title={tt('libvirt-Netzwerke')} icon={<Network size={15} />} subtitle={`${networks.length}`} storageKey="vmnets">
           <table className="dtable" style={{ marginTop: 6 }}>
-            <thead><tr><th>Name</th><th>Modus</th><th>Bridge</th><th>Status</th><th>Autostart</th><th style={{ width: 150 }}></th></tr></thead>
+            <thead><tr><th>{tt('Name')}</th><th>{tt('Modus')}</th><th>{tt('Bridge')}</th><th>{tt('Status')}</th><th>{tt('Autostart')}</th><th style={{ width: 150 }}></th></tr></thead>
             <tbody>
               {networks.map((n) => (
                 <tr key={n.name}>
@@ -779,12 +779,12 @@ function VmNetworksView() {
                   <td>{n.autostart ? <Star size={13} fill="var(--color-warning)" color="var(--color-warning)" /> : '—'}</td>
                   <td>
                     <div className="dtable__actions">
-                      <button className="btn btn--ghost btn--icon btn--sm" title="VM anhängen" onClick={() => setAttachNet(n)}><Link size={12} /></button>
+                      <button className="btn btn--ghost btn--icon btn--sm" title={tt('VM anhängen')} onClick={() => setAttachNet(n)}><Link size={12} /></button>
                       {n.active
-                        ? <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.stop(n.name))}><Square size={12} /></button>
-                        : <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.start(n.name))}><Play size={12} /></button>}
-                      <button className="btn btn--ghost btn--icon btn--sm" title="Autostart umschalten" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.autostart(n.name))} style={n.autostart ? { color: 'var(--color-warning)' } : undefined}><Star size={12} /></button>
-                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.remove(n.name), `VM-Netzwerk "${n.name}" löschen?`)}><Trash2 size={12} /></button>
+                        ? <button className="btn btn--ghost btn--icon btn--sm" title={tt('Stoppen')} disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.stop(n.name))}><Square size={12} /></button>
+                        : <button className="btn btn--ghost btn--icon btn--sm" title={tt('Starten')} disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.start(n.name))}><Play size={12} /></button>}
+                      <button className="btn btn--ghost btn--icon btn--sm" title={tt('Autostart umschalten')} disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.autostart(n.name))} style={n.autostart ? { color: 'var(--color-warning)' } : undefined}><Star size={12} /></button>
+                      <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} disabled={busy[n.name]} onClick={() => act(n.name, () => api.vmNetworks.remove(n.name), `VM-Netzwerk "${n.name}" löschen?`)}><Trash2 size={12} /></button>
                     </div>
                   </td>
                 </tr>
@@ -823,10 +823,10 @@ function VirtualIpsPanel() {
   const drivers = [...new Set(entries.map((e) => e.driver))].filter((d) => ['macvlan', 'ipvlan', 'bridge'].includes(d));
 
   return (
-    <Panel title="Virtuelle IPs — Übersicht" icon={<Network size={15} />} storageKey="vips-panel">
+    <Panel title={tt('Virtuelle IPs — Übersicht')} icon={<Network size={15} />} storageKey="vips-panel">
       <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         <div className="filter-tabs" style={{ margin: 0 }}>
-          <button className={`filter-tab${filter === 'all' ? ' filter-tab--active' : ''}`} onClick={() => setFilter('all')}>Alle</button>
+          <button className={`filter-tab${filter === 'all' ? ' filter-tab--active' : ''}`} onClick={() => setFilter('all')}>{tt('Alle')}</button>
           {drivers.map((d) => (
             <button key={d} className={`filter-tab${filter === d ? ' filter-tab--active' : ''}`} onClick={() => setFilter(d as typeof filter)}>{d}</button>
           ))}
@@ -841,7 +841,7 @@ function VirtualIpsPanel() {
       ) : filtered.length === 0 && vmEntries.length === 0 ? (
         <div className="empty-state" style={{ padding: '32px 20px' }}>
           <div className="empty-state__icon"><Network size={36} strokeWidth={1.2} /></div>
-          <div className="empty-state__title">Keine Einträge</div>
+          <div className="empty-state__title">{tt('Keine Einträge')}</div>
           <div className="empty-state__desc">
             Noch kein Container mit einem benutzerdefinierten Netzwerk verbunden.<br />
             Für eine echte LAN-IP: erst ein <b>macvlan</b>- oder <b>ipvlan</b>-Netzwerk anlegen (Docker-Tab), dann im Container-Bearbeiten-Dialog das Netzwerk hinzufügen.
@@ -853,10 +853,10 @@ function VirtualIpsPanel() {
             <table className="dtable">
               <thead>
                 <tr>
-                  <th>Container</th>
-                  <th>Netzwerk</th>
-                  <th>Treiber</th>
-                  <th>IP-Adresse</th>
+                  <th>{tt('Container')}</th>
+                  <th>{tt('Netzwerk')}</th>
+                  <th>{tt('Treiber')}</th>
+                  <th>{tt('IP-Adresse')}</th>
                   <th>MAC</th>
                 </tr>
               </thead>
@@ -879,7 +879,7 @@ function VirtualIpsPanel() {
               <div style={{ margin: '16px 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Virtuelle Maschinen (DHCP-Leases)</div>
               <div className="table-scroll">
                 <table className="dtable">
-                  <thead><tr><th>VM / Hostname</th><th>IP-Adresse</th><th>MAC</th><th>Netzwerk</th></tr></thead>
+                  <thead><tr><th>{tt('VM / Hostname')}</th><th>{tt('IP-Adresse')}</th><th>MAC</th><th>{tt('Netzwerk')}</th></tr></thead>
                   <tbody>
                     {vmEntries.map((v, i) => (
                       <tr key={i}>
@@ -941,15 +941,15 @@ export function Networks() {
         subtitle={t('page.networks.subtitle', { n: networks.length })}
         onRefresh={load}
         refreshing={refreshing}
-        actions={view === 'docker' && <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> Netzwerk</button>}
+        actions={view === 'docker' && <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> {tt('Netzwerk')}</button>}
       />
       <main className="page">
         <div className="filter-tabs">
-          <button className={`filter-tab${view === 'docker' ? ' filter-tab--active' : ''}`} onClick={() => setView('docker')}>Docker</button>
+          <button className={`filter-tab${view === 'docker' ? ' filter-tab--active' : ''}`} onClick={() => setView('docker')}>{tt('Docker')}</button>
           <button className={`filter-tab${view === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setView('vm')}>VMs</button>
-          <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>Firewall</button>
-          <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>Verbindungen</button>
-          <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>Virtuelle IPs</button>
+          <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>{tt('Firewall')}</button>
+          <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>{tt('Verbindungen')}</button>
+          <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>{tt('Virtuelle IPs')}</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
@@ -974,7 +974,7 @@ export function Networks() {
             actions={
               !n.builtin && (
                 <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                  <button className="btn btn--ghost btn--sm" onClick={() => setConnectNet(n)}><Link2 size={12} /> Verbinden</button>
+                  <button className="btn btn--ghost btn--sm" onClick={() => setConnectNet(n)}><Link2 size={12} /> {tt('Verbinden')}</button>
                   <button className="btn btn--danger btn--icon btn--sm" onClick={() => removeNet(n)}><Trash2 size={12} /></button>
                 </div>
               )
@@ -984,14 +984,14 @@ export function Networks() {
               <div className="text-muted text-sm" style={{ padding: '8px 0' }}>Keine Container verbunden.{n.gateway && ` Gateway: ${n.gateway}`}</div>
             ) : (
               <table className="dtable" style={{ marginTop: 6 }}>
-                <thead><tr><th>Container</th><th>IP-Adresse</th><th>MAC</th><th style={{ width: 44 }}></th></tr></thead>
+                <thead><tr><th>{tt('Container')}</th><th>{tt('IP-Adresse')}</th><th>MAC</th><th style={{ width: 44 }}></th></tr></thead>
                 <tbody>
                   {n.containers.map((c) => (
                     <tr key={c.container}>
                       <td style={{ fontWeight: 600 }}>{c.name}</td>
                       <td className="dtable__mono" style={{ color: 'var(--color-accent)' }}>{c.ipv4 || '—'}</td>
                       <td className="dtable__mono text-muted">{c.mac || '—'}</td>
-                      <td>{!n.builtin && <button className="btn btn--ghost btn--icon btn--sm" title="Trennen" onClick={() => disconnect(n, c.container)}><Unlink size={12} /></button>}</td>
+                      <td>{!n.builtin && <button className="btn btn--ghost btn--icon btn--sm" title={tt('Trennen')} onClick={() => disconnect(n, c.container)}><Unlink size={12} /></button>}</td>
                     </tr>
                   ))}
                 </tbody>

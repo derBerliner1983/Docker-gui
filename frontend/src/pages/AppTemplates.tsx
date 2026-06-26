@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Search, Download, CheckCircle2, Star, ChevronLeft, ChevronRight, Plus, Trash2, Eye, EyeOff, RefreshCw, Loader, Network, ChevronDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import type { StoreItem, StoreSearchResult, DockerNetwork, HostInterface } from '../lib/types';
@@ -46,17 +46,17 @@ function PortsEditor({ rows, onChange }: { rows: PortRow[]; onChange: (r: PortRo
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6, gap: 8 }}>
-        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>Ports</label>
-        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> Port</button>
+        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>{tt('Ports')}</label>
+        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> {tt('Port')}</button>
       </div>
-      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>Keine Ports konfiguriert.</div>}
+      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>{tt('Keine Ports konfiguriert.')}</div>}
       {rows.map((r) => (
         <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
           <input className="input input--rect" type="number" value={r.host} min={1} max={65535} style={{ width: 80 }}
-            onChange={(e) => upd(r.id, { host: parseInt(e.target.value) || r.host })} title="Host-Port" />
+            onChange={(e) => upd(r.id, { host: parseInt(e.target.value) || r.host })} title={tt('Host-Port')} />
           <span className="text-muted" style={{ fontSize: 12, flexShrink: 0 }}>→</span>
           <input className="input input--rect" type="number" value={r.container} min={1} max={65535} style={{ width: 80 }}
-            onChange={(e) => upd(r.id, { container: parseInt(e.target.value) || r.container })} title="Container-Port" />
+            onChange={(e) => upd(r.id, { container: parseInt(e.target.value) || r.container })} title={tt('Container-Port')} />
           <select className="input input--rect" value={r.proto} style={{ width: 70 }}
             onChange={(e) => upd(r.id, { proto: e.target.value as 'tcp' | 'udp' })}>
             <option value="tcp">TCP</option>
@@ -76,17 +76,17 @@ function VolsEditor({ rows, onChange }: { rows: VolRow[]; onChange: (r: VolRow[]
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6, gap: 8 }}>
-        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>Volumes</label>
-        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> Volume</button>
+        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>{tt('Volumes')}</label>
+        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> {tt('Volume')}</button>
       </div>
-      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>Keine Volumes konfiguriert.</div>}
+      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>{tt('Keine Volumes konfiguriert.')}</div>}
       {rows.map((r) => (
         <div key={r.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 5 }}>
-          <input className="input input--rect" value={r.name} placeholder="vol-name" style={{ flex: 1 }}
-            onChange={(e) => upd(r.id, { name: e.target.value })} title="Volume-Name (wird als Container-Name_vol-name angelegt)" />
+          <input className="input input--rect" value={r.name} placeholder={tt('vol-name')} style={{ flex: 1 }}
+            onChange={(e) => upd(r.id, { name: e.target.value })} title={tt('Volume-Name (wird als Container-Name_vol-name angelegt)')} />
           <span className="text-muted" style={{ fontSize: 12, flexShrink: 0 }}>:</span>
-          <input className="input input--rect" value={r.path} placeholder="/data" style={{ flex: 2, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            onChange={(e) => upd(r.id, { path: e.target.value })} title="Pfad im Container" />
+          <input className="input input--rect" value={r.path} placeholder={tt('/data')} style={{ flex: 2, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            onChange={(e) => upd(r.id, { path: e.target.value })} title={tt('Pfad im Container')} />
           <button type="button" className="btn btn--ghost btn--sm btn--icon" onClick={() => del(r.id)}><Trash2 size={11} /></button>
         </div>
       ))}
@@ -102,19 +102,19 @@ function EnvEditor({ rows, onChange }: { rows: EnvRow[]; onChange: (r: EnvRow[])
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6, gap: 8 }}>
-        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>Umgebungsvariablen</label>
+        <label className="form-label" style={{ marginBottom: 0, flex: 1 }}>{tt('Umgebungsvariablen')}</label>
         {rows.some((r) => r.secret) && (
           <button type="button" className="btn btn--ghost btn--sm btn--icon" onClick={() => setShowSecrets(!showSecrets)} title={showSecrets ? 'Werte verbergen' : 'Werte anzeigen'}>
             {showSecrets ? <EyeOff size={11} /> : <Eye size={11} />}
           </button>
         )}
-        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> Variable</button>
+        <button type="button" className="btn btn--outline btn--sm" onClick={add} style={{ padding: '2px 8px' }}><Plus size={11} /> {tt('Variable')}</button>
       </div>
-      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>Keine Variablen konfiguriert.</div>}
+      {rows.length === 0 && <div style={{ fontSize: 12, color: 'var(--color-faint)' }}>{tt('Keine Variablen konfiguriert.')}</div>}
       {rows.map((r) => (
         <div key={r.id} style={{ marginBottom: 6 }}>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input className="input input--rect" value={r.key} placeholder="VARIABLE_NAME"
+            <input className="input input--rect" value={r.key} placeholder={tt('VARIABLE_NAME')}
               style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
               onChange={(e) => upd(r.id, { key: e.target.value.replace(/[^A-Z0-9_]/gi, '_').toUpperCase() })} />
             <input className="input input--rect" value={r.value} placeholder={r.label || 'Wert…'}
@@ -188,11 +188,11 @@ function NetworkSection({
         <div style={{ padding: '4px 12px 12px', borderTop: '1px solid var(--color-border)' }}>
           <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 10, lineHeight: 1.6 }}>
             Standard: Container nutzt das Docker-Bridge-Netzwerk und deine Port-Zuordnungen.
-            Mit einem eigenen Macvlan-Netzwerk bekommt der Container eine <strong>eigene IP im Heimnetz</strong> —
+            Mit einem eigenen Macvlan-Netzwerk bekommt der Container eine <strong>{tt('eigene IP im Heimnetz')}</strong> —
             sinnvoll z. B. für AdGuard/Pi-hole (DNS Port 53 kein Konflikt), Home Assistant u. a.
           </div>
 
-          <label className="form-label">Netzwerkmodus</label>
+          <label className="form-label">{tt('Netzwerkmodus')}</label>
           <select
             className="input input--rect"
             style={{ width: '100%', marginBottom: 10 }}
@@ -221,7 +221,7 @@ function NetworkSection({
                 value={newNet.parent}
                 onChange={(e) => onNewNetChange({ ...newNet, parent: e.target.value })}
               >
-                <option value="">— Interface wählen —</option>
+                <option value="">{tt('— Interface wählen —')}</option>
                 {interfaces.map((i) => (
                   <option key={i.iface} value={i.iface}>{i.iface}{i.ip4 ? ` (${i.ip4})` : ''}</option>
                 ))}
@@ -230,19 +230,19 @@ function NetworkSection({
                 <div style={{ flex: 2 }}>
                   <label className="form-label">Subnetz (CIDR)</label>
                   <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                    placeholder="z.B. 192.168.1.0/24" value={newNet.subnet}
+                    placeholder={tt('z.B. 192.168.1.0/24')} value={newNet.subnet}
                     onChange={(e) => onNewNetChange({ ...newNet, subnet: e.target.value.trim() })} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label className="form-label">VLAN (optional)</label>
                   <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                    placeholder="z.B. 20" value={newNet.vlan}
+                    placeholder={tt('z.B. 20')} value={newNet.vlan}
                     onChange={(e) => onNewNetChange({ ...newNet, vlan: e.target.value.replace(/[^0-9]/g, '') })} />
                 </div>
               </div>
-              <label className="form-label">Gateway</label>
+              <label className="form-label">{tt('Gateway')}</label>
               <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                placeholder="z.B. 192.168.1.1" value={newNet.gateway}
+                placeholder={tt('z.B. 192.168.1.1')} value={newNet.gateway}
                 onChange={(e) => onNewNetChange({ ...newNet, gateway: e.target.value.trim() })} />
             </div>
           )}
@@ -265,7 +265,7 @@ function NetworkSection({
                   onChange={(e) => onIpChange(e.target.value.trim())}
                 />
                 {!ipValid && (
-                  <span style={{ fontSize: 11, color: 'var(--color-error)', flexShrink: 0 }}>Ungültige IP</span>
+                  <span style={{ fontSize: 11, color: 'var(--color-error)', flexShrink: 0 }}>{tt('Ungültige IP')}</span>
                 )}
               </div>
               <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 5 }}>
@@ -385,10 +385,10 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
       onClose={onClose}
       width={680}
       footer={done ? (
-        <button className="btn btn--primary btn--sm" onClick={onClose}>Schließen</button>
+        <button className="btn btn--primary btn--sm" onClick={onClose}>{tt('Schließen')}</button>
       ) : (
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={install} disabled={busy}>
             {busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={13} />} Installieren
           </button>
@@ -399,7 +399,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '20px 0' }}>
           <CheckCircle2 size={40} style={{ color: 'var(--color-success)' }} />
           <div style={{ fontWeight: 600 }}>{done}</div>
-          <div style={{ fontSize: 12.5, color: 'var(--color-muted)', textAlign: 'center' }}>Du findest den Container unter „Container".</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-muted)', textAlign: 'center' }}>{tt('Du findest den Container unter „Container".')}</div>
         </div>
       ) : (
         <div style={{ maxHeight: '70vh', overflow: 'auto', paddingRight: 4 }}>
@@ -430,12 +430,12 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
 
           <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
             <div style={{ flex: 2 }}>
-              <label className="form-label">Container-Name</label>
+              <label className="form-label">{tt('Container-Name')}</label>
               <input className="input input--rect" value={cname} onChange={(e) => setCname(e.target.value.replace(/[^a-zA-Z0-9._-]/g, '_'))}
                 style={{ fontFamily: 'var(--font-mono)', width: '100%' }} />
             </div>
             <div style={{ flex: 1 }}>
-              <label className="form-label">Restart-Policy</label>
+              <label className="form-label">{tt('Restart-Policy')}</label>
               <select className="input input--rect" value={restart} onChange={(e) => setRestart(e.target.value)} style={{ width: '100%' }}>
                 <option value="unless-stopped">unless-stopped</option>
                 <option value="always">always</option>
@@ -490,7 +490,7 @@ function AppCard({ item, onInstall }: { item: StoreItem; onInstall: (item: Store
           </div>
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-muted)', minHeight: 32, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-          {item.description || <span className="text-faint">Keine Beschreibung</span>}
+          {item.description || <span className="text-faint">{tt('Keine Beschreibung')}</span>}
         </div>
         <div className="dtable__mono text-faint" style={{ fontSize: 10.5, marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.image}</div>
       </div>
@@ -574,7 +574,7 @@ export function AppTemplates() {
         refreshing={loading}
         actions={
           source === 'unraid' && (
-            <button className="btn btn--outline btn--sm" onClick={async () => { await api.store.warm(); setTimeout(() => void search(debouncedQuery, 'unraid', page, category), 500); }} title="Feed neu laden">
+            <button className="btn btn--outline btn--sm" onClick={async () => { await api.store.warm(); setTimeout(() => void search(debouncedQuery, 'unraid', page, category), 500); }} title={tt('Feed neu laden')}>
               <RefreshCw size={13} /> Feed aktualisieren
             </button>
           )
@@ -607,7 +607,7 @@ export function AppTemplates() {
         {/* Category filter chips (Unraid only) */}
         {source === 'unraid' && categories.length > 0 && (
           <div className="filter-tabs" style={{ flexWrap: 'wrap', marginBottom: 14, gap: 4 }}>
-            <button className={`filter-tab${!category ? ' filter-tab--active' : ''}`} onClick={() => switchCategory('')}>Alle</button>
+            <button className={`filter-tab${!category ? ' filter-tab--active' : ''}`} onClick={() => switchCategory('')}>{tt('Alle')}</button>
             {categories.map((c) => (
               <button key={c} className={`filter-tab${category === c ? ' filter-tab--active' : ''}`} onClick={() => switchCategory(c)}>{c}</button>
             ))}
@@ -618,8 +618,8 @@ export function AppTemplates() {
         {warming && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '60px 20px', color: 'var(--color-muted)' }}>
             <Loader size={36} style={{ animation: 'spin 1.2s linear infinite', color: 'var(--color-accent)' }} />
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Unraid Community Store wird geladen…</div>
-            <div style={{ fontSize: 12.5 }}>Das dauert beim ersten Mal 10–30 Sekunden.</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>{tt('Unraid Community Store wird geladen…')}</div>
+            <div style={{ fontSize: 12.5 }}>{tt('Das dauert beim ersten Mal 10–30 Sekunden.')}</div>
           </div>
         )}
 
@@ -627,7 +627,7 @@ export function AppTemplates() {
         {!warming && source === 'dockerhub' && query.trim().length < 2 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '60px 20px', color: 'var(--color-muted)' }}>
             <Search size={40} strokeWidth={1} />
-            <div style={{ fontSize: 13 }}>Suchbegriff eingeben, um Docker Hub zu durchsuchen.</div>
+            <div style={{ fontSize: 13 }}>{tt('Suchbegriff eingeben, um Docker Hub zu durchsuchen.')}</div>
           </div>
         )}
 

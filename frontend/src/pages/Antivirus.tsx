@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Bug, Download, RefreshCw, Play, Search, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
@@ -46,7 +46,7 @@ export function Antivirus() {
   };
 
   const startScan = async () => {
-    if (!scanPath.startsWith('/')) { alert('Absoluter Pfad erforderlich'); return; }
+    if (!scanPath.startsWith('/')) { alert(tt('Absoluter Pfad erforderlich')); return; }
     await act('scan', () => api.antivirus.scan(scanPath, scanExclude.trim() || undefined));
   };
 
@@ -67,7 +67,7 @@ export function Antivirus() {
         ) : !av.installed ? (
           <div className="empty-state">
             <div className="empty-state__icon"><Bug size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Kein Virenschutz installiert</div>
+            <div className="empty-state__title">{tt('Kein Virenschutz installiert')}</div>
             <div className="empty-state__desc">
               ClamAV ist ein quelloffener Virenscanner für Linux. Mit einem Klick installieren:
             </div>
@@ -81,7 +81,7 @@ export function Antivirus() {
         ) : (
           <SortablePanels storageKey="antivirus" items={[
             { id: 'status', node: (
-            <Panel title="Status" icon={<ShieldCheck size={15} />} subtitle={av.version} storageKey="av-status"
+            <Panel title={tt('Status')} icon={<ShieldCheck size={15} />} subtitle={av.version} storageKey="av-status"
               actions={
                 <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
                   <button className="btn btn--outline btn--sm" disabled={busy === 'update'} onClick={() => act('update', api.antivirus.update)}>
@@ -93,13 +93,13 @@ export function Antivirus() {
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Switch checked={av.daemonActive} disabled={busy === 'daemon'} onChange={(v) => act('daemon', () => api.antivirus.daemon('daemon', v))} />
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>Scan-Daemon</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{tt('Scan-Daemon')}</span>
                   <span className={`badge badge--${av.daemonActive ? 'running' : 'stopped'}`}><span className="badge__dot" />{av.daemonActive ? 'aktiv' : 'inaktiv'}</span>
                   {busy === 'daemon' && <span className="spinner" style={{ width: 12, height: 12 }} />}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <Switch checked={av.freshclamActive} disabled={busy === 'freshclam'} onChange={(v) => act('freshclam', () => api.antivirus.daemon('freshclam', v))} />
-                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>Auto-Updates</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600 }}>{tt('Auto-Updates')}</span>
                   <span className={`badge badge--${av.freshclamActive ? 'running' : 'stopped'}`}><span className="badge__dot" />{av.freshclamActive ? 'aktiv' : 'inaktiv'}</span>
                   {busy === 'freshclam' && <span className="spinner" style={{ width: 12, height: 12 }} />}
                 </div>
@@ -115,9 +115,9 @@ export function Antivirus() {
             </Panel>
             ) },
             { id: 'scan', node: (
-            <Panel title="Scan" icon={<Search size={15} />} subtitle={s?.running ? 'läuft…' : undefined} storageKey="av-scan">
+            <Panel title={tt('Scan')} icon={<Search size={15} />} subtitle={s?.running ? 'läuft…' : undefined} storageKey="av-scan">
               <div style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-                <input className="input input--rect" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder="/home" style={{ flex: 1, minWidth: 220, fontFamily: 'var(--font-mono)' }} disabled={s?.running} />
+                <input className="input input--rect" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder={tt('/home')} style={{ flex: 1, minWidth: 220, fontFamily: 'var(--font-mono)' }} disabled={s?.running} />
                 <button className="btn btn--primary btn--sm" disabled={s?.running || busy === 'scan'} onClick={startScan}>
                   {s?.running || busy === 'scan' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Play size={13} />} Scan starten
                 </button>
@@ -133,7 +133,7 @@ export function Antivirus() {
                   className="input input--rect"
                   value={scanExclude}
                   onChange={(e) => setScanExclude(e.target.value)}
-                  placeholder="/home/dirk/Downloads, /var/lib/docker"
+                  placeholder={tt('/home/dirk/Downloads, /var/lib/docker')}
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
                   disabled={s?.running}
                 />
@@ -160,7 +160,7 @@ export function Antivirus() {
                       <AlertOctagon size={18} /> {s.infectedCount} Bedrohung(en) gefunden!
                     </div>
                     <table className="dtable">
-                      <thead><tr><th>Datei</th><th>Bedrohung</th></tr></thead>
+                      <thead><tr><th>{tt('Datei')}</th><th>{tt('Bedrohung')}</th></tr></thead>
                       <tbody>
                         {s.infected.map((i, idx) => (
                           <tr key={idx}>

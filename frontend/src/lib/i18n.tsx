@@ -33,6 +33,26 @@ function detectInitial(): LangCode {
   return (DICTS[nav as LangCode] ? nav : 'de') as LangCode;
 }
 
+// ── Modulweite Übersetzung (Deutsch = Schlüssel) ─────────────────────────────
+// Damit auch Unterkomponenten und Hilfsfunktionen ohne Hook übersetzen können.
+// Die aktuelle Sprache wird vom I18nProvider hier gespiegelt. Reaktivität ist
+// gewährleistet, weil die Seitenkomponenten via useT() am Context hängen und
+// beim Sprachwechsel ihren gesamten Teilbaum neu rendern.
+let currentLang: LangCode = (typeof navigator !== 'undefined') ? detectInitial() : 'de';
+
+/** Übersetzt einen Schlüssel ODER direkt einen deutschen Quelltext. */
+export function tt(key: string, vars?: Record<string, string | number>): string {
+  const dict = DICTS[currentLang] ?? de;
+  // 1) Semantischer Schlüssel (de.ts) → 2) Deutsch-als-Schlüssel im Ziel-Dict → 3) Quelltext selbst
+  let s = dict[key] ?? de[key] ?? key;
+  if (vars) {
+    for (const [k, v] of Object.entries(vars)) {
+      s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+    }
+  }
+  return s;
+}
+
 interface I18nContextValue {
   lang: LangCode;
   setLang: (l: LangCode) => void;
@@ -44,26 +64,20 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<LangCode>(detectInitial);
+  // Modulweite Sprache sofort spiegeln (vor dem ersten Render der Kinder)
+  currentLang = lang;
 
   useEffect(() => {
     document.documentElement.setAttribute('lang', lang);
   }, [lang]);
 
   const setLang = useCallback((l: LangCode) => {
+    currentLang = l;
     setLangState(l);
     try { localStorage.setItem(STORAGE_KEY, l); } catch { /* */ }
   }, []);
 
-  const t = useCallback((key: string, vars?: Record<string, string | number>) => {
-    const dict = DICTS[lang] ?? de;
-    let s = dict[key] ?? de[key] ?? key;
-    if (vars) {
-      for (const [k, v] of Object.entries(vars)) {
-        s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-      }
-    }
-    return s;
-  }, [lang]);
+  const t = useCallback((key: string, vars?: Record<string, string | number>) => tt(key, vars), [lang]);
 
   return <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>;
 }

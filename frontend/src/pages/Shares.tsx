@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { FolderOpen, Plus, Trash2, Play, Square, RotateCcw, UserPlus, ShieldOff, ShieldCheck, Info } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
@@ -36,11 +36,11 @@ function ShareModal({ open, onClose, onDone }: { open: boolean; onClose: () => v
   return (
     <Modal
       open={open}
-      title="Neue SMB-Freigabe"
+      title={tt('Neue SMB-Freigabe')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
             {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Freigabe erstellen
           </button>
@@ -49,13 +49,13 @@ function ShareModal({ open, onClose, onDone }: { open: boolean; onClose: () => v
     >
       {error && <div className="login-error">{error}</div>}
       <div className="form-group">
-        <label className="form-label">Freigabename</label>
-        <input className="input input--rect" placeholder="Medien" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <label className="form-label">{tt('Freigabename')}</label>
+        <input className="input input--rect" placeholder={tt('Medien')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       </div>
       <div className="form-group">
-        <label className="form-label">Pfad</label>
-        <input className="input input--rect" placeholder="/mnt/daten/medien" value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} style={{ fontFamily: 'var(--font-mono)' }} />
-        <div className="form-hint">Wird automatisch angelegt, falls nicht vorhanden.</div>
+        <label className="form-label">{tt('Pfad')}</label>
+        <input className="input input--rect" placeholder={tt('/mnt/daten/medien')} value={form.path} onChange={(e) => setForm({ ...form, path: e.target.value })} style={{ fontFamily: 'var(--font-mono)' }} />
+        <div className="form-hint">{tt('Wird automatisch angelegt, falls nicht vorhanden.')}</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
         {check('readOnly', 'Nur Lesen', 'Schreibzugriff verbieten')}
@@ -88,11 +88,11 @@ function SmbUserModal({ open, onClose }: { open: boolean; onClose: () => void })
   return (
     <Modal
       open={open}
-      title="SMB-Benutzer hinzufügen"
+      title={tt('SMB-Benutzer hinzufügen')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
             {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Hinzufügen
           </button>
@@ -100,13 +100,13 @@ function SmbUserModal({ open, onClose }: { open: boolean; onClose: () => void })
       }
     >
       {error && <div className="login-error">{error}</div>}
-      <div className="form-hint" style={{ marginBottom: 4 }}>Der Benutzer muss bereits als Linux-Benutzer existieren.</div>
+      <div className="form-hint" style={{ marginBottom: 4 }}>{tt('Der Benutzer muss bereits als Linux-Benutzer existieren.')}</div>
       <div className="form-group">
-        <label className="form-label">Benutzername</label>
+        <label className="form-label">{tt('Benutzername')}</label>
         <input className="input input--rect" value={username} onChange={(e) => setUsername(e.target.value)} />
       </div>
       <div className="form-group">
-        <label className="form-label">SMB-Passwort</label>
+        <label className="form-label">{tt('SMB-Passwort')}</label>
         <input className="input input--rect" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
     </Modal>
@@ -172,8 +172,8 @@ export function Shares() {
         refreshing={refreshing}
         actions={available && (
           <>
-            <button className="btn btn--ghost btn--sm" onClick={() => setUserModalOpen(true)}><UserPlus size={13} /> SMB-Benutzer</button>
-            <button className="btn btn--primary btn--sm" onClick={() => setModalOpen(true)}><Plus size={13} /> Freigabe</button>
+            <button className="btn btn--ghost btn--sm" onClick={() => setUserModalOpen(true)}><UserPlus size={13} /> {tt('SMB-Benutzer')}</button>
+            <button className="btn btn--primary btn--sm" onClick={() => setModalOpen(true)}><Plus size={13} /> {tt('Freigabe')}</button>
           </>
         )}
       />
@@ -181,7 +181,7 @@ export function Shares() {
         {!available ? (
           <div className="empty-state">
             <div className="empty-state__icon"><FolderOpen size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Samba nicht installiert</div>
+            <div className="empty-state__title">{tt('Samba nicht installiert')}</div>
             <div className="empty-state__desc">
               {message}<br /><br />
               <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12, background: 'var(--color-surface-sunken)', padding: '4px 8px', borderRadius: 6 }}>sudo apt install samba</code>
@@ -200,51 +200,51 @@ export function Shares() {
               <div style={{ flex: 1 }}>
                 {shares.length === 0 ? (
                   <span>
-                    <strong>Samba automatisch deaktiviert</strong> – Firewall blockiert Ports 137–139, 445.
+                    <strong>{tt('Samba automatisch deaktiviert')}</strong> – Firewall blockiert Ports 137–139, 445.
                     {' '}Samba startet automatisch, wenn du eine Freigabe hinzufügst.
                   </span>
                 ) : firewallOpen ? (
                   <span>
-                    <strong>Samba aktiv – nur LAN</strong> – Ports 137–139, 445 sind nur aus dem lokalen Netzwerk erreichbar.
-                    {' '}Internet-Zugang kann unter <em>Sicherheit</em> separat freigegeben werden.
+                    <strong>{tt('Samba aktiv – nur LAN')}</strong> – Ports 137–139, 445 sind nur aus dem lokalen Netzwerk erreichbar.
+                    {' '}Internet-Zugang kann unter <em>{tt('Sicherheit')}</em> separat freigegeben werden.
                   </span>
                 ) : (
                   <span>
-                    <strong>Samba läuft, aber Firewall blockiert</strong> – Ports sind noch nicht freigegeben.
+                    <strong>{tt('Samba läuft, aber Firewall blockiert')}</strong> – Ports sind noch nicht freigegeben.
                     {' '}Füge eine Freigabe hinzu oder starte Samba manuell, damit die Firewall geöffnet wird.
                   </span>
                 )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                 <Info size={11} color="var(--color-faint)" />
-                <span style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>Auto-verwaltet</span>
+                <span style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Auto-verwaltet')}</span>
               </div>
             </div>
 
             <Panel
-              title="Freigaben"
+              title={tt('Freigaben')}
               icon={<FolderOpen size={15} />}
               subtitle={`${shares.length} aktiv`}
               storageKey="shares"
               actions={
                 <div style={{ display: 'flex', gap: 4 }}>
                   {running ? (
-                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('stop')}><Square size={12} /> Stop</button>
+                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('stop')}><Square size={12} /> {tt('Stop')}</button>
                   ) : (
-                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('start')}><Play size={12} /> Start</button>
+                    <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('start')}><Play size={12} /> {tt('Start')}</button>
                   )}
-                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('restart')}><RotateCcw size={12} /> Neustart</button>
+                  <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => svc('restart')}><RotateCcw size={12} /> {tt('Neustart')}</button>
                 </div>
               }
             >
               {shares.length === 0 ? (
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
-                  <div className="empty-state__desc">Noch keine Freigaben. Erstelle eine mit „Freigabe".</div>
+                  <div className="empty-state__desc">{tt('Noch keine Freigaben. Erstelle eine mit „Freigabe".')}</div>
                 </div>
               ) : (
                 <table className="dtable" style={{ marginTop: 6 }}>
                   <thead>
-                    <tr><th>Name</th><th>Pfad</th><th>Zugriff</th><th>Optionen</th><th style={{ width: 44 }}></th></tr>
+                    <tr><th>{tt('Name')}</th><th>{tt('Pfad')}</th><th>{tt('Zugriff')}</th><th>{tt('Optionen')}</th><th style={{ width: 44 }}></th></tr>
                   </thead>
                   <tbody>
                     {shares.map((s) => (
@@ -260,7 +260,7 @@ export function Shares() {
                           {s.guestOk ? 'Gast · ' : ''}{s.browseable ? 'sichtbar' : 'versteckt'}
                         </td>
                         <td>
-                          <button className="btn btn--danger btn--icon btn--sm" title="Entfernen" onClick={() => remove(s.name)}><Trash2 size={12} /></button>
+                          <button className="btn btn--danger btn--icon btn--sm" title={tt('Entfernen')} onClick={() => remove(s.name)}><Trash2 size={12} /></button>
                         </td>
                       </tr>
                     ))}

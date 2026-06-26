@@ -1,6 +1,6 @@
 # Core-Hub – Konzept & Roadmap
 
-> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.5`
+> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.6`
 
 ## Vision
 
@@ -263,11 +263,21 @@ Font: Inter.
 | Proxy-Eintrag erscheint nur in der Sidebar, wenn aktiviert (`app_settings`) | ✅ |
 | Backend-Auswahl vorbereitet: Caddy aktiv, nginx/Traefik als „geplant" | ✅ |
 
+### ✅ Phase 17 – Tiefe i18n-Abdeckung (`v0.7.6`)
+
+| Feature | Status |
+|---|---|
+| Prinzip **„Deutsch = Schlüssel"**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel | ✅ |
+| Modulweite `tt()`-Funktion – Übersetzung auch in Unterkomponenten/Helfern ohne Hook | ✅ |
+| Panels, Dialoge, Buttons, Tooltips, `confirm()`/`alert()` auf `tt()` umgestellt | ✅ |
+| ~470 Texte in EN/FR/ES/IT übersetzt (`frontend/src/lib/locales/*.ts`) | ✅ |
+| Neue Sprache/Anpassung = nur Locale-Datei mit `deutsch → übersetzt` editieren | ✅ |
+
 ### ⏳ Geplant / Ideen
 
 | Feature | Status |
 |---|---|
-| Tiefere i18n-Abdeckung (Panel-Inhalte, Dialoge, Tooltips) | ⏳ |
+| Restliche Detailtexte & Backend-Meldungen übersetzen | ⏳ |
 | Reverse-Proxy: nginx/Traefik tatsächlich anbinden | ⏳ |
 
 ---

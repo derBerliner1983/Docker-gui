@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { tt } from '../lib/i18n';
 import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../lib/auth';
 
@@ -48,26 +49,26 @@ export function Login() {
         className="icon-btn"
         onClick={toggleTheme}
         style={{ position: 'fixed', top: 16, right: 16 }}
-        title="Theme wechseln"
+        title={tt('Theme wechseln')}
       >
         {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
       </button>
 
       <div className="login-card">
         <div className="login-logo">⬡</div>
-        <h1 className="login-title">Core-Hub</h1>
-        <p className="login-subtitle">Linux Server Management</p>
+        <h1 className="login-title">{tt('Core-Hub')}</h1>
+        <p className="login-subtitle">{tt('Linux Server Management')}</p>
 
         <form className="login-form" onSubmit={handleSubmit}>
           {error && <div className="login-error">{error}</div>}
 
           <div className="form-group">
-            <label className="form-label" htmlFor="username">Benutzername</label>
+            <label className="form-label" htmlFor="username">{tt('Benutzername')}</label>
             <input
               id="username"
               className="input"
               type="text"
-              placeholder="admin"
+              placeholder={tt('admin')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
@@ -77,7 +78,7 @@ export function Login() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="password">Passwort</label>
+            <label className="form-label" htmlFor="password">{tt('Passwort')}</label>
             <input
               id="password"
               className="input"

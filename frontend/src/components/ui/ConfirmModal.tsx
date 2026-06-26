@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { tt } from '../../lib/i18n';
 
 interface ConfirmModalProps {
   open: boolean;
@@ -29,7 +30,7 @@ export function ConfirmModal({ open, title, message, extra, confirmLabel = 'Best
           {extra}
         </div>
         <div className="modal-footer">
-          <button className="btn btn--ghost btn--md" onClick={onCancel} disabled={loading}>Abbrechen</button>
+          <button className="btn btn--ghost btn--md" onClick={onCancel} disabled={loading}>{tt('Abbrechen')}</button>
           <button
             className="btn btn--md"
             style={danger ? { background: 'var(--color-error)', color: '#fff', borderColor: 'var(--color-error)' } : { background: 'var(--color-accent)', color: '#fff', borderColor: 'var(--color-accent)' }}

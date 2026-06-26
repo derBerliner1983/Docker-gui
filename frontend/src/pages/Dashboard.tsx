@@ -7,7 +7,7 @@ import { SortablePanels } from '../components/ui/SortablePanels';
 import { Donut, donutColor } from '../components/ui/Donut';
 import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
-import { useT } from '../lib/i18n';
+import { useT, tt } from '../lib/i18n';
 import { formatBytes, formatUptime } from '../lib/utils';
 import type { SystemStats, OptimizeSuggestion } from '../lib/types';
 
@@ -100,7 +100,7 @@ export function Dashboard() {
           { id: 'cpu', node: (
         /* ── PROZESSOR ── */
         <Panel
-          title="Prozessor"
+          title={tt('Prozessor')}
           icon={<Cpu size={15} />}
           subtitle={stats?.cpu.brand}
           storageKey="cpu"
@@ -126,7 +126,7 @@ export function Dashboard() {
                     centerSub="Last"
                     centerColor={donutColor(stats.cpu.usage)}
                   />
-                  <div className="donut-item__caption">Gesamtlast</div>
+                  <div className="donut-item__caption">{tt('Gesamtlast')}</div>
                 </div>
                 <div style={{ flex: 1, minWidth: 220 }}>
                   <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 6 }}>Verlauf (letzte ~3 Min)</div>
@@ -170,7 +170,7 @@ export function Dashboard() {
           const vramPct = g.vramTotalMb && g.vramUsedMb != null ? Math.round((g.vramUsedMb / g.vramTotalMb) * 100) : null;
           return (
             <Panel
-              title="Grafik"
+              title={tt('Grafik')}
               icon={<MonitorCheck size={15} />}
               subtitle={g.name}
               storageKey="gpu"
@@ -195,7 +195,7 @@ export function Dashboard() {
                       centerColor={donutColor(g.utilizationPct)}
                     />
                     <div className="donut-item__caption">
-                      <div style={{ fontWeight: 600 }}>GPU-Last</div>
+                      <div style={{ fontWeight: 600 }}>{tt('GPU-Last')}</div>
                       <div style={{ fontSize: 11, color: 'var(--color-subtle)' }}>&nbsp;</div>
                     </div>
                   </div>
@@ -236,7 +236,7 @@ export function Dashboard() {
           { id: 'system', node: (
         /* ── SYSTEM (RAM + Disk donuts) ── */
         <Panel
-          title="System"
+          title={tt('System')}
           icon={<MemoryStick size={15} />}
           subtitle={mem ? `Arbeitsspeicher: ${formatBytes(mem.total)}` : undefined}
           storageKey="system"
@@ -258,14 +258,14 @@ export function Dashboard() {
                   centerSub="RAM"
                   centerColor={donutColor(mem.percent)}
                 />
-                <div className="donut-item__caption">RAM-Nutzung</div>
+                <div className="donut-item__caption">{tt('RAM-Nutzung')}</div>
               </div>
 
               {/* Legend */}
               <div className="legend" style={{ alignSelf: 'center', minWidth: 170 }}>
                 <div className="legend__item">
                   <span className="legend__dot" style={{ background: MEM_COLORS.system }} />
-                  <span className="legend__label">System</span>
+                  <span className="legend__label">{tt('System')}</span>
                   <span className="legend__value">{formatBytes(mem.breakdown.system)}</span>
                 </div>
                 <div className="legend__item">
@@ -275,12 +275,12 @@ export function Dashboard() {
                 </div>
                 <div className="legend__item">
                   <span className="legend__dot" style={{ background: MEM_COLORS.docker }} />
-                  <span className="legend__label">Docker</span>
+                  <span className="legend__label">{tt('Docker')}</span>
                   <span className="legend__value">{formatBytes(mem.breakdown.docker)}</span>
                 </div>
                 <div className="legend__item">
                   <span className="legend__dot" style={{ background: '#A1A1AA' }} />
-                  <span className="legend__label">Frei</span>
+                  <span className="legend__label">{tt('Frei')}</span>
                   <span className="legend__value">{formatBytes(mem.breakdown.free)}</span>
                 </div>
               </div>
@@ -313,7 +313,7 @@ export function Dashboard() {
           { id: 'network', node: (
         /* ── NETZWERK ── */
         <Panel
-          title="Schnittstelle"
+          title={tt('Schnittstelle')}
           icon={<Network size={15} />}
           subtitle={dockerVersion ? `Docker ${dockerVersion}` : undefined}
           storageKey="network"
@@ -322,12 +322,12 @@ export function Dashboard() {
             <table className="dtable" style={{ marginTop: 8 }}>
               <thead>
                 <tr>
-                  <th>Schnittstelle</th>
-                  <th>Status</th>
-                  <th className="dtable__num"><ArrowDown size={11} style={{ display: 'inline' }} /> Eingehend</th>
-                  <th className="dtable__num"><ArrowUp size={11} style={{ display: 'inline' }} /> Ausgehend</th>
-                  <th className="dtable__num">Gesamt ↓</th>
-                  <th className="dtable__num">Gesamt ↑</th>
+                  <th>{tt('Schnittstelle')}</th>
+                  <th>{tt('Status')}</th>
+                  <th className="dtable__num"><ArrowDown size={11} style={{ display: 'inline' }} /> {tt('Eingehend')}</th>
+                  <th className="dtable__num"><ArrowUp size={11} style={{ display: 'inline' }} /> {tt('Ausgehend')}</th>
+                  <th className="dtable__num">{tt('Gesamt ↓')}</th>
+                  <th className="dtable__num">{tt('Gesamt ↑')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -354,17 +354,17 @@ export function Dashboard() {
           { id: 'optimize', node: (
         /* ── OPTIMIERUNG ── */
         <Panel
-          title="Optimierung"
+          title={tt('Optimierung')}
           icon={<Gauge size={15} />}
           subtitle={suggestions ? `${suggestions.length} Vorschläge` : undefined}
           storageKey="optimize"
         >
           {!suggestions ? (
-            <div className="text-muted text-sm" style={{ padding: 8 }}>Analysiere…</div>
+            <div className="text-muted text-sm" style={{ padding: 8 }}>{tt('Analysiere…')}</div>
           ) : suggestions.length === 0 ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 4px', color: 'var(--color-success)' }}>
               <CheckCircle2 size={20} />
-              <span style={{ fontSize: 13.5, fontWeight: 600 }}>Alles optimal – keine Auffälligkeiten gefunden.</span>
+              <span style={{ fontSize: 13.5, fontWeight: 600 }}>{tt('Alles optimal – keine Auffälligkeiten gefunden.')}</span>
             </div>
           ) : (
             <div style={{ marginTop: 4 }}>
