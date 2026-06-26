@@ -94,7 +94,7 @@ core-hub ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf, /usr
   /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
   /usr/bin/sed, /usr/bin/chown, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
   /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
-  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl
+  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl, /usr/sbin/reboot, /sbin/reboot
 EOF
 chmod 0440 "${PKG_ROOT}/etc/sudoers.d/core-hub"
 

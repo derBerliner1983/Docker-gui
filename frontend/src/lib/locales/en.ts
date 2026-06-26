@@ -589,4 +589,10 @@ export const en: Record<string, string> = {
   'err.hostport_allocated': 'A required host port is already in use (e.g. port 53 by systemd-resolved). Choose a different host port or give the container its own IP via a macvlan network.',
   'err.too_many_attempts': 'Too many failed attempts. Please try again in {minutes} minutes.',
   'err.file_too_large': 'File too large (max {kb} KB)',
+
+  // ── Sicherheit: Neustart-Aktion ──
+  'Jetzt neu starten': 'Restart now',
+  'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': 'Restart server now? The connection will drop for 1–2 minutes.',
+  'Server wird neu gestartet…': 'Server is restarting…',
+  'Beheben': 'Fix',
 };

@@ -18,6 +18,7 @@ interface Finding {
   detail: string;
   recommendation: string;
   fix?: string;
+  fixLabel?: string;   // eigener Button-Text statt „Beheben"
   link?: string;       // Frontend-Route zum Navigieren (statt/zusätzlich zu fix)
   linkLabel?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';
@@ -122,7 +123,7 @@ function updatesCheck(): Finding[] {
     );
   }
   if (safeExec('test -f /var/run/reboot-required && echo y').trim() === 'y') {
-    findings.push({ id: 'reboot', category: 'Updates', title: 'Neustart erforderlich', status: 'warn', detail: 'reboot-required gesetzt', recommendation: 'Starte den Server neu, um Kernel-/Sicherheitsupdates zu aktivieren.' });
+    findings.push({ id: 'reboot', category: 'Updates', title: 'Neustart erforderlich', status: 'warn', detail: 'reboot-required gesetzt', recommendation: 'Starte den Server neu, um Kernel-/Sicherheitsupdates zu aktivieren.', fix: 'reboot', fixLabel: 'Jetzt neu starten' });
   }
   return findings;
 }
@@ -450,6 +451,16 @@ export async function securityRoutes(fastify: FastifyInstance) {
           auditQueries.log.run(req.user.id, 'security.fix', `port-access:${port} lan=${wantLan} net=${wantNet}`);
           const active = /Status:\s*active/i.test(safeExec('ufw status 2>/dev/null') || privSafe('ufw status'));
           return reply.send({ ok: true, output: output + (active ? '' : ' (Firewall ist inaktiv – Regeln greifen erst nach Aktivierung!)') });
+        }
+        // Server-Neustart: zuerst antworten, dann verzögert rebooten (Verbindung bricht ab)
+        if (action === 'reboot') {
+          auditQueries.log.run(req.user.id, 'security.fix', 'reboot');
+          reply.send({ ok: true, output: 'Server wird neu gestartet… Die Verbindung bricht ab, bitte in 1–2 Minuten neu laden.' });
+          setTimeout(() => {
+            try { privExec('systemctl reboot', { timeout: 8000 }); }
+            catch { try { privExec('reboot', { timeout: 8000 }); } catch { /* */ } }
+          }, 800);
+          return;
         }
         switch (action) {
           case 'ssh-disable-root': {

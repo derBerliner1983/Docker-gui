@@ -86,7 +86,7 @@ function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFin
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, alignSelf: 'center' }}>
           {f.fix && (
             <button className="btn btn--outline btn--sm" disabled={fixing} onClick={() => onFix(f.fix!)}>
-              {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} Beheben
+              {fixing ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wrench size={12} />} {f.fixLabel ? tt(f.fixLabel) : tt('Beheben')}
             </button>
           )}
           {f.link && (
@@ -392,6 +392,17 @@ export function Security() {
   useEffect(() => { void run(); }, [run]);
 
   const fix = async (action: string) => {
+    if (action === 'reboot') {
+      if (!confirm(tt('Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.'))) return;
+      setFixing(action);
+      try {
+        const res = await api.security.fix(action);
+        alert(res.output || tt('Server wird neu gestartet…'));
+      } catch (err) {
+        alert(err instanceof Error ? err.message : 'Fehler');
+      } finally { setFixing(null); }
+      return;
+    }
     if (action.startsWith('port-access:')) {
       const [, port, lan, net] = action.split(':');
       // Aussperr-Schutz: Web-UI/SSH nicht versehentlich komplett dichtmachen
