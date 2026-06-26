@@ -243,6 +243,8 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
   const [networkMode, setNetworkMode] = useState('bridge');
   const [staticIp, setStaticIp] = useState('');
   const [networks, setNetworks] = useState<DockerNetwork[]>([]);
+  // Vom Backend vorgeschlagene freie Host-Ports bei Konflikt
+  const [portFix, setPortFix] = useState<{ host: number; proto: string; suggestedHost: number }[]>([]);
 
   useEffect(() => {
     if (!item) return;
@@ -252,7 +254,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
     setVols(item.volumes.map((v) => ({ id: uid(), ...v })));
     setEnvs(item.env.map((e) => ({ id: uid(), key: e.key, label: e.label, value: e.default, secret: e.secret, required: e.required })));
     setNetworkMode('bridge'); setStaticIp('');
-    setError(''); setDone('');
+    setError(''); setDone(''); setPortFix([]);
     // Load Docker networks for the network section
     api.networks.list().then((r) => setNetworks(r.networks)).catch(() => setNetworks([]));
   }, [item]);
@@ -263,7 +265,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
     // Validate required env
     const missing = envs.filter((e) => e.required && !e.value.trim());
     if (missing.length) { setError(`Pflichtfeld fehlt: ${missing.map((e) => e.label || e.key).join(', ')}`); return; }
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setPortFix([]);
     try {
       const envMap: Record<string, string> = {};
       for (const e of envs) if (e.key) envMap[e.key] = e.value;
@@ -284,7 +286,21 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Installation fehlgeschlagen');
+      // Port-Konflikt? Dann die vorgeschlagenen freien Ports zum Übernehmen anbieten.
+      const data = (err as { data?: { conflicts?: { host: number; proto: string; suggestedHost: number }[] } }).data;
+      if (data?.conflicts?.length) {
+        setPortFix(data.conflicts.map((c) => ({ host: c.host, proto: c.proto, suggestedHost: c.suggestedHost })));
+      }
     } finally { setBusy(false); }
+  };
+
+  // Vorgeschlagene freie Ports in die Port-Zeilen übernehmen
+  const applyPortFix = () => {
+    setPorts((rows) => rows.map((r) => {
+      const fix = portFix.find((f) => f.host === r.host && f.proto === r.proto);
+      return fix ? { ...r, host: fix.suggestedHost } : r;
+    }));
+    setPortFix([]); setError('');
   };
 
   return (
@@ -312,7 +328,17 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
         </div>
       ) : (
         <div style={{ maxHeight: '70vh', overflow: 'auto', paddingRight: 4 }}>
-          {error && <div className="login-error" style={{ marginBottom: 10 }}>{error}</div>}
+          {error && <div className="login-error" style={{ marginBottom: portFix.length ? 6 : 10 }}>{error}</div>}
+          {portFix.length > 0 && (
+            <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn--primary btn--sm" onClick={applyPortFix}>
+                Freie Ports übernehmen ({portFix.map((f) => `${f.host}→${f.suggestedHost}`).join(', ')})
+              </button>
+              <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>
+                danach erneut „Installieren"
+              </span>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 14 }}>
             <AppIcon src={item.icon} name={item.name} size={44} />

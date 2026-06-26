@@ -396,11 +396,45 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [updateLog]);
 
+  // Nach dem Update den Dienst pollen, bis er wieder online ist (neuer Build läuft),
+  // dann „fertig" melden und die laufende Version anzeigen.
+  const waitForRestart = async (priorBuild?: string) => {
+    setUpdateLog(l => [...l, '', '⏳ Warte auf Neustart des Dienstes…']);
+    const started = Date.now();
+    // Bis zu 3 Minuten auf das Wiederhochfahren warten
+    while (Date.now() - started < 180_000) {
+      await new Promise(r => setTimeout(r, 2500));
+      try {
+        const res = await fetch('/health', { cache: 'no-store' });
+        if (res.ok) {
+          const h = await res.json().catch(() => null) as { version?: string } | null;
+          const now = h?.version;
+          // Online und (falls bekannt) andere Build-Kennung als vorher → Update aktiv
+          if (now && (!priorBuild || now !== priorBuild)) {
+            setUpdateLog(l => [...l, `✓ Dienst wieder online – läuft jetzt auf v${now}.`]);
+            setUpdating(false);
+            setUpdateDone(true);
+            void check(false);
+            // kurze Pause, dann automatisch neu laden, damit das neue Frontend greift
+            setTimeout(() => location.reload(), 1500);
+            return;
+          }
+        }
+      } catch { /* Dienst noch nicht erreichbar – weiter warten */ }
+    }
+    // Timeout: trotzdem als fertig markieren, manuelles Neuladen anbieten
+    setUpdateLog(l => [...l, '— Zeitüberschreitung beim Warten. Bitte Seite manuell neu laden. —']);
+    setUpdating(false);
+    setUpdateDone(true);
+  };
+
   const startUpdate = () => {
     if (!confirm('Core-Hub jetzt aktualisieren? Der Dienst wird kurz neu gestartet.')) return;
     setUpdating(true);
     setUpdateDone(false);
     setUpdateLog(['▶ Update gestartet…']);
+    const priorBuild = ver?.current;        // z.B. "0.7.2+e7e4ed6"
+    let finished = false;
     const es = new EventSource('/api/settings/update/stream');
     es.onmessage = (evt) => {
       try {
@@ -408,11 +442,20 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
         setUpdateLog(l => [...l, d.line]);
       } catch { /* */ }
     };
-    es.onerror = () => {
+    // Explizites Abschluss-Signal vom Backend → Stream sauber schließen, dann pollen
+    es.addEventListener('done', () => {
+      finished = true;
       es.close();
-      setUpdating(false);
-      setUpdateDone(true);
-      setUpdateLog(l => [...l, '', '— Verbindung unterbrochen (Dienst wird neu gestartet) —']);
+      void waitForRestart(priorBuild);
+    });
+    es.onerror = () => {
+      // Verbindungsabbruch: entweder Dienst startet schon neu, oder echter Fehler.
+      // In beiden Fällen Stream schließen und auf das Wiederhochfahren warten.
+      es.close();
+      if (!finished) {
+        finished = true;
+        void waitForRestart(priorBuild);
+      }
     };
   };
 
