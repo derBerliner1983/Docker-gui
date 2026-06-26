@@ -3,6 +3,7 @@ import qrcode from 'qrcode-generator';
 import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
 import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
@@ -545,14 +546,15 @@ export function Settings() {
     <>
       <Topbar title="Einstellungen" subtitle={info ? `Core-Hub v${info.version}` : undefined} />
       <main className="page">
-        <LanguagePanel />
-        <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />
-        <PasswordPanel />
-        <TwoFactorPanel />
-        <SmtpPanel />
-        <NotificationsPanel />
-        <MigrationPanel />
-
+        <SortablePanels storageKey="settings" items={[
+          { id: 'language', node: <LanguagePanel /> },
+          { id: 'version', node: <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} /> },
+          { id: 'password', node: <PasswordPanel /> },
+          { id: '2fa', node: <TwoFactorPanel /> },
+          { id: 'smtp', node: <SmtpPanel /> },
+          { id: 'notifications', node: <NotificationsPanel /> },
+          { id: 'migration', node: <MigrationPanel /> },
+          { id: 'sysinfo', node: (
         <Panel title="System-Info" icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>
           {info && (
             <div style={{ marginTop: 8 }}>
@@ -577,6 +579,8 @@ export function Settings() {
             </div>
           )}
         </Panel>
+          ) },
+        ]} />
       </main>
     </>
   );
