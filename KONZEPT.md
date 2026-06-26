@@ -1,6 +1,6 @@
 # Core-Hub – Konzept & Roadmap
 
-> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.3`
+> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.6`
 
 ## Vision
 
@@ -20,14 +20,16 @@ Core-Hub Backend   ← läuft als systemd-Dienst auf dem Server
 ├── Fastify (Node.js/TypeScript)
 ├── JWT-Auth + bcrypt + 2FA (TOTP)
 ├── SQLite (Users, Audit-Log, Proxy-Hosts, Backup-Pläne, Alarm-Regeln,
-│          firewall_disabled, firewall_ignored_ports, container_meta …)
+│          firewall_disabled, firewall_ignored_ports, container_meta,
+│          user_prefs (UI-Sortierung pro Benutzer), app_settings …)
 ├── Docker Engine API (dockerode) – Container, Images, Netzwerke
 ├── systeminformation – CPU, RAM, Disk, Netzwerk, GPU (NVIDIA + AMD/APU)
 └── System-Befehle über sudoers-Allowlist
     ├── systemctl  (Dienste, Samba, Ollama, SSH …)
     ├── smbd / smbpasswd  (Samba + UFW-Lifecycle)
     ├── ufw  (Firewall-Regeln, Samba-LAN-Freigabe)
-    ├── ss   (lauschende Ports, aktive Verbindungen)
+    ├── ss / ip   (lauschende Ports, aktive Verbindungen, LAN-Subnetz)
+    ├── sysctl  (IPv6 an/aus – Standard nur IPv4)
     ├── caddy  (HTTPS-Proxy, interne CA)
     ├── virsh / qemu-img  (VMs + Snapshots)
     ├── ollama  (KI-Modelle, GGUF-Downloads)
@@ -219,19 +221,10 @@ Font: Inter.
 | Samba Auto-Lifecycle: Start/Stop/Firewall automatisch | ✅ |
 | Container-Logs als SSE-Stream (Echtzeit, kein Polling) | ✅ |
 
-### ✅ Phase 14 – Firewall-Assistent, Virtuelle IPs, App-Store, i18n (`v0.7.3`)
+### ✅ Phase 14 – Virtuelle IPs, App-Store, i18n (`v0.7.3`)
 
 | Feature | Status |
 |---|---|
-| **Firewall-Assistent** – interner Port-Scan (ss -tulnpH): welche Dienste lauschen? | ✅ |
-| Aktive Verbindungen je Port (ss -tunH state established) | ✅ |
-| Pro Port: „Nur im LAN freigeben" / „Überall" / **„Ignorieren"** (dauerhaft ausblenden, SQLite) | ✅ |
-| Samba-Ports (139/445) nur im Assistenten zeigen, wenn Freigaben in smb.conf existieren | ✅ |
-| Redundante Block-Regeln erkennen (Standard-Richtlinie already deny) | ✅ |
-| SSH-Regel auf LAN beschränken (1-Klick: löscht Anywhere-Regel, legt 3 LAN-Regeln an) | ✅ |
-| Firewall-Toggle: Port 22 nur anlegen wenn keine Regel existiert; 80/443 nur LAN-only wenn leer | ✅ |
-| Bestehende LAN-Regeln werden beim Aktivieren **niemals** überschrieben | ✅ |
-| Docker-Published-Ports in Orphan-Erkennung einbeziehen | ✅ |
 | **Virtuelle IPs**: Container in macvlan/ipvlan-Netzwerke mit fester IP einhängen | ✅ |
 | Virtuelle IPs beim Erstellen und Bearbeiten von Containern wählbar (NetworksPicker) | ✅ |
 | Tab „Virtuelle IPs" in Netzwerke & VLANs: alle Container-IPs + VM-DHCP-Leases | ✅ |
@@ -243,13 +236,52 @@ Font: Inter.
 | **Mehrsprachigkeit (i18n)**: DE/EN umschaltbar, Browser-Autoerkennung, kein Framework | ✅ |
 | Sprachumschalter in den Einstellungen; erweiterbar auf weitere Sprachen | ✅ |
 
+### ✅ Phase 15 – IPv4/IPv6, UI-Sortierung, Inline-Macvlan, Firewall-Politik (`v0.7.4`)
+
+| Feature | Status |
+|---|---|
+| **IPv4/IPv6-Umschalter** in den Einstellungen – Standard **nur IPv4** | ✅ |
+| IPv6 wird über `sysctl` + `/etc/sysctl.d/99-corehub-ipv6.conf` (persistent) geschaltet | ✅ |
+| Globale `app_settings`-Tabelle (Key/Value) für System-Einstellungen | ✅ |
+| **Drag-&-Drop-Sortierung** von Sidebar-Einträgen und Panels (Greifpunkt) | ✅ |
+| Sortierung **pro Benutzer serverseitig** gespeichert (`user_prefs`, debounced sync) | ✅ |
+| **Inline-Macvlan** anlegen im App-Store- und Container-Dialog (Parent/Subnetz/Gateway/VLAN/IP) | ✅ |
+| Host-Port-Konflikterkennung erfasst auch Nicht-Docker-Dienste (z. B. systemd-resolved:53) | ✅ |
+| **Firewall ohne Auto-Schutzregeln**: Updates/Installer ändern keine ufw-Regeln mehr | ✅ |
+| Beim Aktivieren: SSH (22) + Web-UI (443) nur LAN-only fürs echte PC-Subnetz, niemals Anywhere | ✅ |
+| Firewall-Assistent (proaktiver Port-Scan) entfernt – Freigaben rein benutzergesteuert | ✅ |
+| Update-Flow: sofortiger „Seite neu laden"-Button nach Installation (kein manuelles F5) | ✅ |
+
+### ✅ Phase 16 – Mehrsprachigkeit & Proxy-Gating (`v0.7.5`)
+
+| Feature | Status |
+|---|---|
+| **5 Sprachen**: Deutsch, English, Français, Español, Italiano | ✅ |
+| Navigation, Sidebar, Seitentitel/-untertitel auf i18n-Schlüssel | ✅ |
+| Fehlende Schlüssel fallen automatisch auf Deutsch zurück | ✅ |
+| **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard: aus) | ✅ |
+| Proxy-Eintrag erscheint nur in der Sidebar, wenn aktiviert (`app_settings`) | ✅ |
+| Backend-Auswahl vorbereitet: Caddy aktiv, nginx/Traefik als „geplant" | ✅ |
+
+### ✅ Phase 17 – Tiefe i18n-Abdeckung (`v0.7.6`)
+
+| Feature | Status |
+|---|---|
+| Prinzip **„Deutsch = Schlüssel"**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel | ✅ |
+| Modulweite `tt()`-Funktion – Übersetzung auch in Unterkomponenten/Helfern ohne Hook | ✅ |
+| Panels, Dialoge, Buttons, Tooltips, `confirm()`/`alert()` auf `tt()` umgestellt | ✅ |
+| ~470 UI-Texte in EN/FR/ES/IT übersetzt (`frontend/src/lib/locales/*.ts`) | ✅ |
+| **Backend-Fehlermeldungen** werden zentral in `api.ts` (`req()`) via `tt()` übersetzt; Originaltext bleibt als `err.raw` erhalten | ✅ |
+| 77 statische Backend-Meldungen in EN/FR/ES/IT übersetzt | ✅ |
+| **Dynamische Backend-Meldungen** als `errorKey` + `errorVars` (Platzhalter) – Frontend setzt mit `tt(key, vars)` zusammen (z. B. Port-Konflikt, „Container existiert", Rate-Limit, Datei zu groß) | ✅ |
+| Neue Sprache/Anpassung = nur Locale-Datei mit `deutsch → übersetzt` editieren | ✅ |
+
 ### ⏳ Geplant / Ideen
 
 | Feature | Status |
 |---|---|
-| Weitere Sprachen (FR, ES, …) | ⏳ |
-| Reverse-Proxy: weitere Backends (nginx/Traefik) | ⏳ |
-| Alle Seiteninhalte auf i18n-Schlüssel umstellen | ⏳ |
+| Restliche Detailtexte & Backend-Meldungen übersetzen | ⏳ |
+| Reverse-Proxy: nginx/Traefik tatsächlich anbinden | ⏳ |
 
 ---
 

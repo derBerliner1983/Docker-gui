@@ -9,6 +9,8 @@ import type {
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel,
 } from './types';
 
+import { tt } from './i18n';
+
 const getToken = () => localStorage.getItem('token');
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -26,8 +28,14 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include',
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const err = new Error((body as { error?: string }).error ?? `HTTP ${res.status}`) as Error & { data?: unknown; status?: number };
+    const body = await res.json().catch(() => ({})) as { error?: string; errorKey?: string; errorVars?: Record<string, string | number> };
+    const rawMsg = body.error ?? `HTTP ${res.status}`;
+    // Übersetzte Meldung: bevorzugt strukturierter Schlüssel + Variablen
+    // (dynamische Texte), sonst der deutsche Quelltext als Schlüssel.
+    // Fallback bleibt immer der deutsche Originaltext.
+    const msg = body.errorKey ? tt(body.errorKey, body.errorVars) : tt(rawMsg);
+    const err = new Error(msg) as Error & { data?: unknown; status?: number; raw?: string };
+    err.raw = rawMsg;         // Originaltext (z.B. für substring-Prüfungen)
     err.data = body;          // Zusatzdaten (z.B. Port-Konflikt-Vorschläge) erhalten
     err.status = res.status;
     throw err;
@@ -280,6 +288,10 @@ export const api = {
     version: (refresh = false) => req<VersionInfo>(`/api/settings/version${refresh ? '?refresh=1' : ''}`),
     exportUrl: () => '/api/settings/export',
     restart: () => req<{ ok: boolean; note: string }>('/api/settings/restart', { method: 'POST' }),
+    getIpv6: () => req<{ enabled: boolean; kernelEnabled?: boolean; configured: boolean }>('/api/settings/ipv6'),
+    setIpv6: (enable: boolean) => req<{ ok: boolean; enabled: boolean }>('/api/settings/ipv6', { method: 'POST', body: JSON.stringify({ enable }) }),
+    getProxyVisibility: () => req<{ enabled: boolean; backend: string }>('/api/settings/proxy-visibility'),
+    setProxyVisibility: (enabled: boolean, backend: string) => req<{ ok: boolean; enabled: boolean; backend: string }>('/api/settings/proxy-visibility', { method: 'POST', body: JSON.stringify({ enabled, backend }) }),
     import: async (file: File) => {
       const token = localStorage.getItem('token');
       const fd = new FormData();

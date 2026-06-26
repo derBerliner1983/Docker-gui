@@ -1,3 +1,4 @@
+import { tt } from '../../lib/i18n';
 interface SparklineProps {
   data: number[];
   max?: number;
@@ -11,7 +12,7 @@ export function Sparkline({
   data, max = 100, width = 600, height = 80, color = 'var(--color-warning)', fill = true,
 }: SparklineProps) {
   if (data.length < 2) {
-    return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-faint)', fontSize: 12 }}>Sammle Daten…</div>;
+    return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-faint)', fontSize: 12 }}>{tt('Sammle Daten…')}</div>;
   }
 
   const step = width / (data.length - 1);

@@ -289,7 +289,8 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
           const { results, total } = await searchDockerHub(q, page);
           return reply.send({ results, total, source, cached: true, page, limit });
         } catch (err) {
-          return reply.status(502).send({ error: `Docker Hub nicht erreichbar: ${err instanceof Error ? err.message : ''}` });
+          const detail = err instanceof Error ? err.message : '';
+          return reply.status(502).send({ error: `Docker Hub nicht erreichbar: ${detail}`, errorKey: 'err.dockerhub_unreachable', errorVars: { detail } });
         }
       }
 
@@ -363,6 +364,7 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
           return reply.status(409).send({
             error: `Host-Port bereits belegt: ${conflicts.join(', ')}. ` +
               `Übernimm die vorgeschlagenen freien Ports – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).`,
+            errorKey: 'err.hostport_in_use', errorVars: { list: conflicts.join(', ') },
             conflicts: suggestions,
           });
         }
@@ -372,7 +374,7 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
       try {
         const existing = await docker.listContainers({ all: true, filters: { name: [`^/${name}$`] } });
         if (existing.length) {
-          return reply.status(409).send({ error: `Ein Container namens „${name}" existiert bereits. Bitte einen anderen Namen wählen.` });
+          return reply.status(409).send({ error: `Ein Container namens „${name}" existiert bereits. Bitte einen anderen Namen wählen.`, errorKey: 'err.container_name_exists', errorVars: { name } });
         }
       } catch { /* weiter */ }
 
@@ -445,11 +447,15 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
         }
         const raw = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
         // Häufigsten Docker-Fehler in Klartext übersetzen
-        const friendly = /address already in use|port is already allocated/i.test(raw)
-          ? 'Ein benötigter Host-Port ist bereits belegt (z. B. Port 53 durch systemd-resolved). ' +
-            'Wähle einen anderen Host-Port oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP.'
-          : raw;
-        reply.status(500).send({ error: friendly });
+        if (/address already in use|port is already allocated/i.test(raw)) {
+          reply.status(500).send({
+            error: 'Ein benötigter Host-Port ist bereits belegt (z. B. Port 53 durch systemd-resolved). ' +
+              'Wähle einen anderen Host-Port oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP.',
+            errorKey: 'err.hostport_allocated',
+          });
+        } else {
+          reply.status(500).send({ error: raw });
+        }
       }
     },
   );

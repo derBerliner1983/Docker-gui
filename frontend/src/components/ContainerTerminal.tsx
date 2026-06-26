@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
+import { tt } from '../lib/i18n';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { X, RotateCcw, SquareTerminal } from 'lucide-react';
@@ -89,7 +90,7 @@ export function ContainerTerminal({ id, name, onClose }: { id: string; name: str
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {statusBadge}
-            <button className="btn btn--outline btn--sm" onClick={() => setReconnectKey((k) => k + 1)} title="Neu verbinden">
+            <button className="btn btn--outline btn--sm" onClick={() => setReconnectKey((k) => k + 1)} title={tt('Neu verbinden')}>
               <RotateCcw size={13} /> Neu verbinden
             </button>
             <button className="icon-btn" onClick={onClose}><X size={15} /></button>

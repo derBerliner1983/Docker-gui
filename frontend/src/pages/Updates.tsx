@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, Download, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import type { PackageUpdate } from '../lib/types';
 
 export function Updates() {
+  const t = useT();
   const [updates, setUpdates] = useState<PackageUpdate[]>([]);
   const [manager, setManager] = useState<string | null>(null);
   const [available, setAvailable] = useState(true);
@@ -69,8 +71,8 @@ export function Updates() {
   return (
     <>
       <Topbar
-        title="System-Updates"
-        subtitle={manager ? `Paketmanager: ${manager}` : undefined}
+        title={t('nav.updates')}
+        subtitle={manager ? t('page.updates.subtitle', { manager }) : undefined}
         onRefresh={load}
         refreshing={loading}
         actions={
@@ -94,7 +96,7 @@ export function Updates() {
         {!available ? (
           <div className="empty-state">
             <div className="empty-state__icon"><Package size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Kein Paketmanager erkannt</div>
+            <div className="empty-state__title">{tt('Kein Paketmanager erkannt')}</div>
             <div className="empty-state__desc">{message}</div>
           </div>
         ) : (
@@ -103,14 +105,14 @@ export function Updates() {
               <div className="card" style={{ marginBottom: 14, borderColor: 'var(--color-warning)' }}>
                 <div className="card-body" style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--color-warning)' }}>
                   <AlertTriangle size={18} />
-                  <span style={{ fontWeight: 600 }}>Neustart erforderlich</span>
-                  <span className="text-muted">Ein Systemneustart ist nötig, um alle Updates zu aktivieren.</span>
+                  <span style={{ fontWeight: 600 }}>{tt('Neustart erforderlich')}</span>
+                  <span className="text-muted">{tt('Ein Systemneustart ist nötig, um alle Updates zu aktivieren.')}</span>
                 </div>
               </div>
             )}
 
             <Panel
-              title="Verfügbare Updates"
+              title={tt('Verfügbare Updates')}
               icon={<Package size={15} />}
               subtitle={`${updates.length} Paket(e)`}
               storageKey="updates"
@@ -118,14 +120,14 @@ export function Updates() {
               {updates.length === 0 ? (
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
                   <div className="empty-state__icon"><CheckCircle2 size={40} strokeWidth={1.2} color="var(--color-success)" /></div>
-                  <div className="empty-state__title">System ist aktuell</div>
-                  <div className="empty-state__desc">Keine Updates verfügbar. Klicke „Nach Updates suchen", um den Index zu aktualisieren.</div>
+                  <div className="empty-state__title">{tt('System ist aktuell')}</div>
+                  <div className="empty-state__desc">{tt('Keine Updates verfügbar. Klicke „Nach Updates suchen", um den Index zu aktualisieren.')}</div>
                 </div>
               ) : (
                 <div className="table-scroll" style={{ marginTop: 6 }}>
                   <table className="dtable">
                     <thead>
-                      <tr><th>Paket</th><th>Aktuell</th><th>Neu</th><th>Quelle</th><th style={{ width: 100 }}></th></tr>
+                      <tr><th>{tt('Paket')}</th><th>{tt('Aktuell')}</th><th>{tt('Neu')}</th><th>{tt('Quelle')}</th><th style={{ width: 100 }}></th></tr>
                     </thead>
                     <tbody>
                       {updates.map((u) => (
@@ -150,7 +152,7 @@ export function Updates() {
         )}
       </main>
 
-      <Modal open={outputOpen} title="Update-Ausgabe" onClose={() => setOutputOpen(false)} width={680}>
+      <Modal open={outputOpen} title={tt('Update-Ausgabe')} onClose={() => setOutputOpen(false)} width={680}>
         <div className="log-viewer" style={{ maxHeight: 460 }}>{output}</div>
         <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)', textAlign: 'right' }}>
           ✓ Fertig – Fenster schließt automatisch…

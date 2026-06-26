@@ -56,4 +56,43 @@ export const de: Record<string, string> = {
   // ── Sprache (Einstellungen) ──
   'settings.language': 'Sprache',
   'settings.language.desc': 'Sprache der Oberfläche. Die Auswahl wird im Browser gespeichert.',
+
+  // ── Seiten-Titel & Untertitel (Topbar) ──
+  'page.proxy.title': 'HTTPS & Reverse-Proxy',
+  'page.terminal.subtitle': 'Root-Shell auf dem Server',
+  'page.automation.subtitle': 'Cronjobs & Autostart',
+  'page.containers.subtitle': '{running} läuft · {total} gesamt',
+  'page.taskmanager.subtitle': '{running} aktiv · {total} Prozesse gesamt',
+  'page.vms.subtitle': '{running} laufen · {total} gesamt',
+  'page.users.subtitle': '{logins} Logins · {linux} Linux-Benutzer',
+  'page.networks.subtitle': '{n} Docker-Netzwerke',
+  'page.updates.subtitle': 'Paketmanager: {manager}',
+  'page.security.subtitle': 'Geprüft: {time}',
+  'page.settings.subtitle': 'Core-Hub v{version}',
+  'page.proxy.subtitle': 'Caddy {state} · {https}/{total} mit HTTPS',
+  'page.proxy.running': 'läuft',
+  'page.proxy.stopped': 'gestoppt',
+  'page.backups.subtitle': '{n} Backups · {size} · {dir}',
+  'page.packages.subtitle': '{manager} · {n} installiert · {size}',
+  'page.ai.subtitle': '{n} Modelle · {size} belegt',
+  'page.notFound': 'Container nicht gefunden',
+  'page.back': '← Zurück',
+
+  // ── Reverse-Proxy (Einstellungen) ──
+  'settings.proxy': 'Reverse-Proxy',
+  'settings.proxy.desc': 'Blendet die Seite „HTTPS & Reverse-Proxy" in der Navigation ein. Standardmäßig ausgeblendet.',
+  'settings.proxy.enable': 'Reverse-Proxy anzeigen',
+  'settings.proxy.backend': 'Backend',
+  'settings.proxy.backend.caddy': 'Caddy (automatisches HTTPS)',
+  'settings.proxy.backend.nginx': 'nginx (geplant)',
+  'settings.proxy.backend.traefik': 'Traefik (geplant)',
+  'settings.proxy.backend.hint': 'Caddy bietet automatisches HTTPS über eine interne CA – ohne Domain. nginx/Traefik sind vorgesehen, aber noch nicht verfügbar.',
+
+  // ── Auto: dynamische Backend-Meldungen (Schlüssel + Platzhalter) ──
+  'err.dockerhub_unreachable': 'Docker Hub nicht erreichbar: {detail}',
+  'err.hostport_in_use': 'Host-Port bereits belegt: {list}. Übernimm die vorgeschlagenen freien Ports – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).',
+  'err.container_name_exists': 'Ein Container namens „{name}" existiert bereits. Bitte einen anderen Namen wählen.',
+  'err.hostport_allocated': 'Ein benötigter Host-Port ist bereits belegt (z. B. Port 53 durch systemd-resolved). Wähle einen anderen Host-Port oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP.',
+  'err.too_many_attempts': 'Zu viele Fehlversuche. Bitte in {minutes} Minuten erneut versuchen.',
+  'err.file_too_large': 'Datei zu groß (max {kb} KB)',
 };

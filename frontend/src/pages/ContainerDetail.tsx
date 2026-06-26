@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink, Plus, X, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -102,7 +103,7 @@ function NetworksPicker({ networks, onChange }: {
     try {
       await api.networks.create({ name: netName, driver: 'macvlan', parent: newParent, subnet: newSubnet, gateway: newGw || undefined, vlan: newVlan || undefined });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
+      const msg = (e as { raw?: string }).raw ?? (e instanceof Error ? e.message : '');
       if (!/exists|in use/i.test(msg)) { setCreateErr(`Fehler: ${msg}`); setCreateBusy(false); return; }
     }
     // Netzwerke neu laden und das neue direkt hinzufügen
@@ -125,9 +126,9 @@ function NetworksPicker({ networks, onChange }: {
 
   return (
     <div className="form-group">
-      <label className="form-label">Netzwerk / IP-Adresse</label>
+      <label className="form-label">{tt('Netzwerk / IP-Adresse')}</label>
       <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 6 }}>
-        Mit einem Macvlan-Netzwerk bekommt der Container eine <strong>eigene IP im Heimnetz</strong> (kein Port-Mapping nötig).
+        Mit einem Macvlan-Netzwerk bekommt der Container eine <strong>{tt('eigene IP im Heimnetz')}</strong> (kein Port-Mapping nötig).
       </div>
 
       {networks.map((n) => (
@@ -135,20 +136,20 @@ function NetworksPicker({ networks, onChange }: {
           <Network size={12} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
           <span style={{ flex: '0 0 140px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
           <input className="input input--rect" style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            placeholder="Feste IP (z.B. 192.168.1.200)" value={n.ip}
+            placeholder={tt('Feste IP (z.B. 192.168.1.200)')} value={n.ip}
             onChange={(e) => updateIp(n.id, e.target.value)} />
-          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen"><X size={12} /></button>
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title={tt('Entfernen')}><X size={12} /></button>
         </div>
       ))}
 
       {/* Neues Macvlan inline anlegen */}
       {creating && (
         <div style={{ background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>Neues Macvlan-Netzwerk anlegen und verbinden:</div>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>{tt('Neues Macvlan-Netzwerk anlegen und verbinden:')}</div>
           {createErr && <div className="login-error" style={{ marginBottom: 8 }}>{createErr}</div>}
           <label className="form-label">Interface (Parent)</label>
           <select className="input input--rect" style={{ width: '100%', marginBottom: 8 }} value={newParent} onChange={(e) => setNewParent(e.target.value)}>
-            <option value="">— wählen —</option>
+            <option value="">{tt('— wählen —')}</option>
             {interfaces.map((i) => <option key={i.iface} value={i.iface}>{i.iface}{i.ip4 ? ` (${i.ip4})` : ''}</option>)}
           </select>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -160,20 +161,20 @@ function NetworksPicker({ networks, onChange }: {
             <div style={{ flex: 1 }}>
               <label className="form-label">VLAN (optional)</label>
               <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                placeholder="z.B. 20" value={newVlan} onChange={(e) => setNewVlan(e.target.value.replace(/[^0-9]/g, ''))} />
+                placeholder={tt('z.B. 20')} value={newVlan} onChange={(e) => setNewVlan(e.target.value.replace(/[^0-9]/g, ''))} />
             </div>
           </div>
-          <label className="form-label">Gateway</label>
+          <label className="form-label">{tt('Gateway')}</label>
           <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 8 }}
             placeholder="192.168.1.1" value={newGw} onChange={(e) => setNewGw(e.target.value.trim())} />
-          <label className="form-label">Statische IP für diesen Container</label>
+          <label className="form-label">{tt('Statische IP für diesen Container')}</label>
           <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 10 }}
-            placeholder="192.168.1.200 (leer = automatisch)" value={newIp} onChange={(e) => setNewIp(e.target.value.trim())} />
+            placeholder={tt('192.168.1.200 (leer = automatisch)')} value={newIp} onChange={(e) => setNewIp(e.target.value.trim())} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn--primary btn--sm" onClick={createAndAdd} disabled={createBusy}>
               {createBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Plus size={12} />} Anlegen & verbinden
             </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => { setCreating(false); setAddId(''); setCreateErr(''); }}>Abbrechen</button>
+            <button className="btn btn--ghost btn--sm" onClick={() => { setCreating(false); setAddId(''); setCreateErr(''); }}>{tt('Abbrechen')}</button>
           </div>
         </div>
       )}
@@ -181,15 +182,15 @@ function NetworksPicker({ networks, onChange }: {
       {!creating && (
         <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
           <select className="input input--rect" style={{ flex: 1, minWidth: 180, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
-            <option value="">— Netzwerk hinzufügen …</option>
+            <option value="">{tt('— Netzwerk hinzufügen …')}</option>
             {unattached.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>)}
-            <option value={CREATE_NEW}>＋ Neues Macvlan anlegen…</option>
+            <option value={CREATE_NEW}>{tt('＋ Neues Macvlan anlegen…')}</option>
           </select>
           {selectedForAdd && (
             <input className="input input--rect" style={{ width: 190, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-              placeholder="IP (optional)" value={pendingIp} onChange={(e) => setPendingIp(e.target.value.trim())} />
+              placeholder={tt('IP (optional)')} value={pendingIp} onChange={(e) => setPendingIp(e.target.value.trim())} />
           )}
-          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> {tt('Hinzufügen')}</button>
         </div>
       )}
     </div>
@@ -258,12 +259,12 @@ function EditModal({ container, inspect, onClose, onDone }: {
   return (
     <Modal
       open
-      title="Container neu konfigurieren"
+      title={tt('Container neu konfigurieren')}
       onClose={onClose}
       width={660}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
             {busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={13} />} Übernehmen & neu starten
           </button>
@@ -275,20 +276,20 @@ function EditModal({ container, inspect, onClose, onDone }: {
         ⚠️ Der Container wird mit der neuen Konfiguration neu erstellt. Named-Volumes (und damit deine Daten) bleiben erhalten.
       </div>
       <div className="form-group">
-        <label className="form-label">Image</label>
+        <label className="form-label">{tt('Image')}</label>
         <input className="input input--rect" value={image} onChange={(e) => setImage(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Container-Name</label>
+          <label className="form-label">{tt('Container-Name')}</label>
           <input className="input input--rect" value={name} onChange={(e) => setName(e.target.value.replace(/[^a-zA-Z0-9._-]/g, '_'))} style={{ fontFamily: 'var(--font-mono)' }} />
         </div>
         <div className="form-group">
-          <label className="form-label">Neustart-Richtlinie</label>
+          <label className="form-label">{tt('Neustart-Richtlinie')}</label>
           <select className="input input--rect" value={restart} onChange={(e) => setRestart(e.target.value)} style={{ cursor: 'pointer' }}>
-            <option value="unless-stopped">Außer wenn manuell gestoppt</option>
-            <option value="always">Immer neu starten</option>
-            <option value="on-failure">Nur bei Fehler</option>
+            <option value="unless-stopped">{tt('Außer wenn manuell gestoppt')}</option>
+            <option value="always">{tt('Immer neu starten')}</option>
+            <option value="on-failure">{tt('Nur bei Fehler')}</option>
             <option value="no">Nie (kein Autostart)</option>
           </select>
         </div>
@@ -311,6 +312,7 @@ function EditModal({ container, inspect, onClose, onDone }: {
 }
 
 export function ContainerDetail() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
@@ -444,7 +446,7 @@ export function ContainerDetail() {
 
   if (loading) return (
     <>
-      <Topbar title="Container" />
+      <Topbar title={t('nav.containers')} />
       <main className="page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <span className="spinner" style={{ width: 28, height: 28 }} />
       </main>
@@ -453,10 +455,10 @@ export function ContainerDetail() {
 
   if (error || !container) return (
     <>
-      <Topbar title="Container" />
+      <Topbar title={t('nav.containers')} />
       <main className="page">
-        <div className="empty-state"><div className="empty-state__title">{error || 'Container nicht gefunden'}</div>
-          <Link to="/containers" className="btn btn--primary btn--md" style={{ marginTop: 16 }}>← Zurück</Link></div>
+        <div className="empty-state"><div className="empty-state__title">{error || t('page.notFound')}</div>
+          <Link to="/containers" className="btn btn--primary btn--md" style={{ marginTop: 16 }}>{t('page.back')}</Link></div>
       </main>
     </>
   );
@@ -488,7 +490,7 @@ export function ContainerDetail() {
             </Link>
             {isRunning ? (
               <>
-                <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setExecOpen(true)} title="Konsole im Container öffnen">
+                <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setExecOpen(true)} title={tt('Konsole im Container öffnen')}>
                   <SquareTerminal size={12} /> Konsole
                 </button>
                 <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => action('restart', () => api.containers.restart(container.id))}>
@@ -506,13 +508,13 @@ export function ContainerDetail() {
                 Starten
               </button>
             )}
-            <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setEditOpen(true)} title="Konfiguration ändern">
+            <button className="btn btn--outline btn--sm" disabled={!!actionLoading} onClick={() => setEditOpen(true)} title={tt('Konfiguration ändern')}>
               <Pencil size={12} /> Bearbeiten
             </button>
             <button className="btn btn--danger btn--sm" disabled={!!actionLoading} onClick={() => setDeleteOpen(true)}>
               <Trash2 size={12} /> Löschen
             </button>
-            <button className="icon-btn" onClick={loadInfo} title="Aktualisieren">
+            <button className="icon-btn" onClick={loadInfo} title={tt('Aktualisieren')}>
               <RefreshCw size={14} />
             </button>
           </div>
@@ -566,22 +568,22 @@ export function ContainerDetail() {
         {/* Container info */}
         <div className="card" style={{ marginBottom: 14 }}>
           <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setInfoOpen((o) => !o)}>
-            <span className="card-title">Details</span>
+            <span className="card-title">{tt('Details')}</span>
             {infoOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </div>
           {infoOpen && (
             <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Image</div>
+                <div className="form-label" style={{ marginBottom: 4 }}>{tt('Image')}</div>
                 <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--color-muted)', wordBreak: 'break-all' }}>{inspect?.Config.Image}</code>
               </div>
               <div>
-                <div className="form-label" style={{ marginBottom: 4 }}>Erstellt</div>
+                <div className="form-label" style={{ marginBottom: 4 }}>{tt('Erstellt')}</div>
                 <span style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>{inspect ? new Date(inspect.Created).toLocaleString('de-DE') : '—'}</span>
               </div>
               {portLinks.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <div className="form-label" style={{ marginBottom: 6 }}>Ports</div>
+                  <div className="form-label" style={{ marginBottom: 6 }}>{tt('Ports')}</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                     {portLinks.map((p) => (
                       <a key={p.display} href={p.url} target="_blank" rel="noreferrer"
@@ -609,7 +611,7 @@ export function ContainerDetail() {
               )}
               {binds.length > 0 && (
                 <div style={{ gridColumn: '1 / -1' }}>
-                  <div className="form-label" style={{ marginBottom: 6 }}>Volumes</div>
+                  <div className="form-label" style={{ marginBottom: 6 }}>{tt('Volumes')}</div>
                   {binds.map((b) => (
                     <div key={b} style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-muted)', padding: '3px 0', borderBottom: '1px solid var(--color-border)' }}>{b}</div>
                   ))}
@@ -632,7 +634,7 @@ export function ContainerDetail() {
         {/* Live logs */}
         <div className="card">
           <div className="card-header" style={{ cursor: 'pointer' }} onClick={() => setLogsOpen((o) => !o)}>
-            <span className="card-title">Live-Logs</span>
+            <span className="card-title">{tt('Live-Logs')}</span>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {logLoading && <span className="spinner" style={{ width: 12, height: 12 }} />}
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 12, color: 'var(--color-muted)' }}
@@ -643,14 +645,14 @@ export function ContainerDetail() {
               <button
                 className="btn btn--ghost btn--sm"
                 style={{ fontSize: 11, padding: '2px 8px' }}
-                title="Logs ab jetzt leeren (ältere Einträge dauerhaft ausblenden)"
+                title={tt('Logs ab jetzt leeren (ältere Einträge dauerhaft ausblenden)')}
                 onClick={(e) => {
                   e.stopPropagation();
                   setLogSince(Math.floor(Date.now() / 1000));
                   setLogs([]);
                 }}
               >
-                Leeren
+                {tt('Leeren')}
               </button>
               {logsOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
             </div>
@@ -667,7 +669,7 @@ export function ContainerDetail() {
                 }}
               >
                 {logs.length === 0 ? (
-                  <span style={{ color: 'var(--color-faint)' }}>Keine Logs verfügbar</span>
+                  <span style={{ color: 'var(--color-faint)' }}>{tt('Keine Logs verfügbar')}</span>
                 ) : (
                   logs.map((line, i) => <div key={i}>{line}</div>)
                 )}

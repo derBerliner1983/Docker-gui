@@ -2,7 +2,7 @@
 
 # ⬡ Core-Hub
 
-**Die Zentrale deines Linux-Servers.** · `v0.7.3`
+**Die Zentrale deines Linux-Servers.** · `v0.7.6`
 
 Web-basiertes Server-Management für headless Linux – Docker, VMs, Netzwerke, Firewall, Sicherheit, KI & mehr.
 Alles im Browser. Ohne SSH, ohne Desktop.
@@ -66,6 +66,8 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Port-Konflikt-Erkennung vorab**: belegte Host-Ports werden vor dem Image-Download gemeldet (mit Hinweis auf Macvlan als Alternative für Port 53 usw.)
 - Bei Installationsfehler: halb angelegte Container werden automatisch entfernt (keine Leichen)
 - Netzwerkmodus wählbar: Standard (bridge), host, oder eigenes macvlan-Netz mit **statischer IP**
+- **Macvlan direkt im Dialog anlegen**: Parent-Interface, Subnetz, Gateway, VLAN & IP setzen – ohne Umweg über die Netzwerke-Seite (auch beim Container-Bearbeiten/-Erstellen)
+- Host-Port-Konflikte erkennen jetzt auch Nicht-Docker-Dienste (z. B. systemd-resolved auf Port 53)
 - Kategorien und Icons werden beim Installieren automatisch übernommen
 
 ### 🖥️ Virtuelle Maschinen (libvirt/KVM)
@@ -81,13 +83,14 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
   - Regeln mit **Kommentar/Namen** anlegen, **bearbeiten**, **filtern** und löschen
   - **Mehrere Quell-Adressen** auf einmal (→ je eine Regel)
   - Regeln **deaktivieren/reaktivieren** (Parkbucht – gemerkt zum Wiederherstellen)
-  - **Firewall-Assistent**: interner Port-Scan (welche Dienste lauschen?), aktive Verbindungen, Freigabe per Knopfdruck (nur LAN / überall) oder **„Ignorieren"** (dauerhaft ausblenden)
-  - Samba-Ports nur im Assistenten anzeigen, wenn tatsächlich Freigaben eingerichtet sind
-  - Redundante Block-Regeln erkennen (wenn Standard-Richtlinie bereits „deny")
-  - Beim Aktivieren der Firewall: Port 22 nur anlegen wenn keine Regel existiert; Port 80/443 nur LAN-only und nur wenn keine Regel vorhanden – bestehende Regeln werden **niemals** überschrieben
+  - **Keine automatischen Schutz-Regeln**: Updates fügen keine Regeln hinzu, der Admin entscheidet selbst über Freigaben
+  - Beim **Aktivieren** der Firewall bekommen SSH (22) und Web-UI (443) – nur falls noch keine Regel existiert – eine Freigabe **ausschließlich fürs echte LAN-Subnetz des PCs** (aus `ip addr`, RFC-1918); **niemals** Anywhere/Internet
+  - Port-Freigaben **pro Port als LAN/Internet-Schalter** unter „Sicherheit"
 - **Verbindungsprotokoll** (persistente DB): zeigt blockierte/erlaubte Verbindungen, filterbar, CSV-Export
 
-### 🔒 HTTPS & Reverse-Proxy (Caddy)
+### 🔒 HTTPS & Reverse-Proxy (Caddy) — optional einblendbar
+- **Standardmäßig ausgeblendet**: erst über Einstellungen → Reverse-Proxy aktivieren, dann erscheint der Eintrag in der Navigation
+- Backend-Auswahl vorbereitet (Caddy aktiv; nginx/Traefik als „geplant")
 - Pro Container HTTPS per Schalter aktivieren oder alle auf einmal
 - Automatische Zertifikate über interne CA (kein Let's Encrypt/Domain nötig)
 - Root-CA-Download → einmal auf Geräten installieren, überall grünes Schloss
@@ -128,14 +131,21 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - Mehrere Modelle parallel laden
 
 ### 🌍 Mehrsprachigkeit
-- **Deutsch und Englisch** umschaltbar (Einstellungen → Sprache)
+- **5 Sprachen** umschaltbar: Deutsch, Englisch, Français, Español, Italiano (Einstellungen → Sprache)
 - Browsersprache wird automatisch erkannt; Wahl im Browser gespeichert
-- Erweiterbar: neue Sprache = ein Wörterbuch anlegen, fertig
+- **Tiefe Abdeckung**: Navigation, Seitentitel, Panels, Dialoge, Buttons & Tooltips übersetzt
+- **Deutsch = Schlüssel**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel – fehlt eine Übersetzung, erscheint automatisch der deutsche Originaltext
+- **Sprache leicht anpassbar**: neue Sprache = eine Locale-Datei mit `deutsch → übersetzt`-Zuordnungen, fertig (`frontend/src/lib/locales/`)
 
 ### ⚙️ Einstellungen
 - Passwort & 2FA, System-Info, Version & Update-Prüfung (git + GitHub-Releases)
-- **1-Klick-Update** in der Oberfläche (git pull + install.sh, Live-Log)
+- **1-Klick-Update** in der Oberfläche (git pull + install.sh, Live-Log) – nach der Installation erscheint sofort der **„Seite neu laden"**-Button (kein manuelles F5 nötig)
+- **IPv4/IPv6-Umschalter**: standardmäßig **nur IPv4**; IPv6 bei Bedarf aktivierbar (persistent via `sysctl`)
 - **Konfigurations-Migration**: Export/Import als `.tar.gz` (DB + Caddy-Zertifikate + SMB)
+
+### ↕️ Anpassbare Oberfläche (pro Benutzer)
+- **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
+- Reihenfolge wird **serverseitig pro Benutzer** gespeichert – jeder hat sein eigenes Layout
 
 ---
 
@@ -244,10 +254,13 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **11** | SMTP-E-Mail, Alarm-Regeln, Optimierungs-Panel, Web-Terminal | ✅ |
 | **12** | Datei-Manager, 1-Klick-Update in der Oberfläche, Container-Migration (Doku) | ✅ |
 | **13** | GPU-Dashboard, KI/Ollama (HTTPS, GGUF, parallele Downloads), Samba Auto-Lifecycle, SSE-Logs | ✅ |
-| **14** | **Firewall-Assistent** (Port-Scan, aktive Verbindungen, Ignorieren, Samba-Auto-Erkennung), **Virtuelle IPs** (macvlan/ipvlan, mehrere Netzwerke pro Container, IP-Übersicht-Tab), **App-Store** (Unraid Community + Docker Hub, Port-Konflikt-Erkennung, Aufräumen bei Fehler), **Dynamische Kategorie-Tabs** (Container-Übersicht), **Mehrsprachigkeit** (DE/EN, erweiterbar), Firewall-Toggle ohne unerwünschte Regeländerungen | ✅ `v0.7.3` |
+| **14** | **Virtuelle IPs** (macvlan/ipvlan, mehrere Netzwerke pro Container, IP-Übersicht-Tab), **App-Store** (Unraid Community + Docker Hub, Port-Konflikt-Erkennung, Aufräumen bei Fehler), **Dynamische Kategorie-Tabs** (Container-Übersicht), **Mehrsprachigkeit** (DE/EN, erweiterbar) | ✅ `v0.7.3` |
+| **15** | **IPv4/IPv6-Umschalter** (Standard nur IPv4), **Drag-&-Drop-Sortierung** von Sidebar & Panels (pro Benutzer, serverseitig), **Inline-Macvlan** im Container-/App-Dialog, **Firewall ohne Auto-Schutzregeln** (nur LAN-only-Freigabe für SSH/443 beim Aktivieren), Host-Port-Konflikterkennung inkl. Nicht-Docker-Dienste, Update mit sofortigem Reload-Button | ✅ `v0.7.4` |
+| **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
+| **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
 
 ### Geplant / Ideen
-- ⏳ Weitere Sprachen (FR, ES, …)
-- ⏳ Reverse-Proxy: weitere Backends (nginx/Traefik)
+- ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen
+- ⏳ Reverse-Proxy: nginx/Traefik tatsächlich anbinden
 
 Die vollständige technische Planung steht in [KONZEPT.md](./KONZEPT.md).

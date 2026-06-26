@@ -5,7 +5,7 @@ import path from 'path';
 import os from 'os';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary, isRoot } from '../lib/privilege';
-import { auditQueries, DB_PATH } from '../db/index';
+import { auditQueries, appSettingsQueries, DB_PATH } from '../db/index';
 
 function readVersion(): string {
   for (const p of [
@@ -93,6 +93,23 @@ function gitCmd(repoRoot: string, args: string, timeout = 8000): string {
 }
 
 export async function settingsRoutes(fastify: FastifyInstance) {
+  // Default beim ersten Start: IPv6 aus (nur IPv4), solange nicht ausdrücklich konfiguriert.
+  try {
+    if (appSettingsQueries.get.get('ipv6_enabled') == null) {
+      appSettingsQueries.set.run('ipv6_enabled', '0');
+      const conf = [
+        '# Von Core-Hub verwaltet – IPv6 deaktiviert (nur IPv4).',
+        'net.ipv6.conf.all.disable_ipv6 = 1',
+        'net.ipv6.conf.default.disable_ipv6 = 1',
+        'net.ipv6.conf.lo.disable_ipv6 = 1',
+        '',
+      ].join('\n');
+      try { privExec(`bash -c ${JSON.stringify(`cat > /etc/sysctl.d/99-corehub-ipv6.conf <<'EOF'\n${conf}EOF`)}`, { timeout: 6000 }); } catch { /* */ }
+      try { privExec('sysctl -w net.ipv6.conf.all.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
+      try { privExec('sysctl -w net.ipv6.conf.default.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
+    }
+  } catch { /* nicht kritisch */ }
+
   fastify.get('/api/settings/info', { preHandler: requireAuth }, async (_req, reply) => {
     reply.send({
       version: APP_VERSION,
@@ -393,4 +410,69 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       try { privExec('systemctl restart core-hub', { timeout: 8000 }); } catch { process.exit(0); }
     }, 500);
   });
+
+  // ── IPv6 an/aus (Standard: aus → nur IPv4) ──
+  // Liest den aktuellen Kernel-Zustand und die gespeicherte Einstellung.
+  fastify.get('/api/settings/ipv6', { preHandler: requireAuth }, async (_req, reply) => {
+    const stored = appSettingsQueries.get.get('ipv6_enabled')?.value;
+    // Kernel-Status: disable_ipv6=1 → IPv6 aus
+    const kernel = safeExec('cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null').trim();
+    const kernelEnabled = kernel === '' ? undefined : kernel === '0';
+    // Gespeicherte Einstellung hat Vorrang; Default = aus (nur IPv4)
+    const enabled = stored != null ? stored === '1' : (kernelEnabled ?? false);
+    reply.send({ enabled, kernelEnabled, configured: stored != null });
+  });
+
+  fastify.post<{ Body: { enable: boolean } }>('/api/settings/ipv6', { preHandler: requireAdmin }, async (req, reply) => {
+    const enable = !!req.body?.enable;
+    const SYSCTL_FILE = '/etc/sysctl.d/99-corehub-ipv6.conf';
+    try {
+      if (enable) {
+        // IPv6 einschalten: sysctl sofort + persistente Datei entfernen
+        try { privExec('sysctl -w net.ipv6.conf.all.disable_ipv6=0', { timeout: 6000 }); } catch { /* */ }
+        try { privExec('sysctl -w net.ipv6.conf.default.disable_ipv6=0', { timeout: 6000 }); } catch { /* */ }
+        try { privExec('sysctl -w net.ipv6.conf.lo.disable_ipv6=0', { timeout: 6000 }); } catch { /* */ }
+        try { privExec(`rm -f ${SYSCTL_FILE}`, { timeout: 6000 }); } catch { /* */ }
+      } else {
+        // IPv6 ausschalten: persistente Datei schreiben + sofort anwenden
+        const conf = [
+          '# Von Core-Hub verwaltet – IPv6 deaktiviert (nur IPv4).',
+          'net.ipv6.conf.all.disable_ipv6 = 1',
+          'net.ipv6.conf.default.disable_ipv6 = 1',
+          'net.ipv6.conf.lo.disable_ipv6 = 1',
+          '',
+        ].join('\n');
+        try { privExec(`bash -c ${JSON.stringify(`cat > ${SYSCTL_FILE} <<'EOF'\n${conf}EOF`)}`, { timeout: 6000 }); } catch { /* */ }
+        try { privExec('sysctl -w net.ipv6.conf.all.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
+        try { privExec('sysctl -w net.ipv6.conf.default.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
+        try { privExec('sysctl -w net.ipv6.conf.lo.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
+      }
+      appSettingsQueries.set.run('ipv6_enabled', enable ? '1' : '0');
+      auditQueries.log.run(req.user.id, 'settings.ipv6', enable ? 'enabled' : 'disabled');
+      reply.send({ ok: true, enabled: enable });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'IPv6 konnte nicht umgestellt werden' });
+    }
+  });
+
+  // ── Reverse-Proxy-Sichtbarkeit (Standard: aus → nicht in der Navigation) ──
+  fastify.get('/api/settings/proxy-visibility', { preHandler: requireAuth }, async (_req, reply) => {
+    const enabled = appSettingsQueries.get.get('proxy_enabled')?.value === '1';
+    const backend = appSettingsQueries.get.get('proxy_backend')?.value || 'caddy';
+    reply.send({ enabled, backend });
+  });
+
+  fastify.post<{ Body: { enabled?: boolean; backend?: string } }>(
+    '/api/settings/proxy-visibility',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const enabled = !!req.body?.enabled;
+      // Nur Caddy ist tatsächlich funktional; nginx/Traefik sind reserviert.
+      const backend = ['caddy', 'nginx', 'traefik'].includes(req.body?.backend ?? '') ? req.body!.backend! : 'caddy';
+      appSettingsQueries.set.run('proxy_enabled', enabled ? '1' : '0');
+      appSettingsQueries.set.run('proxy_backend', backend);
+      auditQueries.log.run(req.user.id, 'settings.proxy-visibility', `${enabled ? 'on' : 'off'}/${backend}`);
+      reply.send({ ok: true, enabled, backend });
+    },
+  );
 }

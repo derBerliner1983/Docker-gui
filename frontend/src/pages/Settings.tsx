@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -8,7 +8,7 @@ import { Switch } from '../components/ui/Switch';
 import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import { formatUptime, timeAgo } from '../lib/utils';
-import { useI18n, LANGUAGES } from '../lib/i18n';
+import { useI18n, LANGUAGES, tt } from '../lib/i18n';
 import type { NotificationItem, NotificationConfig, VersionInfo } from '../lib/types';
 
 function LanguagePanel() {
@@ -53,14 +53,14 @@ function PasswordPanel() {
   };
 
   return (
-    <Panel title="Passwort ändern" icon={<KeyRound size={15} />} subtitle="Dein Core-Hub Login" storageKey="set-pw">
+    <Panel title={tt('Passwort ändern')} icon={<KeyRound size={15} />} subtitle={tt('Dein Core-Hub Login')} storageKey="set-pw">
       <div style={{ maxWidth: 360, display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
         {msg && <div className={msg.type === 'ok' ? 'login-error' : 'login-error'} style={msg.type === 'ok' ? { background: 'var(--color-accent-soft)', borderColor: 'var(--color-accent)', color: 'var(--color-accent)' } : undefined}>{msg.text}</div>}
-        <div className="form-group"><label className="form-label">Aktuelles Passwort</label>
+        <div className="form-group"><label className="form-label">{tt('Aktuelles Passwort')}</label>
           <input className="input input--rect" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} /></div>
-        <div className="form-group"><label className="form-label">Neues Passwort</label>
+        <div className="form-group"><label className="form-label">{tt('Neues Passwort')}</label>
           <input className="input input--rect" type="password" value={next} onChange={(e) => setNext(e.target.value)} /></div>
-        <div className="form-group"><label className="form-label">Neues Passwort bestätigen</label>
+        <div className="form-group"><label className="form-label">{tt('Neues Passwort bestätigen')}</label>
           <input className="input input--rect" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></div>
         <button className="btn btn--primary btn--sm" style={{ alignSelf: 'flex-start' }} onClick={save} disabled={loading}>
           {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Passwort speichern
@@ -81,7 +81,7 @@ function MigrationPanel() {
     if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) {
       setError('Bitte eine .tar.gz Datei wählen'); return;
     }
-    if (!confirm('Konfiguration importieren? Bestehende Daten werden überschrieben.')) return;
+    if (!confirm(tt('Konfiguration importieren? Bestehende Daten werden überschrieben.'))) return;
     setImporting(true); setError(''); setResult(null);
     try {
       const res = await api.settings.import(file);
@@ -94,16 +94,16 @@ function MigrationPanel() {
   };
 
   const restart = async () => {
-    if (!confirm('Core-Hub jetzt neustarten?')) return;
-    try { await api.settings.restart(); alert('Neustart ausgelöst. Die Seite lädt in ein paar Sekunden neu.'); setTimeout(() => location.reload(), 6000); }
+    if (!confirm(tt('Core-Hub jetzt neustarten?'))) return;
+    try { await api.settings.restart(); alert(tt('Neustart ausgelöst. Die Seite lädt in ein paar Sekunden neu.')); setTimeout(() => location.reload(), 6000); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
 
   return (
-    <Panel title="Migration: Export / Import" icon={<FileArchive size={15} />} subtitle="Umzug auf einen anderen Server" storageKey="set-migration">
+    <Panel title={tt('Migration: Export / Import')} icon={<FileArchive size={15} />} subtitle={tt('Umzug auf einen anderen Server')} storageKey="set-migration">
       <div style={{ marginTop: 8, fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 14 }}>
         Sichert die komplette Core-Hub-Konfiguration in einer Datei: Datenbank (Benutzer, Proxy-Hosts, Kategorien),
-        <b> Caddy-Zertifikate inkl. Root-CA</b> und SMB-Freigaben. Auf dem neuen Server einfach wieder importieren.
+        <b> {tt('Caddy-Zertifikate inkl. Root-CA')}</b> und SMB-Freigaben. Auf dem neuen Server einfach wieder importieren.
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -132,7 +132,7 @@ function MigrationPanel() {
       >
         <Upload size={26} style={{ opacity: 0.5, marginBottom: 8 }} />
         <div style={{ fontSize: 13, fontWeight: 500 }}>Backup-Datei hierher ziehen (Drag & Drop)</div>
-        <div style={{ fontSize: 11.5, marginTop: 2 }}>oder klicken zum Auswählen · .tar.gz</div>
+        <div style={{ fontSize: 11.5, marginTop: 2 }}>{tt('oder klicken zum Auswählen · .tar.gz')}</div>
       </div>
 
       {error && <div className="login-error" style={{ marginTop: 12 }}>{error}</div>}
@@ -220,7 +220,7 @@ function TwoFactorPanel() {
   };
 
   return (
-    <Panel title="Zwei-Faktor-Authentifizierung (2FA)" icon={<ShieldCheck size={15} />}
+    <Panel title={tt('Zwei-Faktor-Authentifizierung (2FA)')} icon={<ShieldCheck size={15} />}
       subtitle={enabled === null ? undefined : enabled ? 'aktiv' : 'inaktiv'} storageKey="set-2fa"
       actions={enabled !== null && (
         <span className={`badge badge--${enabled ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
@@ -237,7 +237,7 @@ function TwoFactorPanel() {
               Dein Konto ist mit einer Authenticator-App (TOTP) abgesichert. Zum Deaktivieren bitte Passwort eingeben.
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input className="input input--rect" type="password" placeholder="Aktuelles Passwort" value={pw} onChange={(e) => setPw(e.target.value)} style={{ flex: 1 }} />
+              <input className="input input--rect" type="password" placeholder={tt('Aktuelles Passwort')} value={pw} onChange={(e) => setPw(e.target.value)} style={{ flex: 1 }} />
               <button className="btn btn--danger btn--sm" onClick={disable} disabled={busy}>2FA deaktivieren</button>
             </div>
           </>
@@ -251,25 +251,25 @@ function TwoFactorPanel() {
               <QrCode value={setup.otpauth} />
             </div>
             <div style={{ marginBottom: 8 }}>
-              <label className="form-label">Geheimer Schlüssel</label>
+              <label className="form-label">{tt('Geheimer Schlüssel')}</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <code style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 13, background: 'var(--color-surface-sunken)', padding: '8px 10px', borderRadius: 6, letterSpacing: '0.08em', wordBreak: 'break-all' }}>{setup.secret}</code>
-                <button className="btn btn--outline btn--icon btn--sm" title="Kopieren" onClick={() => navigator.clipboard?.writeText(setup.secret)}><Copy size={13} /></button>
+                <button className="btn btn--outline btn--icon btn--sm" title={tt('Kopieren')} onClick={() => navigator.clipboard?.writeText(setup.secret)}><Copy size={13} /></button>
               </div>
             </div>
             <div style={{ marginBottom: 12 }}>
               <label className="form-label">otpauth-Link (Fallback / manuelles Hinzufügen)</label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <code style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--color-surface-sunken)', padding: '8px 10px', borderRadius: 6, wordBreak: 'break-all', maxHeight: 56, overflow: 'auto' }}>{setup.otpauth}</code>
-                <button className="btn btn--outline btn--icon btn--sm" title="Kopieren" onClick={() => navigator.clipboard?.writeText(setup.otpauth)}><Copy size={13} /></button>
+                <button className="btn btn--outline btn--icon btn--sm" title={tt('Kopieren')} onClick={() => navigator.clipboard?.writeText(setup.otpauth)}><Copy size={13} /></button>
               </div>
             </div>
-            <label className="form-label">Code aus der App zum Bestätigen</label>
+            <label className="form-label">{tt('Code aus der App zum Bestätigen')}</label>
             <div style={{ display: 'flex', gap: 8 }}>
               <input className="input input--rect" inputMode="numeric" placeholder="000000" value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 style={{ flex: 1, letterSpacing: '0.3em', textAlign: 'center', fontFamily: 'var(--font-mono)' }} />
-              <button className="btn btn--primary btn--sm" onClick={activate} disabled={busy || code.length !== 6}>Aktivieren</button>
+              <button className="btn btn--primary btn--sm" onClick={activate} disabled={busy || code.length !== 6}>{tt('Aktivieren')}</button>
             </div>
           </>
         ) : (
@@ -313,7 +313,7 @@ function NotificationsPanel() {
   const set = (patch: Partial<NotificationConfig>) => setCfg({ ...cfg, ...patch });
 
   return (
-    <Panel title="Benachrichtigungen" icon={<Bell size={15} />} subtitle="E-Mail & Webhook bei Ereignissen" storageKey="set-notify" defaultCollapsed>
+    <Panel title={tt('Benachrichtigungen')} icon={<Bell size={15} />} subtitle={tt('E-Mail & Webhook bei Ereignissen')} storageKey="set-notify" defaultCollapsed>
       <div style={{ marginTop: 8 }}>
         <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 14 }}>
           Werde bei Backups, Container-Abstürzen, Sicherheits- und Viren-Funden benachrichtigt.
@@ -321,16 +321,16 @@ function NotificationsPanel() {
         </div>
         <div style={{ display: 'grid', gap: 10, maxWidth: 520 }}>
           <div className="form-group">
-            <label className="form-label">Webhook-URL</label>
-            <input className="input input--rect" placeholder="https://discord.com/api/webhooks/…" value={cfg.webhookUrl} onChange={(e) => set({ webhookUrl: e.target.value })} style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+            <label className="form-label">{tt('Webhook-URL')}</label>
+            <input className="input input--rect" placeholder={tt('https://discord.com/api/webhooks/…')} value={cfg.webhookUrl} onChange={(e) => set({ webhookUrl: e.target.value })} style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }} />
           </div>
           <div className="form-group">
-            <label className="form-label">E-Mail-Empfänger</label>
-            <input className="input input--rect" placeholder="admin@example.com" value={cfg.emailTo} onChange={(e) => set({ emailTo: e.target.value })} />
+            <label className="form-label">{tt('E-Mail-Empfänger')}</label>
+            <input className="input input--rect" placeholder={tt('admin@example.com')} value={cfg.emailTo} onChange={(e) => set({ emailTo: e.target.value })} />
           </div>
         </div>
 
-        <div className="section-heading" style={{ marginTop: 16, marginBottom: 8 }}>Ereignisse</div>
+        <div className="section-heading" style={{ marginTop: 16, marginBottom: 8 }}>{tt('Ereignisse')}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360 }}>
           {([['onBackup', 'Backups (geplant)'], ['onContainer', 'Container-Abstürze'], ['onSecurity', 'Sicherheits-Funde'], ['onAntivirus', 'Viren-Funde']] as const).map(([k, label]) => (
             <label key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
@@ -351,13 +351,13 @@ function NotificationsPanel() {
         </div>
 
         <div className="section-heading" style={{ marginTop: 20, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>Verlauf</span>
+          <span>{tt('Verlauf')}</span>
           {items.length > 0 && (
-            <button className="btn btn--ghost btn--xs" onClick={() => act('clear', () => api.notifications.clear())}><Trash2 size={11} /> Leeren</button>
+            <button className="btn btn--ghost btn--xs" onClick={() => act('clear', () => api.notifications.clear())}><Trash2 size={11} /> {tt('Leeren')}</button>
           )}
         </div>
         {items.length === 0 ? (
-          <div style={{ fontSize: 12.5, color: 'var(--color-faint)' }}>Noch keine Benachrichtigungen.</div>
+          <div style={{ fontSize: 12.5, color: 'var(--color-faint)' }}>{tt('Noch keine Benachrichtigungen.')}</div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {items.slice(0, 20).map((n) => (
@@ -419,7 +419,7 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   };
 
   const startUpdate = () => {
-    if (!confirm('Core-Hub jetzt aktualisieren? Der Dienst wird kurz neu gestartet.')) return;
+    if (!confirm(tt('Core-Hub jetzt aktualisieren? Der Dienst wird kurz neu gestartet.'))) return;
     setUpdating(true);
     setUpdateDone(false);
     setUpdateLog(['▶ Update gestartet…']);
@@ -448,7 +448,7 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   };
 
   return (
-    <Panel title="Version & Updates" icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
+    <Panel title={tt('Version & Updates')} icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
       actions={
         <button className="btn btn--outline btn--sm" disabled={checking} onClick={() => check(true)}>
           {checking ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />} Prüfen
@@ -465,7 +465,7 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
           )}
           {ver && !ver.updateAvailable && !ver.error && ver.latest && (
             <span className="badge badge--running" style={{ height: 26, padding: '0 12px' }}>
-              <CheckCircle2 size={13} /> Aktuell
+              <CheckCircle2 size={13} /> {tt('Aktuell')}
             </span>
           )}
         </div>
@@ -510,7 +510,7 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
             )}
             {updating && (
               <button className="btn btn--outline btn--sm" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => { setUpdating(false); setUpdateDone(true); }}>
-                Abbrechen
+                {tt('Abbrechen')}
               </button>
             )}
           </div>
@@ -526,7 +526,105 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   );
 }
 
+function NetworkPanel() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { const r = await api.settings.getIpv6(); setEnabled(r.enabled); }
+    catch { setEnabled(null); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = async (v: boolean) => {
+    if (!v) {
+      if (!confirm(tt('IPv6 deaktivieren? Das System nutzt dann nur noch IPv4. Die Einstellung bleibt auch nach einem Neustart erhalten.'))) return;
+    }
+    setBusy(true);
+    try { await api.settings.setIpv6(v); setEnabled(v); }
+    catch (e) { alert(e instanceof Error ? e.message : 'Fehler beim Umstellen'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={tt('Netzwerk-Protokoll')} icon={<Network size={15} />} subtitle={enabled == null ? undefined : (enabled ? 'IPv4 + IPv6' : 'nur IPv4')} storageKey="set-network" defaultCollapsed>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 0' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>IPv6 aktivieren</div>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 460 }}>
+              Standardmäßig läuft das System <strong>{tt('nur über IPv4')}</strong>. Aktiviere IPv6 nur, wenn dein Netzwerk
+              es benötigt. Die Einstellung wird über <code style={{ fontFamily: 'var(--font-mono)' }}>sysctl</code> gesetzt
+              und bleibt nach einem Neustart erhalten.
+            </div>
+          </div>
+          {enabled == null ? (
+            <span className="spinner" style={{ width: 16, height: 16 }} />
+          ) : (
+            <div onClick={(e) => e.stopPropagation()} style={{ opacity: busy ? 0.5 : 1 }}>
+              <Switch checked={enabled} onChange={(v) => void toggle(v)} />
+            </div>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+function ProxyVisibilityPanel() {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [backend, setBackend] = useState('caddy');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { const r = await api.settings.getProxyVisibility(); setEnabled(r.enabled); setBackend(r.backend || 'caddy'); }
+    catch { setEnabled(null); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async (nextEnabled: boolean, nextBackend: string) => {
+    setBusy(true);
+    try { await api.settings.setProxyVisibility(nextEnabled, nextBackend); setEnabled(nextEnabled); setBackend(nextBackend); }
+    catch (e) { alert(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={t('settings.proxy')} icon={<ShieldCheck size={15} />} subtitle={enabled == null ? undefined : (enabled ? backend : t('common.no'))} storageKey="set-proxy" defaultCollapsed>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 0' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{t('settings.proxy.enable')}</div>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.desc')}</div>
+          </div>
+          {enabled == null ? (
+            <span className="spinner" style={{ width: 16, height: 16 }} />
+          ) : (
+            <div onClick={(e) => e.stopPropagation()} style={{ opacity: busy ? 0.5 : 1 }}>
+              <Switch checked={enabled} onChange={(v) => void save(v, backend)} />
+            </div>
+          )}
+        </div>
+        {enabled && (
+          <div style={{ paddingTop: 6 }}>
+            <label className="form-label">{t('settings.proxy.backend')}</label>
+            <select className="input input--rect" style={{ width: '100%', maxWidth: 320 }} value={backend} disabled={busy}
+              onChange={(e) => void save(true, e.target.value)}>
+              <option value="caddy">{t('settings.proxy.backend.caddy')}</option>
+              <option value="nginx" disabled>{t('settings.proxy.backend.nginx')}</option>
+              <option value="traefik" disabled>{t('settings.proxy.backend.traefik')}</option>
+            </select>
+            <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.backend.hint')}</div>
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
+  const { t } = useI18n();
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.settings.info>> | null>(null);
 
   const load = useCallback(async () => {
@@ -536,10 +634,12 @@ export function Settings() {
 
   return (
     <>
-      <Topbar title="Einstellungen" subtitle={info ? `Core-Hub v${info.version}` : undefined} />
+      <Topbar title={t('nav.settings')} subtitle={info ? t('page.settings.subtitle', { version: info.version }) : undefined} />
       <main className="page">
         <SortablePanels storageKey="settings" items={[
           { id: 'language', node: <LanguagePanel /> },
+          { id: 'network', node: <NetworkPanel /> },
+          { id: 'proxy', node: <ProxyVisibilityPanel /> },
           { id: 'version', node: <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} /> },
           { id: 'password', node: <PasswordPanel /> },
           { id: '2fa', node: <TwoFactorPanel /> },
@@ -547,20 +647,20 @@ export function Settings() {
           { id: 'notifications', node: <NotificationsPanel /> },
           { id: 'migration', node: <MigrationPanel /> },
           { id: 'sysinfo', node: (
-        <Panel title="System-Info" icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>
+        <Panel title={tt('System-Info')} icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>
           {info && (
             <div style={{ marginTop: 8 }}>
               <table className="dtable">
                 <tbody>
-                  <tr><td className="text-muted" style={{ width: 180 }}>Version</td><td style={{ fontWeight: 600 }}>Core-Hub {info.version}</td></tr>
-                  <tr><td className="text-muted">Host</td><td>{info.hostname}</td></tr>
-                  <tr><td className="text-muted">Plattform</td><td>{info.platform}</td></tr>
-                  <tr><td className="text-muted">Node.js</td><td className="dtable__mono">{info.node}</td></tr>
-                  <tr><td className="text-muted">Datenverzeichnis</td><td className="dtable__mono">{info.dataDir}</td></tr>
-                  <tr><td className="text-muted">Laufzeit</td><td>{formatUptime(info.uptime)}</td></tr>
+                  <tr><td className="text-muted" style={{ width: 180 }}>{tt('Version')}</td><td style={{ fontWeight: 600 }}>Core-Hub {info.version}</td></tr>
+                  <tr><td className="text-muted">{tt('Host')}</td><td>{info.hostname}</td></tr>
+                  <tr><td className="text-muted">{tt('Plattform')}</td><td>{info.platform}</td></tr>
+                  <tr><td className="text-muted">{tt('Node.js')}</td><td className="dtable__mono">{info.node}</td></tr>
+                  <tr><td className="text-muted">{tt('Datenverzeichnis')}</td><td className="dtable__mono">{info.dataDir}</td></tr>
+                  <tr><td className="text-muted">{tt('Laufzeit')}</td><td>{formatUptime(info.uptime)}</td></tr>
                 </tbody>
               </table>
-              <div className="section-heading" style={{ marginTop: 18, marginBottom: 8 }}>Erkannte Module</div>
+              <div className="section-heading" style={{ marginTop: 18, marginBottom: 8 }}>{tt('Erkannte Module')}</div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {Object.entries(info.features).map(([k, v]) => (
                   <span key={k} className={`badge badge--${v ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>

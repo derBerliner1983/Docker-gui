@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, Lightbulb, Wrench, Terminal, FileDown, Globe, Home, Pencil, Monitor, Trash2, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -58,7 +59,7 @@ function FindingRow({ f, onFix, fixing, showZoneBadge = true }: { f: SecurityFin
           <span style={{ fontSize: 13.5, fontWeight: 600 }}>{f.title}</span>
           <span className="badge badge--paused" style={{ fontSize: 10 }}>{f.category}</span>
           {zone && showZoneBadge && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }} title="Empfehlung für diesen Dienst">
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: zone.bg, color: zone.color }} title={tt('Empfehlung für diesen Dienst')}>
               <zone.Icon size={10} /> Empf.: {zone.label}
             </span>
           )}
@@ -137,7 +138,7 @@ function SshPanel() {
   useEffect(() => { void load(); }, [load]);
 
   const control = async (action: 'start' | 'stop' | 'enable' | 'disable') => {
-    if ((action === 'stop' || action === 'disable') && !confirm('Achtung: Ohne SSH verlierst du ggf. den Remote-Zugang. Fortfahren?')) return;
+    if ((action === 'stop' || action === 'disable') && !confirm(tt('Achtung: Ohne SSH verlierst du ggf. den Remote-Zugang. Fortfahren?'))) return;
     setBusy(true);
     try { await api.security.sshControl(action); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
@@ -145,18 +146,18 @@ function SshPanel() {
   };
 
   return (
-    <Panel title="SSH-Zugang" icon={<Terminal size={15} />} subtitle={ssh ? `Port ${ssh.port} · ${ssh.unit}` : undefined} storageKey="sec-ssh">
-      {!ssh ? <div className="text-muted text-sm" style={{ padding: 8 }}>Lade…</div> : !ssh.installed ? (
-        <div className="text-muted text-sm" style={{ padding: 8 }}>SSH-Server nicht installiert.</div>
+    <Panel title={tt('SSH-Zugang')} icon={<Terminal size={15} />} subtitle={ssh ? `Port ${ssh.port} · ${ssh.unit}` : undefined} storageKey="sec-ssh">
+      {!ssh ? <div className="text-muted text-sm" style={{ padding: 8 }}>{tt('Lade…')}</div> : !ssh.installed ? (
+        <div className="text-muted text-sm" style={{ padding: 8 }}>{tt('SSH-Server nicht installiert.')}</div>
       ) : (
         <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Dienst läuft</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>{tt('Dienst läuft')}</span>
             <Switch checked={ssh.active} disabled={busy} onChange={(v) => control(v ? 'start' : 'stop')} />
             <span className={`badge badge--${ssh.active ? 'running' : 'stopped'}`}><span className="badge__dot" />{ssh.active ? 'aktiv' : 'gestoppt'}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12.5, fontWeight: 600 }}>Autostart</span>
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>{tt('Autostart')}</span>
             <Switch checked={ssh.enabled} disabled={busy} onChange={(v) => control(v ? 'enable' : 'disable')} />
             <span className="text-muted text-sm">{ssh.enabled ? 'beim Boot' : 'deaktiviert'}</span>
           </div>
@@ -185,7 +186,7 @@ function exportPdf(scan: SecurityScan) {
 
   const html = `<!DOCTYPE html>
 <html lang="de"><head><meta charset="utf-8">
-<title>Core-Hub Sicherheitsbericht</title>
+<title>{tt('Core-Hub Sicherheitsbericht')}</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,sans-serif;background:#fff;color:#111827;padding:48px;font-size:14px}
@@ -210,34 +211,34 @@ function exportPdf(scan: SecurityScan) {
 <div class="header">
   <div class="score-ring"><span class="score-val">${scan.score}</span><span class="score-sub">/ 100</span></div>
   <div>
-    <h1>Core-Hub Sicherheitsbericht</h1>
+    <h1>{tt('Core-Hub Sicherheitsbericht')}</h1>
     <div class="grade">${scan.grade}</div>
-    <div class="meta">Erstellt am: <strong>${dateStr}</strong></div>
+    <div class="meta">{tt('Erstellt am:')} <strong>${dateStr}</strong></div>
     <div class="counts">
-      <div class="count"><strong style="color:#ef4444">${scan.counts.critical}</strong> Kritisch</div>
-      <div class="count"><strong style="color:#f59e0b">${scan.counts.warn}</strong> Warnung</div>
+      <div class="count"><strong style="color:#ef4444">${scan.counts.critical}</strong> {tt('Kritisch')}</div>
+      <div class="count"><strong style="color:#f59e0b">${scan.counts.warn}</strong> {tt('Warnung')}</div>
       <div class="count"><strong style="color:#22c55e">${scan.counts.ok}</strong> OK</div>
-      <div class="count"><strong style="color:#6366f1">${scan.counts.info}</strong> Info</div>
+      <div class="count"><strong style="color:#6366f1">${scan.counts.info}</strong> {tt('Info')}</div>
     </div>
   </div>
 </div>
 
 ${scan.counts.critical === 0 && scan.counts.warn === 0 ? `
-<div class="stamp">✅ Alle kritischen Prüfungen bestanden – keine Handlungspunkte offen</div>` : ''}
+<div class="stamp">{tt('✅ Alle kritischen Prüfungen bestanden – keine Handlungspunkte offen')}</div>` : ''}
 
-<h2>Prüfungsergebnisse</h2>
+<h2>{tt('Prüfungsergebnisse')}</h2>
 <table>
   <thead><tr>
     <th style="width:32px"></th>
-    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">Prüfpunkt</th>
-    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">Kategorie</th>
-    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">Details</th>
+    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">{tt('Prüfpunkt')}</th>
+    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">{tt('Kategorie')}</th>
+    <th style="text-align:left;padding:6px 8px;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb">{tt('Details')}</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
 
 <div class="footer">
-  <span>Core-Hub · Automatischer Sicherheitsbericht</span>
+  <span>{tt('Core-Hub · Automatischer Sicherheitsbericht')}</span>
   <span>${dateStr}</span>
 </div>
 <script>window.onload=()=>{window.print()}<\/script>
@@ -288,7 +289,7 @@ function SessionsPanel() {
   };
 
   const revokeAll = async (userId: number) => {
-    if (!confirm('Alle Sitzungen dieses Benutzers widerrufen?')) return;
+    if (!confirm(tt('Alle Sitzungen dieses Benutzers widerrufen?'))) return;
     try { await api.users.revokeSessions(userId); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
   };
@@ -302,7 +303,7 @@ function SessionsPanel() {
 
   return (
     <Panel
-      title="Geräte & Sitzungen"
+      title={tt('Geräte & Sitzungen')}
       icon={<Monitor size={15} />}
       subtitle={`${active.length} aktiv${revoked.length ? ` · ${revoked.length} widerrufen` : ''}`}
       storageKey="sec-sessions"
@@ -315,7 +316,7 @@ function SessionsPanel() {
           value={selectedUser === 'all' ? 'all' : String(selectedUser)}
           onChange={(e) => setSelectedUser(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
         >
-          <option value="all">Alle Benutzer</option>
+          <option value="all">{tt('Alle Benutzer')}</option>
           {users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
         </select>
         {typeof selectedUser === 'number' && (
@@ -323,22 +324,22 @@ function SessionsPanel() {
             <LogOut size={12} /> Alle widerrufen
           </button>
         )}
-        <button className="btn btn--ghost btn--icon btn--sm" onClick={load} disabled={loading} title="Aktualisieren">
+        <button className="btn btn--ghost btn--icon btn--sm" onClick={load} disabled={loading} title={tt('Aktualisieren')}>
           {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <span style={{ fontSize: 11 }}>↻</span>}
         </button>
       </div>
 
       {active.length === 0 && !loading ? (
-        <div className="text-muted text-sm">Keine aktiven Sitzungen.</div>
+        <div className="text-muted text-sm">{tt('Keine aktiven Sitzungen.')}</div>
       ) : (
         <table className="dtable">
           <thead>
             <tr>
-              <th>Benutzer</th>
-              <th>Gerät</th>
+              <th>{tt('Benutzer')}</th>
+              <th>{tt('Gerät')}</th>
               <th>IP</th>
-              <th>Erstellt</th>
-              <th>Zuletzt gesehen</th>
+              <th>{tt('Erstellt')}</th>
+              <th>{tt('Zuletzt gesehen')}</th>
               <th style={{ width: 40 }}></th>
             </tr>
           </thead>
@@ -353,7 +354,7 @@ function SessionsPanel() {
                 <td>
                   <button
                     className="btn btn--danger btn--icon btn--sm"
-                    title="Sitzung widerrufen"
+                    title={tt('Sitzung widerrufen')}
                     disabled={revoking === s.id}
                     onClick={() => revoke(s.id)}
                   >
@@ -370,6 +371,7 @@ function SessionsPanel() {
 }
 
 export function Security() {
+  const t = useT();
   const [scan, setScan] = useState<SecurityScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing] = useState<string | null>(null);
@@ -398,7 +400,7 @@ export function Security() {
       } else if (['22', '80', '443', '4200'].includes(port) && lan === '0') {
         if (!confirm(`Achtung: LAN-Zugriff auf Port ${port} sperren? Du könntest dich aus dem lokalen Netz aussperren.`)) return;
       }
-    } else if (!confirm('Sicherheits-Maßnahme jetzt anwenden?')) return;
+    } else if (!confirm(tt('Sicherheits-Maßnahme jetzt anwenden?'))) return;
     setFixing(action);
     try { await api.security.fix(action); await run(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
@@ -417,13 +419,13 @@ export function Security() {
   return (
     <>
       <Topbar
-        title="Sicherheit"
-        subtitle={scan ? `Geprüft: ${new Date(scan.scannedAt).toLocaleTimeString('de-DE')}` : undefined}
+        title={t('nav.security')}
+        subtitle={scan ? t('page.security.subtitle', { time: new Date(scan.scannedAt).toLocaleTimeString() }) : undefined}
         onRefresh={run}
         refreshing={loading}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
-            {scan && <button className="btn btn--outline btn--sm" onClick={() => exportPdf(scan)} title="Sicherheitsbericht als PDF exportieren"><FileDown size={13} /> Bericht (PDF)</button>}
+            {scan && <button className="btn btn--outline btn--sm" onClick={() => exportPdf(scan)} title={tt('Sicherheitsbericht als PDF exportieren')}><FileDown size={13} /> Bericht (PDF)</button>}
             <button className="btn btn--primary btn--sm" onClick={run} disabled={loading}>{loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <ShieldCheck size={13} />} Erneut prüfen</button>
           </div>
         }
@@ -468,7 +470,7 @@ export function Security() {
             <SortablePanels storageKey="security" items={[
             { id: 'action', node: (
             <Panel
-              title="Handlungsbedarf"
+              title={tt('Handlungsbedarf')}
               icon={<ShieldAlert size={15} />}
               subtitle={`${actionable.length} Punkte`}
               storageKey="sec-action"
@@ -476,8 +478,8 @@ export function Security() {
               {actionable.length === 0 ? (
                 <div className="empty-state" style={{ padding: '36px 20px' }}>
                   <div className="empty-state__icon"><ShieldCheck size={40} strokeWidth={1.2} color="var(--color-success)" /></div>
-                  <div className="empty-state__title">Keine Probleme gefunden</div>
-                  <div className="empty-state__desc">Alle geprüften Punkte sind in Ordnung. Gut gemacht!</div>
+                  <div className="empty-state__title">{tt('Keine Probleme gefunden')}</div>
+                  <div className="empty-state__desc">{tt('Alle geprüften Punkte sind in Ordnung. Gut gemacht!')}</div>
                 </div>
               ) : (
                 <div style={{ marginTop: 2 }}>
@@ -489,7 +491,7 @@ export function Security() {
             { id: 'ssh', node: <SshPanel /> },
             { id: 'network', node: (<>
             <Panel
-              title="Netzwerkzugang"
+              title={tt('Netzwerkzugang')}
               icon={<Globe size={15} />}
               subtitle={`${networkFindings.filter((f) => f.internet && f.accessZone === 'lan-only').length} kritisch im Internet`}
               storageKey="sec-network"
@@ -498,7 +500,7 @@ export function Security() {
                   <button
                     className="btn btn--outline btn--sm"
                     onClick={() => setNetModalOpen(true)}
-                    title="Port-Zugriff (LAN/Internet) bearbeiten"
+                    title={tt('Port-Zugriff (LAN/Internet) bearbeiten')}
                     style={{ fontSize: 11, padding: '2px 10px' }}
                   >
                     <Pencil size={12} /> Bearbeiten
@@ -512,7 +514,7 @@ export function Security() {
                 </div>
               )}
               {networkFindings.length === 0 ? (
-                <div className="text-muted text-sm">Keine Netzwerkbefunde.</div>
+                <div className="text-muted text-sm">{tt('Keine Netzwerkbefunde.')}</div>
               ) : (
                 <div style={{ marginTop: 2 }}>
                   {networkFindings.map((f) => <NetSummaryRow key={f.id} f={f} showZoneBadge={showZoneBadge} />)}
@@ -523,15 +525,15 @@ export function Security() {
             {/* Bearbeiten-Popup: LAN/Internet pro Port schalten */}
             <Modal
               open={netModalOpen}
-              title="Netzwerkzugang bearbeiten"
+              title={tt('Netzwerkzugang bearbeiten')}
               onClose={() => setNetModalOpen(false)}
               width={680}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
                 <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
-                  Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>Internet</b> (von überall erreichbar).
-                  {' '}Die Schalter zeigen den <b>echten Firewall-Zustand</b> und ändern ihn sofort.
-                  {' '}Mit <b>Pangolin/Newt</b> laufen externe Dienste über den Tunnel – direkte Internet-Ports kannst du gefahrlos abschalten.
+                  Pro Port getrennt schaltbar: <b>LAN</b> (nur lokales Netz, z. B. 192.168.x.x) und <b>{tt('Internet')}</b> (von überall erreichbar).
+                  {' '}Die Schalter zeigen den <b>{tt('echten Firewall-Zustand')}</b> und ändern ihn sofort.
+                  {' '}Mit <b>{tt('Pangolin/Newt')}</b> laufen externe Dienste über den Tunnel – direkte Internet-Ports kannst du gefahrlos abschalten.
                 </div>
                 <button
                   className="btn btn--outline btn--sm"
@@ -564,7 +566,7 @@ export function Security() {
             { id: 'sessions', node: <SessionsPanel /> },
             { id: 'passed', node: (
             <Panel
-              title="Bestandene Prüfungen"
+              title={tt('Bestandene Prüfungen')}
               icon={<ShieldCheck size={15} />}
               subtitle={`${passed.length} OK`}
               storageKey="sec-passed"

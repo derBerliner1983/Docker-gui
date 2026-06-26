@@ -5,6 +5,7 @@ import {
   ChevronDown, Info, Globe, WifiOff, Lock, LockOpen, Play, Power, Timer,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
@@ -180,7 +181,7 @@ function LoadModal({
     <Modal open={open} title={`In Speicher laden: ${shortName(model.name)}`} onClose={onClose} width={520}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn btn--sm btn--outline" onClick={onClose} disabled={busy}>Abbrechen</button>
+          <button className="btn btn--sm btn--outline" onClick={onClose} disabled={busy}>{tt('Abbrechen')}</button>
           <button className="btn btn--sm btn--primary" disabled={busy} onClick={() => onLoad(ctx > 0 ? ctx : undefined, keep)}>
             {busy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />} In Speicher laden
           </button>
@@ -199,11 +200,11 @@ function LoadModal({
             ))}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Eigener Wert:</span>
+            <span style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>{tt('Eigener Wert:')}</span>
             <input className="input" type="number" min={0} step={512} style={{ width: 130, fontSize: 12 }}
-              value={ctx || ''} placeholder="z.B. 8192" disabled={busy}
+              value={ctx || ''} placeholder={tt('z.B. 8192')} disabled={busy}
               onChange={(e) => setCtx(Math.max(0, parseInt(e.target.value) || 0))} />
-            <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>Token</span>
+            <span style={{ fontSize: 11, color: 'var(--color-faint)' }}>{tt('Token')}</span>
           </div>
           <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.6 }}>
             Größerer Kontext = mehr Speicherbedarf. „Standard" nutzt den im Modell hinterlegten Wert.
@@ -241,7 +242,7 @@ function HWCard({ hw }: { hw: KiHardware }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <MemoryStick size={18} color={color} />
           <div>
-            <div style={{ fontSize: 12, fontWeight: 700 }}>System-RAM</div>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{tt('System-RAM')}</div>
             <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>{hw.totalRamGb} GB</div>
           </div>
         </div>
@@ -260,7 +261,7 @@ function HWCard({ hw }: { hw: KiHardware }) {
           </div>
         ))}
         <div style={{ flex: 1, minWidth: 180 }}>
-          <div style={{ fontSize: 11.5, color, fontWeight: 600 }}>Empfehlung</div>
+          <div style={{ fontSize: 11.5, color, fontWeight: 600 }}>{tt('Empfehlung')}</div>
           <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 2 }}>{hw.recommendation}</div>
         </div>
         <div style={{ fontSize: 11, color: 'var(--color-faint)', flexShrink: 0 }}>
@@ -338,7 +339,7 @@ function ModelDetailModal({
 
       {/* Capabilities */}
       <div>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Fähigkeiten</div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{tt('Fähigkeiten')}</div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
           {caps.map((c) => <CapBadge key={c} cap={c} />)}
         </div>
@@ -368,7 +369,7 @@ function ModelDetailModal({
       {/* Raw parameters if any */}
       {info?.parameters && (
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Parameter</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{tt('Parameter')}</div>
           <pre style={{ background: 'var(--color-surface-sunken)', borderRadius: 6, padding: '8px 12px', fontSize: 11, overflow: 'auto', maxHeight: 120, color: 'var(--color-muted)', margin: 0 }}>{info.parameters}</pre>
         </div>
       )}
@@ -378,6 +379,7 @@ function ModelDetailModal({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function Ai() {
+  const t = useT();
   const [status, setStatus] = useState<OllamaStatus | null>(null);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [running, setRunning] = useState<OllamaPsModel[]>([]);
@@ -542,7 +544,7 @@ export function Ai() {
     try {
       const r = await api.ki.hfFiles(id);
       setGgufModal({ id, files: r.files });
-    } catch { alert('GGUF-Dateien konnten nicht geladen werden'); }
+    } catch { alert(tt('GGUF-Dateien konnten nicht geladen werden')); }
     finally { setGgufLoading(null); }
   };
 
@@ -560,7 +562,7 @@ export function Ai() {
   if (!status) {
     return (
       <>
-        <Topbar title="KI-Modelle" />
+        <Topbar title={t('nav.ai')} />
         <main className="page"><div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner" style={{ width: 28, height: 28 }} /></div></main>
       </>
     );
@@ -569,12 +571,12 @@ export function Ai() {
   if (!status.installed) {
     return (
       <>
-        <Topbar title="KI-Modelle" />
+        <Topbar title={t('nav.ai')} />
         <main className="page">
           <div className="card">
             <div className="card-body" style={{ textAlign: 'center', padding: '48px 24px' }}>
               <BrainCircuit size={48} strokeWidth={1.2} color="var(--color-faint)" style={{ marginBottom: 16 }} />
-              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Ollama nicht installiert</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{tt('Ollama nicht installiert')}</div>
               <div style={{ fontSize: 13.5, color: 'var(--color-muted)', marginBottom: 24 }}>
                 Ollama ermöglicht lokale KI-Modelle ohne Cloud-Abhängigkeit.<br />
                 Installiere es mit einem einzigen Befehl:
@@ -592,8 +594,8 @@ export function Ai() {
   return (
     <>
       <Topbar
-        title="KI-Modelle"
-        subtitle={`${models.length} Modell${models.length !== 1 ? 'e' : ''} · ${fmtBytes(totalSize)} belegt`}
+        title={t('nav.ai')}
+        subtitle={t('page.ai.subtitle', { n: models.length, size: fmtBytes(totalSize) })}
         onRefresh={refresh}
         refreshing={loading}
       />
@@ -622,7 +624,7 @@ export function Ai() {
           {/* Netzwerkzugang */}
           <div style={{ borderTop: '1px solid var(--color-border)', padding: '8px 18px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <Globe size={14} color="var(--color-faint)" style={{ flexShrink: 0 }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>Netzwerkzugang</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-muted)' }}>{tt('Netzwerkzugang')}</span>
             <button
               className={`btn btn--sm ${access?.mode === 'local' ? 'btn--primary' : 'btn--outline'}`}
               disabled={accessBusy || (access?.httpsUrls.length ?? 0) > 0}
@@ -678,7 +680,7 @@ export function Ai() {
         <SortablePanels storageKey="ai" items={[
           { id: 'loaded', node: (
         <Panel
-          title="Aktiv im Speicher"
+          title={tt('Aktiv im Speicher')}
           icon={<MemoryStick size={15} />}
           subtitle={`${running.length} Modell${running.length !== 1 ? 'e' : ''} im RAM/VRAM · mehrere gleichzeitig möglich`}
           storageKey="ki-running"
@@ -686,7 +688,7 @@ export function Ai() {
           {running.length === 0 ? (
             <div className="empty-state" style={{ padding: '24px 20px' }}>
               <div className="empty-state__icon"><MemoryStick size={32} strokeWidth={1.2} /></div>
-              <div className="empty-state__title">Kein Modell aktiv im Speicher</div>
+              <div className="empty-state__title">{tt('Kein Modell aktiv im Speicher')}</div>
               <div className="empty-state__desc">Lade unten ein installiertes Modell in den RAM oder die GPU (Play-Symbol).</div>
             </div>
           ) : (
@@ -694,11 +696,11 @@ export function Ai() {
               <table className="dtable">
                 <thead>
                   <tr>
-                    <th>Modell</th>
-                    <th>Speicherort</th>
-                    <th>Größe</th>
-                    <th>Kontext</th>
-                    <th>Läuft ab</th>
+                    <th>{tt('Modell')}</th>
+                    <th>{tt('Speicherort')}</th>
+                    <th>{tt('Größe')}</th>
+                    <th>{tt('Kontext')}</th>
+                    <th>{tt('Läuft ab')}</th>
                     <th style={{ width: 110 }}></th>
                   </tr>
                 </thead>
@@ -731,7 +733,7 @@ export function Ai() {
                             style={{ color: 'var(--color-error)', borderColor: 'var(--color-error)', fontSize: 11 }}
                             disabled={unloading === r.name}
                             onClick={() => unloadFromMemory(r.name)}
-                            title="Modell aus dem Speicher entladen"
+                            title={tt('Modell aus dem Speicher entladen')}
                           >
                             {unloading === r.name ? <span className="spinner" style={{ width: 10, height: 10 }} /> : <Power size={11} />} Entladen
                           </button>
@@ -746,25 +748,25 @@ export function Ai() {
         </Panel>
           ) },
           { id: 'models', node: (
-        <Panel title="Installierte Modelle" icon={<Cpu size={15} />} subtitle={`${models.length} Modelle · Klicken für Details`} storageKey="ki-models">
+        <Panel title={tt('Installierte Modelle')} icon={<Cpu size={15} />} subtitle={`${models.length} Modelle · Klicken für Details`} storageKey="ki-models">
           {models.length === 0 ? (
             <div className="empty-state" style={{ padding: '32px 20px' }}>
               <div className="empty-state__icon"><BrainCircuit size={36} strokeWidth={1.2} /></div>
-              <div className="empty-state__title">Noch keine Modelle geladen</div>
-              <div className="empty-state__desc">Wähle unten ein Modell aus oder suche auf HuggingFace.</div>
+              <div className="empty-state__title">{tt('Noch keine Modelle geladen')}</div>
+              <div className="empty-state__desc">{tt('Wähle unten ein Modell aus oder suche auf HuggingFace.')}</div>
             </div>
           ) : (
             <div className="table-scroll" style={{ marginTop: 6 }}>
               <table className="dtable">
                 <thead>
                   <tr>
-                    <th>Modell</th>
-                    <th>Fähigkeiten</th>
-                    <th>Größe</th>
-                    <th>Parameter</th>
-                    <th>Quantisierung</th>
-                    <th>Familie</th>
-                    <th>Aktualisiert</th>
+                    <th>{tt('Modell')}</th>
+                    <th>{tt('Fähigkeiten')}</th>
+                    <th>{tt('Größe')}</th>
+                    <th>{tt('Parameter')}</th>
+                    <th>{tt('Quantisierung')}</th>
+                    <th>{tt('Familie')}</th>
+                    <th>{tt('Aktualisiert')}</th>
                     <th style={{ width: 84 }}></th>
                   </tr>
                 </thead>
@@ -802,7 +804,7 @@ export function Ai() {
                                 style={{ color: 'var(--color-error)' }}
                                 disabled={unloading === m.name}
                                 onClick={() => unloadFromMemory(m.name)}
-                                title="Aus Speicher entladen"
+                                title={tt('Aus Speicher entladen')}
                               >
                                 {unloading === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Power size={12} />}
                               </button>
@@ -812,7 +814,7 @@ export function Ai() {
                                 style={{ color: 'var(--color-accent)' }}
                                 disabled={loadingMem === m.name}
                                 onClick={() => setLoadTarget(m)}
-                                title="In Speicher laden (RAM/GPU)"
+                                title={tt('In Speicher laden (RAM/GPU)')}
                               >
                                 {loadingMem === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />}
                               </button>
@@ -822,7 +824,7 @@ export function Ai() {
                               style={{ color: 'var(--color-error)' }}
                               disabled={deleting === m.name}
                               onClick={() => remove(m.name)}
-                              title="Löschen"
+                              title={tt('Löschen')}
                             >
                               {deleting === m.name ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Trash2 size={12} />}
                             </button>
@@ -838,7 +840,7 @@ export function Ai() {
         </Panel>
           ) },
           { id: 'pull', node: (
-        <Panel title="Modell laden" icon={<Download size={15} />} subtitle="Beliebte Modelle · HuggingFace-Suche" storageKey="ki-pull">
+        <Panel title={tt('Modell laden')} icon={<Download size={15} />} subtitle={tt('Beliebte Modelle · HuggingFace-Suche')} storageKey="ki-pull">
 
           {/* Download progress */}
           {pulling.size > 0 && (
@@ -855,7 +857,7 @@ export function Ai() {
               <input
                 className="input"
                 style={{ paddingLeft: 30, width: '100%', fontSize: 12.5 }}
-                placeholder="Suchen (lokal + HuggingFace GGUF-Modelle)…"
+                placeholder={tt('Suchen (lokal + HuggingFace GGUF-Modelle)…')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -904,10 +906,10 @@ export function Ai() {
                         onClick={() => pull(pm.name)}
                       >
                         {isLoading
-                          ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</>
+                          ? <><span className="spinner" style={{ width: 10, height: 10 }} /> {tt('Lädt…')}</>
                           : installed
-                            ? <><RefreshCw size={10} /> Neu laden</>
-                            : <><Download size={10} /> Laden</>}
+                            ? <><RefreshCw size={10} /> {tt('Neu laden')}</>
+                            : <><Download size={10} /> {tt('Laden')}</>}
                       </button>
                     </div>
                   );
@@ -944,8 +946,8 @@ export function Ai() {
                         onClick={() => void openGguf(m.id)}
                       >
                         {ggufLoading === m.id
-                          ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</>
-                          : <><Download size={10} /> Quantisierung wählen</>}
+                          ? <><span className="spinner" style={{ width: 10, height: 10 }} /> {tt('Lädt…')}</>
+                          : <><Download size={10} /> {tt('Quantisierung wählen')}</>}
                       </button>
                     </div>
                   ))}
@@ -961,13 +963,13 @@ export function Ai() {
               <input
                 className="input"
                 style={{ flex: 1, fontSize: 12.5 }}
-                placeholder="z.B. llama3.1:70b · hf.co/bartowski/Llama-3-8B-GGUF"
+                placeholder={tt('z.B. llama3.1:70b · hf.co/bartowski/Llama-3-8B-GGUF')}
                 value={customModel}
                 onChange={(e) => setCustomModel(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && void pull(customModel)}
               />
               <button className="btn btn--primary" disabled={!customModel.trim()} onClick={() => void pull(customModel)}>
-                <Download size={13} /> Laden
+                <Download size={13} /> {tt('Laden')}
               </button>
             </div>
           </div>
@@ -1007,7 +1009,7 @@ export function Ai() {
               Q4_K_M bietet den besten Kompromiss aus Qualität und Dateigröße. Größere Quantisierungen (Q8) sind qualitativ besser, brauchen aber mehr RAM.
             </div>
             {ggufModal.files.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--color-faint)', padding: 12 }}>Keine GGUF-Dateien gefunden.</div>
+              <div style={{ fontSize: 12, color: 'var(--color-faint)', padding: 12 }}>{tt('Keine GGUF-Dateien gefunden.')}</div>
             ) : (
               ggufModal.files.map((f) => {
                 const tag = `hf.co/${ggufModal.id}:${f.ollamaTag}`;
@@ -1022,7 +1024,7 @@ export function Ai() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700, fontFamily: 'var(--font-mono)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         {f.quant}
-                        {isRecommended && <span style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 600 }}>Empfohlen</span>}
+                        {isRecommended && <span style={{ fontSize: 10, color: 'var(--color-accent)', fontWeight: 600 }}>{tt('Empfohlen')}</span>}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--color-faint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.filename}</div>
                     </div>
@@ -1036,8 +1038,8 @@ export function Ai() {
                       onClick={() => { void pull(tag); setGgufModal(null); }}
                     >
                       {isLoading
-                        ? <><span className="spinner" style={{ width: 10, height: 10 }} /> Lädt…</>
-                        : <><Download size={10} /> Laden</>}
+                        ? <><span className="spinner" style={{ width: 10, height: 10 }} /> {tt('Lädt…')}</>
+                        : <><Download size={10} /> {tt('Laden')}</>}
                     </button>
                   </div>
                 );

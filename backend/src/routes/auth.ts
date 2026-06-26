@@ -44,7 +44,7 @@ export async function authRoutes(fastify: FastifyInstance) {
     const ip = req.ip ?? 'unknown';
     const { blocked, waitMinutes } = checkRateLimit(ip);
     if (blocked) {
-      return reply.status(429).send({ error: `Zu viele Fehlversuche. Bitte in ${waitMinutes} Minuten erneut versuchen.` });
+      return reply.status(429).send({ error: `Zu viele Fehlversuche. Bitte in ${waitMinutes} Minuten erneut versuchen.`, errorKey: 'err.too_many_attempts', errorVars: { minutes: waitMinutes } });
     }
 
     const user = userQueries.getByUsername.get(username);

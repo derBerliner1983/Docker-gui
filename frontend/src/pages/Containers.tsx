@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil, X, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
@@ -78,7 +79,7 @@ function NetworksPicker({ networks, onChange }: {
     try {
       await api.networks.create({ name: netName, driver: 'macvlan', parent: newParent, subnet: newSubnet, gateway: newGw || undefined, vlan: newVlan || undefined });
     } catch (e) {
-      const msg = e instanceof Error ? e.message : '';
+      const msg = (e as { raw?: string }).raw ?? (e instanceof Error ? e.message : '');
       if (!/exists|in use/i.test(msg)) { setCreateErr(`Fehler: ${msg}`); setCreateBusy(false); return; }
     }
     try {
@@ -100,9 +101,9 @@ function NetworksPicker({ networks, onChange }: {
 
   return (
     <div className="form-group">
-      <label className="form-label">Netzwerk / IP-Adresse</label>
+      <label className="form-label">{tt('Netzwerk / IP-Adresse')}</label>
       <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 6 }}>
-        Mit einem Macvlan-Netzwerk bekommt der Container eine <strong>eigene IP im Heimnetz</strong> (kein Port-Mapping nötig).
+        Mit einem Macvlan-Netzwerk bekommt der Container eine <strong>{tt('eigene IP im Heimnetz')}</strong> (kein Port-Mapping nötig).
       </div>
 
       {networks.map((n) => (
@@ -110,19 +111,19 @@ function NetworksPicker({ networks, onChange }: {
           <Network size={12} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
           <span style={{ flex: '0 0 140px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
           <input className="input input--rect" style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            placeholder="Feste IP (z.B. 192.168.1.200)" value={n.ip}
+            placeholder={tt('Feste IP (z.B. 192.168.1.200)')} value={n.ip}
             onChange={(e) => updateIp(n.id, e.target.value)} />
-          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen"><X size={12} /></button>
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title={tt('Entfernen')}><X size={12} /></button>
         </div>
       ))}
 
       {creating && (
         <div style={{ background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, marginBottom: 8 }}>
-          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>Neues Macvlan-Netzwerk anlegen und verbinden:</div>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>{tt('Neues Macvlan-Netzwerk anlegen und verbinden:')}</div>
           {createErr && <div className="login-error" style={{ marginBottom: 8 }}>{createErr}</div>}
           <label className="form-label">Interface (Parent)</label>
           <select className="input input--rect" style={{ width: '100%', marginBottom: 8 }} value={newParent} onChange={(e) => setNewParent(e.target.value)}>
-            <option value="">— wählen —</option>
+            <option value="">{tt('— wählen —')}</option>
             {interfaces.map((i) => <option key={i.iface} value={i.iface}>{i.iface}{i.ip4 ? ` (${i.ip4})` : ''}</option>)}
           </select>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -134,20 +135,20 @@ function NetworksPicker({ networks, onChange }: {
             <div style={{ flex: 1 }}>
               <label className="form-label">VLAN (optional)</label>
               <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                placeholder="z.B. 20" value={newVlan} onChange={(e) => setNewVlan(e.target.value.replace(/[^0-9]/g, ''))} />
+                placeholder={tt('z.B. 20')} value={newVlan} onChange={(e) => setNewVlan(e.target.value.replace(/[^0-9]/g, ''))} />
             </div>
           </div>
-          <label className="form-label">Gateway</label>
+          <label className="form-label">{tt('Gateway')}</label>
           <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 8 }}
             placeholder="192.168.1.1" value={newGw} onChange={(e) => setNewGw(e.target.value.trim())} />
-          <label className="form-label">Statische IP für diesen Container</label>
+          <label className="form-label">{tt('Statische IP für diesen Container')}</label>
           <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 10 }}
-            placeholder="192.168.1.200 (leer = automatisch)" value={newIp} onChange={(e) => setNewIp(e.target.value.trim())} />
+            placeholder={tt('192.168.1.200 (leer = automatisch)')} value={newIp} onChange={(e) => setNewIp(e.target.value.trim())} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn btn--primary btn--sm" onClick={() => void createAndAdd()} disabled={createBusy}>
               {createBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Plus size={12} />} Anlegen & verbinden
             </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => { setCreating(false); setAddId(''); setCreateErr(''); }}>Abbrechen</button>
+            <button className="btn btn--ghost btn--sm" onClick={() => { setCreating(false); setAddId(''); setCreateErr(''); }}>{tt('Abbrechen')}</button>
           </div>
         </div>
       )}
@@ -155,15 +156,15 @@ function NetworksPicker({ networks, onChange }: {
       {!creating && (
         <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
           <select className="input input--rect" style={{ flex: 1, minWidth: 180, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
-            <option value="">— Netzwerk hinzufügen …</option>
+            <option value="">{tt('— Netzwerk hinzufügen …')}</option>
             {unattached.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>)}
-            <option value={CREATE_NEW}>＋ Neues Macvlan anlegen…</option>
+            <option value={CREATE_NEW}>{tt('＋ Neues Macvlan anlegen…')}</option>
           </select>
           {selectedForAdd && (
             <input className="input input--rect" style={{ width: 190, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-              placeholder="IP (optional)" value={pendingIp} onChange={(e) => setPendingIp(e.target.value.trim())} />
+              placeholder={tt('IP (optional)')} value={pendingIp} onChange={(e) => setPendingIp(e.target.value.trim())} />
           )}
-          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> {tt('Hinzufügen')}</button>
         </div>
       )}
     </div>
@@ -227,11 +228,11 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
   return (
     <Modal
       open={open}
-      title="Neuer Container"
+      title={tt('Neuer Container')}
       onClose={handleClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={handleClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={handleClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={handleCreate} disabled={loading}>
             {loading ? <span className="spinner" style={{ width: 12, height: 12, borderWidth: 2 }} /> : null}
             Container erstellen
@@ -244,16 +245,16 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
       {field('name', 'Container-Name', 'z.B. mein-nginx')}
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Neustart-Richtlinie</label>
+          <label className="form-label">{tt('Neustart-Richtlinie')}</label>
           <select
             className="input input--rect"
             value={form.restart ?? 'unless-stopped'}
             onChange={(e) => setForm((f) => ({ ...f, restart: e.target.value }))}
             style={{ cursor: 'pointer' }}
           >
-            <option value="unless-stopped">Außer wenn manuell gestoppt</option>
-            <option value="always">Immer neu starten</option>
-            <option value="on-failure">Nur bei Fehler</option>
+            <option value="unless-stopped">{tt('Außer wenn manuell gestoppt')}</option>
+            <option value="always">{tt('Immer neu starten')}</option>
+            <option value="on-failure">{tt('Nur bei Fehler')}</option>
             <option value="no">Nie (kein Autostart)</option>
           </select>
         </div>
@@ -263,7 +264,7 @@ function CreateModal({ open, onClose, onCreated }: { open: boolean; onClose: () 
         <label className="form-label">Icon-URL (optional)</label>
         <input
           className="input input--rect"
-          placeholder="https://…/icon.png – leer = Buchstaben-Symbol"
+          placeholder={tt('https://…/icon.png – leer = Buchstaben-Symbol')}
           value={form.icon ?? ''}
           onChange={(e) => setForm((f) => ({ ...f, icon: e.target.value }))}
         />
@@ -342,6 +343,7 @@ function LogsModal({ container, open, onClose }: { container: Container | null; 
 }
 
 export function Containers() {
+  const t = useT();
   const [containers, setContainers] = useState<Container[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
   const [catFilter, setCatFilter] = useState<string>('');   // '' = alle Kategorien
@@ -479,7 +481,7 @@ export function Containers() {
             <div className="container-card__image">{c.image}</div>
           </div>
           {updates[c.id]?.hasUpdate && (
-            <span className="badge badge--restarting" title="Neues Image verfügbar">
+            <span className="badge badge--restarting" title={tt('Neues Image verfügbar')}>
               <ArrowUpCircle size={11} /> Update
             </span>
           )}
@@ -514,8 +516,8 @@ export function Containers() {
         {isExpanded && (
           <div style={{ padding: '0 16px 10px', fontSize: 11.5, color: 'var(--color-subtle)', display: 'flex', flexDirection: 'column', gap: 3 }}>
             <div><span style={{ color: 'var(--color-faint)' }}>ID: </span><span style={{ fontFamily: 'var(--font-mono)' }}>{c.shortId}</span></div>
-            <div><span style={{ color: 'var(--color-faint)' }}>Erstellt: </span>{timeAgo(c.created)}</div>
-            <div><span style={{ color: 'var(--color-faint)' }}>Status: </span>{germanStatus(c.status)}</div>
+            <div><span style={{ color: 'var(--color-faint)' }}>{tt('Erstellt:')} </span>{timeAgo(c.created)}</div>
+            <div><span style={{ color: 'var(--color-faint)' }}>{tt('Status:')} </span>{germanStatus(c.status)}</div>
             {c.ports.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
                 {c.ports.map((p) => {
@@ -523,7 +525,7 @@ export function Containers() {
                   const href = `http://${window.location.hostname}:${hostPort}`;
                   return (
                     <div key={p}>
-                      <span style={{ color: 'var(--color-faint)' }}>Port: </span>
+                      <span style={{ color: 'var(--color-faint)' }}>{tt('Port:')} </span>
                       <a href={href} target="_blank" rel="noreferrer"
                         style={{ color: 'var(--color-accent)', textDecoration: 'none', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
                         {window.location.hostname}:{hostPort}
@@ -544,10 +546,10 @@ export function Containers() {
                 ) : (
                   <div style={{ width: 26, height: 26, borderRadius: 4, background: avatarColor(c.name), color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0 }}>{containerInitial(c.name)}</div>
                 )}
-                <input className="input input--rect" placeholder="Icon-URL (leer = Buchstabe)" value={metaIcon}
+                <input className="input input--rect" placeholder={tt('Icon-URL (leer = Buchstabe)')} value={metaIcon}
                   onChange={(e) => setMetaIcon(e.target.value)} style={{ flex: 1, height: 32, fontSize: 12 }} />
               </div>
-              <input className="input input--rect" placeholder="Gruppe / Kategorie (z.B. Datenbanken)" value={metaCat}
+              <input className="input input--rect" placeholder={tt('Gruppe / Kategorie (z.B. Datenbanken)')} value={metaCat}
                 onChange={(e) => setMetaCat(e.target.value)} style={{ height: 32, fontSize: 12 }}
                 list="container-group-list" />
               <datalist id="container-group-list">
@@ -566,41 +568,41 @@ export function Containers() {
           <span className="container-card__status-text">{germanStatus(c.status)}</span>
 
           {c.state !== 'running' && (
-            <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={!!busy}
+            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Starten')} disabled={!!busy}
               onClick={() => action(c.id, 'start', () => api.containers.start(c.id))}>
               {busy === 'start' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Play size={12} />}
             </button>
           )}
           {c.state === 'running' && (
-            <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={!!busy}
+            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Stoppen')} disabled={!!busy}
               onClick={() => action(c.id, 'stop', () => api.containers.stop(c.id))}>
               {busy === 'stop' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Square size={12} />}
             </button>
           )}
-          <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={!!busy}
+          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Neustart')} disabled={!!busy}
             onClick={() => action(c.id, 'restart', () => api.containers.restart(c.id))}>
             {busy === 'restart' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RotateCcw size={12} />}
           </button>
           {c.state === 'running' && (
-            <button className="btn btn--ghost btn--icon btn--sm" title="Konsole im Container öffnen"
+            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Konsole im Container öffnen')}
               onClick={() => { setExecContainer(c); }}>
               <SquareTerminal size={12} />
             </button>
           )}
-          <button className="btn btn--ghost btn--icon btn--sm" title="Logs" onClick={() => { setLogContainer(c); }}>
+          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Logs')} onClick={() => { setLogContainer(c); }}>
             <ScrollText size={12} />
           </button>
           {updates[c.id]?.hasUpdate && (
-            <button className="btn btn--ghost btn--icon btn--sm" title="Neues Image laden (Update)"
+            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Neues Image laden (Update)')}
               style={{ color: 'var(--color-warning)' }} disabled={!!busy}
               onClick={() => action(c.id, 'pull', async () => { await api.containers.pull(c.id); await checkUpdates(); })}>
               {busy === 'pull' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={12} />}
             </button>
           )}
-          <Link to={`/containers/${c.id}`} className="btn btn--ghost btn--icon btn--sm" title="Konfiguration bearbeiten">
+          <Link to={`/containers/${c.id}`} className="btn btn--ghost btn--icon btn--sm" title={tt('Konfiguration bearbeiten')}>
             <Pencil size={12} />
           </Link>
-          <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={!!busy}
+          <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} disabled={!!busy}
             onClick={() => setDeleteConfirm(c)}>
             {busy === 'remove' ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Trash2 size={12} />}
           </button>
@@ -612,8 +614,8 @@ export function Containers() {
   return (
     <>
       <Topbar
-        title="Container"
-        subtitle={`${running} läuft · ${containers.length} gesamt`}
+        title={t('nav.containers')}
+        subtitle={t('page.containers.subtitle', { running, total: containers.length })}
         onRefresh={() => load()}
         refreshing={refreshing}
         actions={
@@ -671,8 +673,8 @@ export function Containers() {
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <div className="empty-state__icon" style={{ fontSize: 44 }}>📦</div>
-            <div className="empty-state__title">Keine Container gefunden</div>
-            <div className="empty-state__desc">Erstelle deinen ersten Container mit dem Button oben rechts.</div>
+            <div className="empty-state__title">{tt('Keine Container gefunden')}</div>
+            <div className="empty-state__desc">{tt('Erstelle deinen ersten Container mit dem Button oben rechts.')}</div>
           </div>
         ) : (
           hasGroups ? (
@@ -723,7 +725,7 @@ export function Containers() {
       )}
       <ConfirmModal
         open={!!deleteConfirm}
-        title="Container löschen"
+        title={tt('Container löschen')}
         message={`Soll "${deleteConfirm?.name}" wirklich gelöscht werden? Dieser Vorgang kann nicht rückgängig gemacht werden.`}
         confirmLabel="Löschen"
         danger

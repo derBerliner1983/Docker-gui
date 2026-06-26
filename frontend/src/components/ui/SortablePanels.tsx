@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
+import { tt } from '../../lib/i18n';
 import { useOrder } from '../../lib/prefs';
 
 export interface SortableItem {
@@ -60,7 +61,7 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
             {/* Griff zum Ziehen */}
             <button
               type="button"
-              title="Zum Sortieren ziehen"
+              title={tt('Zum Sortieren ziehen')}
               onMouseDown={() => setArmed(it.id)}
               onMouseUp={() => setArmed(null)}
               onClick={(e) => e.preventDefault()}

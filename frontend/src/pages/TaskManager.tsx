@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown, Power } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { api } from '../lib/api';
@@ -25,7 +26,7 @@ function SortTh({ label, k, num, sortKey, sortDir, onSort }: {
     <th
       className={`dtable__sortable${num ? ' dtable__num' : ''}`}
       onClick={() => onSort(k)}
-      title="Klicken zum Sortieren"
+      title={tt('Klicken zum Sortieren')}
       aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
     >
       {label}
@@ -37,6 +38,7 @@ function SortTh({ label, k, num, sortKey, sortDir, onSort }: {
 }
 
 export function TaskManager() {
+  const t = useT();
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [services, setServices] = useState<SystemService[]>([]);
   const [procMeta, setProcMeta] = useState({ total: 0, running: 0 });
@@ -142,8 +144,8 @@ export function TaskManager() {
   return (
     <>
       <Topbar
-        title="Taskmanager"
-        subtitle={`${procMeta.running} aktiv · ${procMeta.total} Prozesse gesamt`}
+        title={t('nav.taskmanager')}
+        subtitle={t('page.taskmanager.subtitle', { running: procMeta.running, total: procMeta.total })}
         onRefresh={load}
         refreshing={refreshing}
       />
@@ -151,7 +153,7 @@ export function TaskManager() {
         <SortablePanels storageKey="taskmanager" items={[
           { id: 'processes', node: (
         <Panel
-          title="Prozesse"
+          title={tt('Prozesse')}
           icon={<Activity size={15} />}
           subtitle={`${filteredProcs.length} angezeigt`}
           storageKey="tm-procs"
@@ -160,7 +162,7 @@ export function TaskManager() {
               <Search size={13} style={{ position: 'absolute', left: 9, top: 8, color: 'var(--color-faint)' }} />
               <input
                 className="input input--rect btn--sm"
-                placeholder="Suchen…"
+                placeholder={tt('Suchen…')}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 style={{ height: 28, width: 160, paddingLeft: 28, fontSize: 12 }}
@@ -195,7 +197,7 @@ export function TaskManager() {
                       <div className="dtable__actions">
                         <button
                           className="btn btn--ghost btn--icon btn--sm"
-                          title="Beenden (TERM)"
+                          title={tt('Beenden (TERM)')}
                           disabled={!!busy[`p${p.pid}`]}
                           onClick={() => killProc(p.pid, p.name, false)}
                         >
@@ -203,7 +205,7 @@ export function TaskManager() {
                         </button>
                         <button
                           className="btn btn--danger btn--icon btn--sm"
-                          title="Hart beenden (KILL)"
+                          title={tt('Hart beenden (KILL)')}
                           disabled={!!busy[`p${p.pid}`]}
                           onClick={() => killProc(p.pid, p.name, true)}
                         >
@@ -220,7 +222,7 @@ export function TaskManager() {
           ) },
           { id: 'services', node: (
         <Panel
-          title="Dienste"
+          title={tt('Dienste')}
           icon={<Cog size={15} />}
           subtitle={`${filteredSvcs.length} von ${services.length} systemd-Diensten`}
           storageKey="tm-svcs"
@@ -242,7 +244,7 @@ export function TaskManager() {
                 <Search size={13} style={{ position: 'absolute', left: 9, top: 8, color: 'var(--color-faint)' }} />
                 <input
                   className="input input--rect btn--sm"
-                  placeholder="Suchen…"
+                  placeholder={tt('Suchen…')}
                   value={svcFilter}
                   onChange={(e) => setSvcFilter(e.target.value)}
                   style={{ height: 28, width: 140, paddingLeft: 28, fontSize: 12 }}
@@ -255,10 +257,10 @@ export function TaskManager() {
             <table className="dtable">
               <thead>
                 <tr>
-                  <th>Dienst</th>
-                  <th>Status</th>
-                  <th>Autostart</th>
-                  <th>Beschreibung</th>
+                  <th>{tt('Dienst')}</th>
+                  <th>{tt('Status')}</th>
+                  <th>{tt('Autostart')}</th>
+                  <th>{tt('Beschreibung')}</th>
                   <th style={{ width: 110 }}></th>
                 </tr>
               </thead>
@@ -292,15 +294,15 @@ export function TaskManager() {
                       <td>
                         <div className="dtable__actions">
                           {active ? (
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Stoppen" disabled={isBusy} onClick={() => controlSvc(s.name, 'stop')}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Stoppen')} disabled={isBusy} onClick={() => controlSvc(s.name, 'stop')}>
                               {busy[`s${s.name}`] === 'stop' ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Square size={12} />}
                             </button>
                           ) : (
-                            <button className="btn btn--ghost btn--icon btn--sm" title="Starten" disabled={isBusy} onClick={() => controlSvc(s.name, 'start')}>
+                            <button className="btn btn--ghost btn--icon btn--sm" title={tt('Starten')} disabled={isBusy} onClick={() => controlSvc(s.name, 'start')}>
                               {busy[`s${s.name}`] === 'start' ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Play size={12} />}
                             </button>
                           )}
-                          <button className="btn btn--ghost btn--icon btn--sm" title="Neustart" disabled={isBusy} onClick={() => controlSvc(s.name, 'restart')}>
+                          <button className="btn btn--ghost btn--icon btn--sm" title={tt('Neustart')} disabled={isBusy} onClick={() => controlSvc(s.name, 'restart')}>
                             <RotateCcw size={12} />
                           </button>
                         </div>
@@ -309,7 +311,7 @@ export function TaskManager() {
                   );
                 })}
                 {filteredSvcs.length === 0 && (
-                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-faint)', padding: '20px 0' }}>Keine Dienste gefunden</td></tr>
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--color-faint)', padding: '20px 0' }}>{tt('Keine Dienste gefunden')}</td></tr>
                 )}
               </tbody>
             </table>

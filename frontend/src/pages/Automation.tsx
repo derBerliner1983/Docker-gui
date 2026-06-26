@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, Power, Plus, Trash2, Play, Square } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
@@ -39,11 +40,11 @@ function CronModal({ open, onClose, onSaved }: { open: boolean; onClose: () => v
   return (
     <Modal
       open={open}
-      title="Neuer Cronjob"
+      title={tt('Neuer Cronjob')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
             {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Hinzufügen
           </button>
@@ -73,10 +74,10 @@ function CronModal({ open, onClose, onSaved }: { open: boolean; onClose: () => v
         </div>
       </div>
       <div className="form-group">
-        <label className="form-label">Befehl</label>
+        <label className="form-label">{tt('Befehl')}</label>
         <input
           className="input input--rect"
-          placeholder="/usr/bin/backup.sh"
+          placeholder={tt('/usr/bin/backup.sh')}
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           style={{ fontFamily: 'var(--font-mono)' }}
@@ -84,13 +85,14 @@ function CronModal({ open, onClose, onSaved }: { open: boolean; onClose: () => v
       </div>
       <div className="form-group">
         <label className="form-label">Beschreibung (optional)</label>
-        <input className="input input--rect" placeholder="Tägliches Backup" value={comment} onChange={(e) => setComment(e.target.value)} />
+        <input className="input input--rect" placeholder={tt('Tägliches Backup')} value={comment} onChange={(e) => setComment(e.target.value)} />
       </div>
     </Modal>
   );
 }
 
 export function Automation() {
+  const t = useT();
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [units, setUnits] = useState<AutostartUnit[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -112,7 +114,7 @@ export function Automation() {
   useEffect(() => { void load(); }, [load]);
 
   const removeJob = async (id: number) => {
-    if (!confirm('Cronjob wirklich löschen?')) return;
+    if (!confirm(tt('Cronjob wirklich löschen?'))) return;
     setBusy((b) => ({ ...b, [`c${id}`]: true }));
     try { await api.cron.remove(id); await load(); }
     catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
@@ -135,29 +137,29 @@ export function Automation() {
 
   return (
     <>
-      <Topbar title="Automatisierung" subtitle="Cronjobs & Autostart" onRefresh={load} refreshing={refreshing} />
+      <Topbar title={t('nav.automation')} subtitle={t('page.automation.subtitle')} onRefresh={load} refreshing={refreshing} />
       <main className="page">
         <SortablePanels storageKey="automation" items={[
           { id: 'cron', node: (
         <Panel
-          title="Cronjobs"
+          title={tt('Cronjobs')}
           icon={<Clock size={15} />}
           subtitle={`${jobs.length} geplante Aufgaben`}
           storageKey="cron"
           actions={
             <button className="btn btn--primary btn--sm" onClick={(e) => { e.stopPropagation(); setModalOpen(true); }}>
-              <Plus size={13} /> Neu
+              <Plus size={13} /> {tt('Neu')}
             </button>
           }
         >
           {jobs.length === 0 ? (
             <div className="empty-state" style={{ padding: '30px 20px' }}>
-              <div className="empty-state__desc">Keine Cronjobs vorhanden.</div>
+              <div className="empty-state__desc">{tt('Keine Cronjobs vorhanden.')}</div>
             </div>
           ) : (
             <table className="dtable" style={{ marginTop: 6 }}>
               <thead>
-                <tr><th>Zeitplan</th><th>Befehl</th><th>Beschreibung</th><th style={{ width: 44 }}></th></tr>
+                <tr><th>{tt('Zeitplan')}</th><th>{tt('Befehl')}</th><th>{tt('Beschreibung')}</th><th style={{ width: 44 }}></th></tr>
               </thead>
               <tbody>
                 {jobs.map((j) => (
@@ -166,7 +168,7 @@ export function Automation() {
                     <td className="dtable__mono">{j.command}</td>
                     <td className="text-muted">{j.comment || '—'}</td>
                     <td>
-                      <button className="btn btn--danger btn--icon btn--sm" title="Löschen" disabled={busy[`c${j.id}`]} onClick={() => removeJob(j.id)}>
+                      <button className="btn btn--danger btn--icon btn--sm" title={tt('Löschen')} disabled={busy[`c${j.id}`]} onClick={() => removeJob(j.id)}>
                         {busy[`c${j.id}`] ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Trash2 size={12} />}
                       </button>
                     </td>
@@ -179,15 +181,15 @@ export function Automation() {
           ) },
           { id: 'autostart', node: (
         <Panel
-          title="Autostart"
+          title={tt('Autostart')}
           icon={<Power size={15} />}
-          subtitle="Dienste beim Systemstart aktivieren/deaktivieren"
+          subtitle={tt('Dienste beim Systemstart aktivieren/deaktivieren')}
           storageKey="autostart"
           defaultCollapsed
           actions={
             <input
               className="input input--rect"
-              placeholder="Dienst suchen…"
+              placeholder={tt('Dienst suchen…')}
               value={unitFilter}
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setUnitFilter(e.target.value)}
@@ -198,7 +200,7 @@ export function Automation() {
           <div className="table-scroll" style={{ marginTop: 6 }}>
             <table className="dtable">
               <thead>
-                <tr><th>Dienst</th><th>Autostart</th><th style={{ width: 130 }}></th></tr>
+                <tr><th>{tt('Dienst')}</th><th>{tt('Autostart')}</th><th style={{ width: 130 }}></th></tr>
               </thead>
               <tbody>
                 {filteredUnits.map((u) => {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Package, Trash2, Download, Search, X, CheckCircle2, Boxes, AlertTriangle, FileDown, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
@@ -8,6 +9,7 @@ import { formatBytes } from '../lib/utils';
 import type { InstalledPackage, PackageSearchResult } from '../lib/types';
 
 export function Packages() {
+  const t = useT();
   const [packages, setPackages] = useState<InstalledPackage[]>([]);
   const [manager, setManager] = useState<string | null>(null);
   const [available, setAvailable] = useState(true);
@@ -182,14 +184,14 @@ export function Packages() {
   return (
     <>
       <Topbar
-        title="Paketverwaltung"
-        subtitle={manager ? `${manager} · ${packages.length} installiert · ${formatBytes(totalSize)}` : undefined}
+        title={t('nav.packages')}
+        subtitle={manager ? t('page.packages.subtitle', { manager, n: packages.length, size: formatBytes(totalSize) }) : undefined}
         onRefresh={() => load()}
         refreshing={loading}
         actions={
           available && (
             <>
-              <button className="btn btn--outline btn--sm" onClick={() => exportPackages(packages, 'alle')} disabled={!packages.length} title="Alle installierten Pakete exportieren">
+              <button className="btn btn--outline btn--sm" onClick={() => exportPackages(packages, 'alle')} disabled={!packages.length} title={tt('Alle installierten Pakete exportieren')}>
                 <FileDown size={13} /> Alle exportieren
               </button>
               <button className="btn btn--primary btn--sm" onClick={() => setInstallOpen(true)} disabled={busy}>
@@ -203,12 +205,12 @@ export function Packages() {
         {!available ? (
           <div className="empty-state">
             <div className="empty-state__icon"><Package size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Kein Paketmanager erkannt</div>
-            <div className="empty-state__desc">Dieses System stellt keinen unterstützten Paketmanager bereit.</div>
+            <div className="empty-state__title">{tt('Kein Paketmanager erkannt')}</div>
+            <div className="empty-state__desc">{tt('Dieses System stellt keinen unterstützten Paketmanager bereit.')}</div>
           </div>
         ) : (
           <Panel
-            title="Installierte Pakete"
+            title={tt('Installierte Pakete')}
             icon={<Boxes size={15} />}
             subtitle={`${filtered.length} von ${packages.length}`}
             storageKey="packages"
@@ -218,7 +220,7 @@ export function Packages() {
                 <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-faint)' }} />
                 <input
                   className="input input--rect"
-                  placeholder="Pakete filtern…"
+                  placeholder={tt('Pakete filtern…')}
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   style={{ width: '100%', paddingLeft: 30 }}
@@ -234,16 +236,16 @@ export function Packages() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', marginBottom: 10, background: 'var(--color-accent-soft)', borderRadius: 8, flexWrap: 'wrap' }}>
                 <span style={{ fontWeight: 600, fontSize: 13 }}>{selCount} ausgewählt</span>
                 <div style={{ flex: 1 }} />
-                <button className="btn btn--outline btn--sm" onClick={exportSelected} title="Auswahl als Textdatei exportieren">
+                <button className="btn btn--outline btn--sm" onClick={exportSelected} title={tt('Auswahl als Textdatei exportieren')}>
                   <FileDown size={12} /> Exportieren
                 </button>
                 <button className="btn btn--danger btn--sm" disabled={busy} onClick={() => remove([...selected], false)}>
                   <Trash2 size={12} /> Entfernen
                 </button>
-                <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => remove([...selected], true)} title="Inkl. Konfigurationsdateien">
+                <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => remove([...selected], true)} title={tt('Inkl. Konfigurationsdateien')}>
                   Vollständig (purge)
                 </button>
-                <button className="btn btn--ghost btn--sm" onClick={() => setSelected(new Set())}><X size={12} /> Auswahl aufheben</button>
+                <button className="btn btn--ghost btn--sm" onClick={() => setSelected(new Set())}><X size={12} /> {tt('Auswahl aufheben')}</button>
               </div>
             )}
 
@@ -252,7 +254,7 @@ export function Packages() {
                 <thead>
                   <tr>
                     <th style={{ width: 34 }}>
-                      <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title="Alle sichtbaren auswählen" />
+                      <input type="checkbox" checked={allVisibleSelected} onChange={toggleAllVisible} title={tt('Alle sichtbaren auswählen')} />
                     </th>
                     <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => toggleSort('name')}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>Paket {sortIcon('name')}</span>
@@ -271,7 +273,7 @@ export function Packages() {
                 </thead>
                 <tbody>
                   {filtered.length === 0 ? (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--color-muted)' }}>Keine Pakete gefunden.</td></tr>
+                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: 30, color: 'var(--color-muted)' }}>{tt('Keine Pakete gefunden.')}</td></tr>
                   ) : filtered.slice(0, 600).map((p) => (
                     <tr key={p.name} style={selected.has(p.name) ? { background: 'var(--color-accent-soft)' } : undefined}>
                       <td>
@@ -289,7 +291,7 @@ export function Packages() {
                         </span>
                       </td>
                       <td>
-                        <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => remove([p.name], false)} title="Paket entfernen">
+                        <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => remove([p.name], false)} title={tt('Paket entfernen')}>
                           <Trash2 size={11} />
                         </button>
                       </td>
@@ -308,13 +310,13 @@ export function Packages() {
       </main>
 
       {/* Installations-Dialog */}
-      <Modal open={installOpen} title="Paket installieren" onClose={() => { setInstallOpen(false); setQuery(''); setResults([]); }} width={620}>
+      <Modal open={installOpen} title={tt('Paket installieren')} onClose={() => { setInstallOpen(false); setQuery(''); setResults([]); }} width={620}>
         <div style={{ position: 'relative', marginBottom: 12 }}>
           <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-faint)' }} />
           <input
             className="input input--rect"
             autoFocus
-            placeholder="Paket suchen (mind. 2 Zeichen)…"
+            placeholder={tt('Paket suchen (mind. 2 Zeichen)…')}
             value={query}
             onChange={(e) => runSearch(e.target.value)}
             style={{ width: '100%', paddingLeft: 32 }}
@@ -352,7 +354,7 @@ export function Packages() {
         </div>
       </Modal>
 
-      <Modal open={outputOpen} title="Ausgabe" onClose={() => setOutputOpen(false)} width={680}>
+      <Modal open={outputOpen} title={tt('Ausgabe')} onClose={() => setOutputOpen(false)} width={680}>
         <div className="log-viewer" style={{ maxHeight: 460 }}>{output}</div>
         <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)', textAlign: 'right' }}>
           ✓ Fertig – Fenster schließt automatisch…

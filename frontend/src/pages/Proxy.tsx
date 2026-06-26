@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Lock, Unlock, ShieldCheck, Plus, Trash2, ExternalLink, Download, RefreshCw, Globe } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
+import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
@@ -56,11 +57,11 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
   return (
     <Modal
       open={open}
-      title="Neuer Proxy-Host"
+      title={tt('Neuer Proxy-Host')}
       onClose={onClose}
       footer={
         <>
-          <button className="btn btn--ghost btn--sm" onClick={onClose}>Abbrechen</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
           <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
             {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} Hinzufügen
           </button>
@@ -78,18 +79,18 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
         </div>
       )}
       <div className="form-group">
-        <label className="form-label">Hostname</label>
-        <input className="input input--rect" placeholder="nextcloud.lan" value={hostname} onChange={(e) => setHostname(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
-        <div className="form-hint">Trage diesen Namen in deinem Router/DNS oder der hosts-Datei auf die Server-IP ein.</div>
+        <label className="form-label">{tt('Hostname')}</label>
+        <input className="input input--rect" placeholder={tt('nextcloud.lan')} value={hostname} onChange={(e) => setHostname(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        <div className="form-hint">{tt('Trage diesen Namen in deinem Router/DNS oder der hosts-Datei auf die Server-IP ein.')}</div>
       </div>
       <div className="form-row">
         <div className="form-group">
-          <label className="form-label">Ziel-Port</label>
+          <label className="form-label">{tt('Ziel-Port')}</label>
           <input className="input input--rect" placeholder="8080" value={port} onChange={(e) => setPort(e.target.value)} />
         </div>
         <div className="form-group">
-          <label className="form-label">Anzeigename</label>
-          <input className="input input--rect" placeholder="Nextcloud" value={name} onChange={(e) => setName(e.target.value)} />
+          <label className="form-label">{tt('Anzeigename')}</label>
+          <input className="input input--rect" placeholder={tt('Nextcloud')} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
       </div>
       <label className="legend__item" style={{ cursor: 'pointer', marginTop: 4 }}>
@@ -101,6 +102,7 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
 }
 
 export function Proxy() {
+  const t = useT();
   const [hosts, setHosts] = useState<ProxyHost[]>([]);
   const [available, setAvailable] = useState(true);
   const [running, setRunning] = useState(false);
@@ -155,18 +157,18 @@ export function Proxy() {
   return (
     <>
       <Topbar
-        title="HTTPS & Reverse-Proxy"
-        subtitle={available ? `Caddy ${running ? 'läuft' : 'gestoppt'} · ${httpsCount}/${hosts.length} mit HTTPS` : undefined}
+        title={t('page.proxy.title')}
+        subtitle={available ? t('page.proxy.subtitle', { state: running ? t('page.proxy.running') : t('page.proxy.stopped'), https: httpsCount, total: hosts.length }) : undefined}
         onRefresh={load}
         refreshing={refreshing}
         actions={available && (
           <>
             {caReady && (
-              <a className="btn btn--outline btn--sm" href={api.proxy.caUrl()} download title="Root-CA für deine Geräte">
+              <a className="btn btn--outline btn--sm" href={api.proxy.caUrl()} download title={tt('Root-CA für deine Geräte')}>
                 <Download size={13} /> Root-CA
               </a>
             )}
-            <button className="btn btn--primary btn--sm" onClick={() => setModalOpen(true)}><Plus size={13} /> Host</button>
+            <button className="btn btn--primary btn--sm" onClick={() => setModalOpen(true)}><Plus size={13} /> {tt('Host')}</button>
           </>
         )}
       />
@@ -174,7 +176,7 @@ export function Proxy() {
         {!available ? (
           <div className="empty-state">
             <div className="empty-state__icon"><ShieldCheck size={44} strokeWidth={1} /></div>
-            <div className="empty-state__title">Caddy nicht installiert</div>
+            <div className="empty-state__title">{tt('Caddy nicht installiert')}</div>
             <div className="empty-state__desc">
               {message}<br /><br />
               Caddy ist der Reverse-Proxy, der automatisch HTTPS-Zertifikate erzeugt:<br /><br />
@@ -189,15 +191,15 @@ export function Proxy() {
                 <ShieldCheck size={20} color="var(--color-accent)" style={{ flexShrink: 0, marginTop: 1 }} />
                 <div style={{ fontSize: 12.5, color: 'var(--color-muted)' }}>
                   <b style={{ color: 'var(--color-fg)' }}>So funktioniert automatisches HTTPS:</b> Caddy erstellt eine eigene Zertifizierungsstelle (CA)
-                  und stellt für jeden Host automatisch ein Zertifikat aus. Lade einmalig das <b>Root-CA-Zertifikat</b> herunter
+                  und stellt für jeden Host automatisch ein Zertifikat aus. Lade einmalig das <b>{tt('Root-CA-Zertifikat')}</b> herunter
                   und installiere es auf deinen Geräten – danach sind alle Dienste vertrauenswürdig (grünes Schloss).
-                  {!caReady && <span style={{ color: 'var(--color-warning)' }}> Die CA wird beim ersten HTTPS-Host automatisch erzeugt.</span>}
+                  {!caReady && <span style={{ color: 'var(--color-warning)' }}> {tt('Die CA wird beim ersten HTTPS-Host automatisch erzeugt.')}</span>}
                 </div>
               </div>
             </div>
 
             <Panel
-              title="Proxy-Hosts"
+              title={tt('Proxy-Hosts')}
               icon={<Globe size={15} />}
               subtitle={`${httpsCount}/${hosts.length} mit HTTPS`}
               storageKey="proxy"
@@ -214,7 +216,7 @@ export function Proxy() {
             >
               {hosts.length === 0 ? (
                 <div className="empty-state" style={{ padding: '40px 20px' }}>
-                  <div className="empty-state__desc">Noch keine Hosts. Füge einen Container/Dienst mit „Host" hinzu.</div>
+                  <div className="empty-state__desc">{tt('Noch keine Hosts. Füge einen Container/Dienst mit „Host" hinzu.')}</div>
                 </div>
               ) : (
                 <div style={{ margin: '4px -16px 0' }}>
@@ -227,14 +229,14 @@ export function Proxy() {
                         <div className="proxy-card__host">{h.name}</div>
                         <div className="proxy-card__target">{h.url} → {h.targetHost}:{h.targetPort}</div>
                       </div>
-                      <a className="btn btn--ghost btn--icon btn--sm" href={h.url} target="_blank" rel="noreferrer" title="Öffnen">
+                      <a className="btn btn--ghost btn--icon btn--sm" href={h.url} target="_blank" rel="noreferrer" title={tt('Öffnen')}>
                         <ExternalLink size={13} />
                       </a>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} title="HTTPS umschalten">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={tt('HTTPS umschalten')}>
                         <span style={{ fontSize: 11, color: 'var(--color-faint)', fontWeight: 600 }}>HTTPS</span>
                         <Switch checked={h.https} disabled={busy[h.id]} onChange={() => toggleHttps(h)} />
                       </div>
-                      <button className="btn btn--danger btn--icon btn--sm" title="Entfernen" disabled={busy[h.id]} onClick={() => remove(h)}>
+                      <button className="btn btn--danger btn--icon btn--sm" title={tt('Entfernen')} disabled={busy[h.id]} onClick={() => remove(h)}>
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -244,7 +246,7 @@ export function Proxy() {
             </Panel>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button className="btn btn--ghost btn--sm" onClick={() => api.proxy.apply().then(() => alert('Caddy neu geladen.')).catch((e) => alert(e.message))}>
+              <button className="btn btn--ghost btn--sm" onClick={() => api.proxy.apply().then(() => alert(tt('Caddy neu geladen.'))).catch((e) => alert(e.message))}>
                 <RefreshCw size={13} /> Konfiguration neu laden
               </button>
             </div>

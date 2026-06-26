@@ -1,5 +1,6 @@
 import { RefreshCw, Menu } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { tt } from '../../lib/i18n';
 import { useLayout } from '../../lib/layoutContext';
 
 interface TopbarProps {
@@ -14,7 +15,7 @@ export function Topbar({ title, subtitle, actions, onRefresh, refreshing }: Topb
   const { openMobileMenu } = useLayout();
   return (
     <header className="topbar">
-      <button className="icon-btn topbar__menu-btn" onClick={openMobileMenu} title="Menü öffnen">
+      <button className="icon-btn topbar__menu-btn" onClick={openMobileMenu} title={tt('Menü öffnen')}>
         <Menu size={16} />
       </button>
       <div>
@@ -27,7 +28,7 @@ export function Topbar({ title, subtitle, actions, onRefresh, refreshing }: Topb
           <button
             className="icon-btn"
             onClick={onRefresh}
-            title="Aktualisieren"
+            title={tt('Aktualisieren')}
             style={refreshing ? { animation: 'spin 1s linear infinite' } : undefined}
           >
             <RefreshCw size={14} />
