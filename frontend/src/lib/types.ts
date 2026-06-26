@@ -359,7 +359,7 @@ export interface FirewallLogEntry {
 
 export interface FirewallAction {
   id: string;
-  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan';
+  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan' | 'ignore';
   label: string;
   port?: string;
   proto?: string;
