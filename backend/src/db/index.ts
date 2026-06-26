@@ -155,6 +155,13 @@ db.exec(`
     prefs      TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  -- Globale System-Einstellungen als Key/Value (z.B. ipv6_enabled)
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // SMTP-Konfiguration für echten E-Mail-Versand (an notification_config angehängt)
@@ -186,6 +193,14 @@ export const userQueries = {
   setTotpSecret: db.prepare<[string | null, number]>('UPDATE users SET totp_secret = ? WHERE id = ?'),
   setTotpEnabled: db.prepare<[number, number]>('UPDATE users SET totp_enabled = ? WHERE id = ?'),
   setTotpRequired: db.prepare<[number, number]>('UPDATE users SET totp_required = ? WHERE id = ?'),
+};
+
+export const appSettingsQueries = {
+  get: db.prepare<[string], { value: string }>('SELECT value FROM app_settings WHERE key = ?'),
+  set: db.prepare<[string, string]>(
+    `INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`
+  ),
 };
 
 export const prefsQueries = {

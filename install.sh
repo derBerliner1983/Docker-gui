@@ -222,7 +222,7 @@ $SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf,
   /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
   /usr/bin/sed, /usr/bin/chown, /usr/bin/chmod, /usr/bin/mv, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
   /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
-  /usr/bin/git
+  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl
 EOF
 chmod 0440 /etc/sudoers.d/core-hub
 visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }

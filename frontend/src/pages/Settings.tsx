@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -526,6 +526,51 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
   );
 }
 
+function NetworkPanel() {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try { const r = await api.settings.getIpv6(); setEnabled(r.enabled); }
+    catch { setEnabled(null); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const toggle = async (v: boolean) => {
+    if (!v) {
+      if (!confirm('IPv6 deaktivieren? Das System nutzt dann nur noch IPv4. Die Einstellung bleibt auch nach einem Neustart erhalten.')) return;
+    }
+    setBusy(true);
+    try { await api.settings.setIpv6(v); setEnabled(v); }
+    catch (e) { alert(e instanceof Error ? e.message : 'Fehler beim Umstellen'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title="Netzwerk-Protokoll" icon={<Network size={15} />} subtitle={enabled == null ? undefined : (enabled ? 'IPv4 + IPv6' : 'nur IPv4')} storageKey="set-network" defaultCollapsed>
+      <div style={{ marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, padding: '10px 0' }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>IPv6 aktivieren</div>
+            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginTop: 3, lineHeight: 1.5, maxWidth: 460 }}>
+              Standardmäßig läuft das System <strong>nur über IPv4</strong>. Aktiviere IPv6 nur, wenn dein Netzwerk
+              es benötigt. Die Einstellung wird über <code style={{ fontFamily: 'var(--font-mono)' }}>sysctl</code> gesetzt
+              und bleibt nach einem Neustart erhalten.
+            </div>
+          </div>
+          {enabled == null ? (
+            <span className="spinner" style={{ width: 16, height: 16 }} />
+          ) : (
+            <div onClick={(e) => e.stopPropagation()} style={{ opacity: busy ? 0.5 : 1 }}>
+              <Switch checked={enabled} onChange={(v) => void toggle(v)} />
+            </div>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.settings.info>> | null>(null);
 
@@ -540,6 +585,7 @@ export function Settings() {
       <main className="page">
         <SortablePanels storageKey="settings" items={[
           { id: 'language', node: <LanguagePanel /> },
+          { id: 'network', node: <NetworkPanel /> },
           { id: 'version', node: <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} /> },
           { id: 'password', node: <PasswordPanel /> },
           { id: '2fa', node: <TwoFactorPanel /> },

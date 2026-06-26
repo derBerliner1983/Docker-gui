@@ -145,6 +145,33 @@ function privExecSafe(cmd: string): string {
   try { return privExec(cmd, { timeout: 6000 }); } catch { return ''; }
 }
 
+/** Netzadresse (z.B. 192.168.1.0) aus IP + Präfixlänge berechnen. */
+function networkAddress(ip: string, prefix: number): string | null {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) return null;
+  const ipInt = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const net = (ipInt & mask) >>> 0;
+  return [(net >>> 24) & 255, (net >>> 16) & 255, (net >>> 8) & 255, net & 255].join('.');
+}
+
+/** Echte private LAN-Subnetze des Hosts (RFC-1918), z.B. ["192.168.1.0/24"]. */
+function hostLanSubnets(): string[] {
+  const out = safeExec('ip -o -f inet addr show 2>/dev/null') || privExecSafe('ip -o -f inet addr show');
+  const subnets = new Set<string>();
+  for (const line of out.split('\n')) {
+    const m = line.match(/\binet\s+(\d+\.\d+\.\d+\.\d+)\/(\d+)/);
+    if (!m) continue;
+    const ip = m[1];
+    const prefix = parseInt(m[2], 10);
+    // nur private Bereiche, kein loopback/link-local
+    if (!/^10\./.test(ip) && !/^192\.168\./.test(ip) && !/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) continue;
+    const net = networkAddress(ip, prefix);
+    if (net) subnets.add(`${net}/${prefix}`);
+  }
+  return [...subnets];
+}
+
 // ── Plausibilitäts-Assistent: Regeln gegen bekannte Risiken + offene Ports prüfen ──
 
 /** Bekannte Ports mit Risiko-Einstufung (Teilmenge der Security-PORT_DB, hier lokal gehalten). */
@@ -609,9 +636,28 @@ export async function firewallRoutes(fastify: FastifyInstance) {
   fastify.post<{ Body: { enable: boolean } }>('/api/firewall/toggle', { preHandler: requireAdmin }, async (req, reply) => {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
-      // Keine automatischen Regeln mehr. Der Admin entscheidet selbst, welche
-      // Ports er freigibt (über „Sicherheit" → LAN / Internet). Die Firewall
-      // wird hier nur ein-/ausgeschaltet, ohne ungefragt etwas hinzuzufügen.
+      if (req.body?.enable) {
+        // Aussperr-Schutz: SSH (22) und Web-UI (443) bekommen – falls noch keine
+        // Regel existiert – eine Freigabe NUR für das echte LAN-Subnetz des PCs.
+        // Niemals „Anywhere"/Internet. Gibt es kein erkennbares LAN, wird nichts
+        // angelegt (dann muss der Admin die Regel selbst setzen).
+        const currentStatus = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
+        const currentRules = parseUfw(currentStatus);
+        const hasRuleFor = (port: string) => currentRules.some((r) => {
+          const pp = rulePort(r.to);
+          return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
+        });
+        const lanSubnets = hostLanSubnets();
+        if (lanSubnets.length) {
+          for (const port of ['22', '443']) {
+            if (!hasRuleFor(port)) {
+              for (const subnet of lanSubnets) {
+                try { privExec(`ufw allow from ${subnet} to any port ${port} proto tcp comment 'LAN-only Auto'`, { timeout: 8000 }); } catch { /* ignorieren */ }
+              }
+            }
+          }
+        }
+      }
       privExec(`bash -c "yes | ufw ${req.body?.enable ? 'enable' : 'disable'}"`, { timeout: 8000 });
       auditQueries.log.run(req.user.id, 'firewall.toggle', String(req.body?.enable));
       reply.send({ ok: true });

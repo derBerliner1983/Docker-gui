@@ -222,8 +222,9 @@ function FirewallPanel() {
             if (v) {
               const ok = confirm(
                 'Firewall aktivieren?\n\n' +
-                'Es werden KEINE Regeln automatisch hinzugefügt. Stelle vorher sicher, dass du eine ' +
-                'Regel für deinen Zugang (z. B. SSH Port 22 / Web-UI) angelegt hast, damit du dich nicht aussperrst.'
+                'SSH (Port 22) und Web-UI (Port 443) werden – falls noch keine Regel existiert – ' +
+                'automatisch NUR für dein lokales Netz (LAN) freigegeben, niemals fürs Internet. ' +
+                'Alle anderen Ports musst du selbst freischalten.'
               );
               if (!ok) return;
             }
