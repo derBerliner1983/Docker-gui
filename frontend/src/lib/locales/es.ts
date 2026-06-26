@@ -590,4 +590,10 @@ export const es: Record<string, string> = {
   'err.hostport_allocated': 'Un puerto del host necesario ya está en uso (p. ej. el puerto 53 por systemd-resolved). Elige otro puerto del host o asigna al contenedor su propia IP mediante una red macvlan.',
   'err.too_many_attempts': 'Demasiados intentos fallidos. Inténtalo de nuevo en {minutes} minutos.',
   'err.file_too_large': 'Archivo demasiado grande (máx {kb} KB)',
+
+  // ── Sicherheit: Neustart-Aktion ──
+  'Jetzt neu starten': 'Reiniciar ahora',
+  'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': '¿Reiniciar el servidor ahora? La conexión se cortará 1–2 minutos.',
+  'Server wird neu gestartet…': 'El servidor se está reiniciando…',
+  'Beheben': 'Corregir',
 };

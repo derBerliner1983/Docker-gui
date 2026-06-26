@@ -590,4 +590,10 @@ export const fr: Record<string, string> = {
   'err.hostport_allocated': 'Un port hôte requis est déjà utilisé (p. ex. port 53 par systemd-resolved). Choisissez un autre port hôte ou donnez au conteneur sa propre IP via un réseau macvlan.',
   'err.too_many_attempts': 'Trop de tentatives échouées. Réessayez dans {minutes} minutes.',
   'err.file_too_large': 'Fichier trop volumineux (max {kb} Ko)',
+
+  // ── Sicherheit: Neustart-Aktion ──
+  'Jetzt neu starten': 'Redémarrer maintenant',
+  'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': 'Redémarrer le serveur maintenant ? La connexion sera coupée 1–2 minutes.',
+  'Server wird neu gestartet…': 'Le serveur redémarre…',
+  'Beheben': 'Corriger',
 };

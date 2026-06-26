@@ -399,6 +399,7 @@ export interface SecurityFinding {
   detail: string;
   recommendation: string;
   fix?: string;
+  fixLabel?: string;
   link?: string;
   linkLabel?: string;
   accessZone?: 'lan-only' | 'internet-ok' | 'internet-conditional';

@@ -590,4 +590,10 @@ export const it: Record<string, string> = {
   'err.hostport_allocated': 'Una porta host necessaria è già in uso (es. la porta 53 da systemd-resolved). Scegli un’altra porta host o assegna al container un IP proprio tramite una rete macvlan.',
   'err.too_many_attempts': 'Troppi tentativi falliti. Riprova tra {minutes} minuti.',
   'err.file_too_large': 'File troppo grande (max {kb} KB)',
+
+  // ── Sicherheit: Neustart-Aktion ──
+  'Jetzt neu starten': 'Riavvia ora',
+  'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': 'Riavviare il server ora? La connessione si interromperà per 1–2 minuti.',
+  'Server wird neu gestartet…': 'Il server si sta riavviando…',
+  'Beheben': 'Risolvi',
 };
