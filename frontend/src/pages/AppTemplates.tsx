@@ -3,7 +3,7 @@ import { Search, Download, CheckCircle2, Star, ChevronLeft, ChevronRight, Plus, 
 import { Topbar } from '../components/layout/Topbar';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
-import type { StoreItem, StoreSearchResult, DockerNetwork } from '../lib/types';
+import type { StoreItem, StoreSearchResult, DockerNetwork, HostInterface } from '../lib/types';
 
 // ── App icon with graceful fallback ─────────────────────────────────────────
 
@@ -132,22 +132,32 @@ function EnvEditor({ rows, onChange }: { rows: EnvRow[]; onChange: (r: EnvRow[])
   );
 }
 
+// Konfiguration eines neu anzulegenden Macvlan-Netzwerks
+export interface NewNet { parent: string; subnet: string; gateway: string; vlan: string }
+const CREATE = '__create__';
+
 // ── Network/IP Section (optional, collapsed by default) ─────────────────────
 function NetworkSection({
-  networks, networkMode, staticIp,
-  onModeChange, onIpChange,
+  networks, interfaces, networkMode, staticIp, newNet,
+  onModeChange, onIpChange, onNewNetChange,
 }: {
   networks: DockerNetwork[];
+  interfaces: HostInterface[];
   networkMode: string;
   staticIp: string;
+  newNet: NewNet;
   onModeChange: (m: string) => void;
   onIpChange: (ip: string) => void;
+  onNewNetChange: (n: NewNet) => void;
 }) {
   const [open, setOpen] = useState(false);
 
   // Named networks the user could connect to (macvlan, ipvlan, or custom bridge)
   const named = networks.filter((n) => !n.builtin);
   const selectedNet = named.find((n) => n.name === networkMode) ?? null;
+  const creating = networkMode === CREATE;
+  const active = networkMode && networkMode !== 'bridge';
+  const ipValid = !staticIp || /^\d{1,3}(\.\d{1,3}){3}$/.test(staticIp);
 
   return (
     <div style={{ marginBottom: 14, border: '1px solid var(--color-border)', borderRadius: 6 }}>
@@ -157,15 +167,15 @@ function NetworkSection({
         style={{
           width: '100%', background: 'none', border: 'none', cursor: 'pointer',
           display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-          color: networkMode && networkMode !== 'bridge' ? 'var(--color-accent)' : 'var(--color-muted)',
+          color: active ? 'var(--color-accent)' : 'var(--color-muted)',
         }}
       >
         <Network size={13} />
         <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, textAlign: 'left' }}>
           Netzwerk / IP-Adresse
-          {networkMode && networkMode !== 'bridge' && (
+          {active && (
             <span style={{ fontWeight: 400, color: 'var(--color-accent)', marginLeft: 6, fontSize: 11 }}>
-              {networkMode}{staticIp ? ` · ${staticIp}` : ''}
+              {creating ? 'neues Macvlan' : networkMode}{staticIp ? ` · ${staticIp}` : ''}
             </span>
           )}
         </span>
@@ -195,26 +205,65 @@ function NetworkSection({
                 {n.name} [{n.driver}]{n.subnet ? ` · ${n.subnet}` : ''}
               </option>
             ))}
+            <option value={CREATE}>＋ Neues Macvlan-Netzwerk anlegen (eigene IP)…</option>
           </select>
 
-          {named.length === 0 && (
-            <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>
-              Noch keine benutzerdefinierten Netzwerke vorhanden. Erstelle unter „Netzwerke &amp; VLANs" ein Macvlan-Netzwerk.
+          {/* Neues Macvlan-Netzwerk direkt hier anlegen */}
+          {creating && (
+            <div style={{ background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8, lineHeight: 1.6 }}>
+                Wird beim Installieren automatisch angelegt. Der Container erhält dann eine eigene IP im Heimnetz.
+              </div>
+              <label className="form-label">Netzwerk-Interface (Parent)</label>
+              <select
+                className="input input--rect" style={{ width: '100%', marginBottom: 8 }}
+                value={newNet.parent}
+                onChange={(e) => onNewNetChange({ ...newNet, parent: e.target.value })}
+              >
+                <option value="">— Interface wählen —</option>
+                {interfaces.map((i) => (
+                  <option key={i.iface} value={i.iface}>{i.iface}{i.ip4 ? ` (${i.ip4})` : ''}</option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 2 }}>
+                  <label className="form-label">Subnetz (CIDR)</label>
+                  <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                    placeholder="z.B. 192.168.1.0/24" value={newNet.subnet}
+                    onChange={(e) => onNewNetChange({ ...newNet, subnet: e.target.value.trim() })} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label className="form-label">VLAN (optional)</label>
+                  <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                    placeholder="z.B. 20" value={newNet.vlan}
+                    onChange={(e) => onNewNetChange({ ...newNet, vlan: e.target.value.replace(/[^0-9]/g, '') })} />
+                </div>
+              </div>
+              <label className="form-label">Gateway</label>
+              <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                placeholder="z.B. 192.168.1.1" value={newNet.gateway}
+                onChange={(e) => onNewNetChange({ ...newNet, gateway: e.target.value.trim() })} />
             </div>
           )}
 
-          {selectedNet && (
+          {(selectedNet || creating) && (
             <>
-              <label className="form-label">Statische IP-Adresse{selectedNet.subnet ? ` (Subnetz: ${selectedNet.subnet})` : ''}</label>
+              <label className="form-label">
+                Statische IP-Adresse
+                {selectedNet?.subnet ? ` (Subnetz: ${selectedNet.subnet})` : creating && newNet.subnet ? ` (Subnetz: ${newNet.subnet})` : ''}
+              </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   className="input input--rect"
                   style={{ fontFamily: 'var(--font-mono)', fontSize: 12, flex: 1 }}
-                  placeholder={selectedNet.gateway ? `z.B. ${selectedNet.gateway.replace(/\.\d+$/, '.200')}` : '192.168.x.y'}
+                  placeholder={
+                    selectedNet?.gateway ? `z.B. ${selectedNet.gateway.replace(/\.\d+$/, '.200')}`
+                      : newNet.gateway ? `z.B. ${newNet.gateway.replace(/\.\d+$/, '.200')}` : '192.168.x.y'
+                  }
                   value={staticIp}
                   onChange={(e) => onIpChange(e.target.value.trim())}
                 />
-                {staticIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(staticIp) && (
+                {!ipValid && (
                   <span style={{ fontSize: 11, color: 'var(--color-error)', flexShrink: 0 }}>Ungültige IP</span>
                 )}
               </div>
@@ -243,6 +292,8 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
   const [networkMode, setNetworkMode] = useState('bridge');
   const [staticIp, setStaticIp] = useState('');
   const [networks, setNetworks] = useState<DockerNetwork[]>([]);
+  const [interfaces, setInterfaces] = useState<HostInterface[]>([]);
+  const [newNet, setNewNet] = useState<NewNet>({ parent: '', subnet: '', gateway: '', vlan: '' });
   // Vom Backend vorgeschlagene freie Host-Ports bei Konflikt
   const [portFix, setPortFix] = useState<{ host: number; proto: string; suggestedHost: number }[]>([]);
 
@@ -254,9 +305,11 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
     setVols(item.volumes.map((v) => ({ id: uid(), ...v })));
     setEnvs(item.env.map((e) => ({ id: uid(), key: e.key, label: e.label, value: e.default, secret: e.secret, required: e.required })));
     setNetworkMode('bridge'); setStaticIp('');
+    setNewNet({ parent: '', subnet: '', gateway: '', vlan: '' });
     setError(''); setDone(''); setPortFix([]);
-    // Load Docker networks for the network section
+    // Load Docker networks + host interfaces for the network section
     api.networks.list().then((r) => setNetworks(r.networks)).catch(() => setNetworks([]));
+    api.networks.interfaces().then((r) => setInterfaces(r.interfaces)).catch(() => setInterfaces([]));
   }, [item]);
 
   if (!item) return null;
@@ -265,8 +318,29 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
     // Validate required env
     const missing = envs.filter((e) => e.required && !e.value.trim());
     if (missing.length) { setError(`Pflichtfeld fehlt: ${missing.map((e) => e.label || e.key).join(', ')}`); return; }
+    // IP-Format prüfen, falls eine eigene IP gesetzt wurde
+    if (staticIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(staticIp)) { setError('Ungültige IP-Adresse.'); return; }
     setBusy(true); setError(''); setPortFix([]);
     try {
+      // Soll ein neues Macvlan-Netzwerk angelegt werden? Dann zuerst erstellen.
+      let effectiveMode = networkMode;
+      if (networkMode === CREATE) {
+        if (!newNet.parent) { setError('Bitte ein Netzwerk-Interface (Parent) für das Macvlan-Netzwerk wählen.'); setBusy(false); return; }
+        if (!newNet.subnet) { setError('Bitte ein Subnetz (CIDR) für das Macvlan-Netzwerk angeben.'); setBusy(false); return; }
+        const netName = `mv-${(cname || item.id).slice(0, 24)}`.replace(/[^a-zA-Z0-9_.-]/g, '');
+        try {
+          await api.networks.create({
+            name: netName, driver: 'macvlan',
+            parent: newNet.parent, subnet: newNet.subnet,
+            gateway: newNet.gateway || undefined, vlan: newNet.vlan || undefined,
+          });
+        } catch (e) {
+          // „already exists" tolerieren – dann einfach das vorhandene nutzen
+          const msg = e instanceof Error ? e.message : '';
+          if (!/exists|in use/i.test(msg)) { setError(`Netzwerk konnte nicht angelegt werden: ${msg}`); setBusy(false); return; }
+        }
+        effectiveMode = netName;
+      }
       const envMap: Record<string, string> = {};
       for (const e of envs) if (e.key) envMap[e.key] = e.value;
       const res = await api.store.install({
@@ -279,7 +353,7 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
         templateId: item.source === 'unraid' ? item.id : undefined,
         category: item.category,
         icon: item.icon || undefined,
-        networkMode: networkMode !== 'bridge' ? networkMode : undefined,
+        networkMode: effectiveMode !== 'bridge' ? effectiveMode : undefined,
         staticIp: staticIp || undefined,
       });
       setDone(`„${res.name}" wurde installiert und gestartet.`);
@@ -375,10 +449,13 @@ function InstallModal({ item, onClose, onDone }: { item: StoreItem | null; onClo
           <EnvEditor rows={envs} onChange={setEnvs} />
           <NetworkSection
             networks={networks}
+            interfaces={interfaces}
             networkMode={networkMode}
             staticIp={staticIp}
+            newNet={newNet}
             onModeChange={setNetworkMode}
             onIpChange={setStaticIp}
+            onNewNetChange={setNewNet}
           />
         </div>
       )}

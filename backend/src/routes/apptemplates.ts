@@ -1,10 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import Dockerode from 'dockerode';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { auditQueries, categoryQueries } from '../db/index';
 import { notify } from '../lib/notify';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
+const execFileP = promisify(execFile);
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -176,9 +179,36 @@ async function pullImage(image: string): Promise<void> {
   });
 }
 
-/** Belegte Host-Ports aller (auch gestoppter) Container ermitteln → Map port/proto → Container-Name. */
+/** Auf dem Host lauschende Ports (auch von Nicht-Docker-Diensten wie systemd-resolved auf 53). */
+async function hostListeningPorts(): Promise<Map<string, string>> {
+  const used = new Map<string, string>();
+  try {
+    // -H ohne Header, -t TCP, -u UDP, -l listening, -n numerisch, -p Prozess
+    const { stdout } = await execFileP('ss', ['-Htulnp'], { timeout: 6000 });
+    for (const line of stdout.split('\n')) {
+      // Spalten: Netid State Recv-Q Send-Q Local:Port Peer:Port Process
+      const cols = line.trim().split(/\s+/);
+      if (cols.length < 5) continue;
+      const proto = cols[0].toLowerCase().startsWith('udp') ? 'udp' : 'tcp';
+      const local = cols[4];
+      const m = local.match(/:(\d+)$/);
+      if (!m) continue;
+      const port = m[1];
+      // Prozessname aus dem letzten Feld extrahieren: users:(("systemd-resolve",pid=…))
+      const procField = line.match(/users:\(\("([^"]+)"/);
+      const proc = procField ? procField[1] : 'Host-Dienst';
+      const key = `${port}/${proto}`;
+      if (!used.has(key)) used.set(key, proc);
+    }
+  } catch { /* ss nicht verfügbar oder keine Rechte */ }
+  return used;
+}
+
+/** Belegte Host-Ports aller (auch gestoppter) Container + Host-Dienste → Map port/proto → Name. */
 async function usedHostPorts(): Promise<Map<string, string>> {
   const used = new Map<string, string>();
+  // Zuerst Host-Dienste (z. B. systemd-resolved auf 53), Container überschreiben ggf. den Eigentümer
+  for (const [key, proc] of await hostListeningPorts()) used.set(key, proc);
   try {
     const cs = await docker.listContainers({ all: true });
     for (const c of cs) {
