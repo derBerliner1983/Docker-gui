@@ -1,6 +1,6 @@
 # Core-Hub – Konzept & Roadmap
 
-> **Core-Hub** – die Zentrale deines Linux-Servers.
+> **Core-Hub** – die Zentrale deines Linux-Servers. · `v0.7.3`
 
 ## Vision
 
@@ -19,13 +19,15 @@ Browser (überall)
 Core-Hub Backend   ← läuft als systemd-Dienst auf dem Server
 ├── Fastify (Node.js/TypeScript)
 ├── JWT-Auth + bcrypt + 2FA (TOTP)
-├── SQLite (Users, Audit-Log, Proxy-Hosts, Backup-Pläne, Alarm-Regeln …)
+├── SQLite (Users, Audit-Log, Proxy-Hosts, Backup-Pläne, Alarm-Regeln,
+│          firewall_disabled, firewall_ignored_ports, container_meta …)
 ├── Docker Engine API (dockerode) – Container, Images, Netzwerke
 ├── systeminformation – CPU, RAM, Disk, Netzwerk, GPU (NVIDIA + AMD/APU)
 └── System-Befehle über sudoers-Allowlist
     ├── systemctl  (Dienste, Samba, Ollama, SSH …)
     ├── smbd / smbpasswd  (Samba + UFW-Lifecycle)
     ├── ufw  (Firewall-Regeln, Samba-LAN-Freigabe)
+    ├── ss   (lauschende Ports, aktive Verbindungen)
     ├── caddy  (HTTPS-Proxy, interne CA)
     ├── virsh / qemu-img  (VMs + Snapshots)
     ├── ollama  (KI-Modelle, GGUF-Downloads)
@@ -55,7 +57,7 @@ Font: Inter.
 
 ## Feature-Module
 
-### ✅ Phase 1 – MVP (implementiert)
+### ✅ Phase 1 – MVP
 
 | Modul | Status |
 |---|---|
@@ -63,195 +65,191 @@ Font: Inter.
 | Container-Liste (Start/Stop/Restart/Delete/Logs) | ✅ |
 | Container erstellen (Image, Ports, Env, Volumes, Kategorie) | ✅ |
 | Update-Pull (neues Image holen) | ✅ |
-| Audit-Log (wer hat was getan) | ✅ |
+| Audit-Log | ✅ |
 | Hell/Dunkel-Theme, collapsible Sidebar | ✅ |
 | 1-Klick Installation (install.sh + systemd) | ✅ |
 
-### ✅ Phase 2 – Monitoring & Taskmanager (implementiert)
+### ✅ Phase 2 – Monitoring & Taskmanager
 
 | Modul | Status |
 |---|---|
-| **Dashboard im Unraid-Stil** (collapsible Panels) | ✅ |
+| Dashboard (collapsible Panels) | ✅ |
 | Prozessor-Panel: Gesamtlast + pro CPU-Kern + Verlaufsgraph | ✅ |
 | System-Panel: RAM-Donut mit Aufteilung System/VM/Docker/Frei | ✅ |
 | Disk-Donuts pro Mount, Netzwerk-Schnittstellen | ✅ |
-| **Taskmanager**: Prozesse auflisten + beenden (TERM/KILL) | ✅ |
-| **Taskmanager**: systemd-Dienste start/stop/restart | ✅ |
-| **Automatisierung**: Crontab anlegen/löschen (mit Presets) | ✅ |
-| **Automatisierung**: Autostart (Dienste enable/disable) | ✅ |
+| Taskmanager: Prozesse auflisten + beenden (TERM/KILL) | ✅ |
+| Taskmanager: systemd-Dienste start/stop/restart/Autostart | ✅ |
+| Automatisierung: Crontab anlegen/löschen (mit Presets) | ✅ |
+| Automatisierung: Autostart (Dienste enable/disable) | ✅ |
 
-### ✅ Phase 3 – Virtualisierung (implementiert)
+### ✅ Phase 3 – Virtualisierung
 
 | Modul | Status |
 |---|---|
-| **VM-Liste** mit Status, vCPU, RAM (libvirt/virsh) | ✅ |
+| VM-Liste mit Status, vCPU, RAM (libvirt/virsh) | ✅ |
 | VM starten / herunterfahren / hart aus / neustarten | ✅ |
 | VM erstellen (virt-install Wizard: RAM, CPU, Disk, ISO) | ✅ |
 | VM-Snapshot erstellen | ✅ |
 | VM-Autostart umschalten, VM löschen | ✅ |
 
----
-
-### ✅ Phase 4 – Updates, Backup, SMB & Benutzer (implementiert)
+### ✅ Phase 4 – Updates, Backup, SMB & Benutzer
 
 | Feature | Status |
 |---|---|
-| **System-Updates** (apt/dnf/pacman: suchen + einspielen) | ✅ |
-| **Docker-Backup** (Volumes via busybox, ohne Host-Root) | ✅ |
-| **Verzeichnis-Backup** (tar.gz) | ✅ |
-| **VM-Backup** (qcow2 komprimiert) | ✅ |
-| **Backup Download / Löschen** | ✅ |
-| **SMB-Freigaben** (anlegen/löschen, smbd steuern, SMB-User) | ✅ |
-| **Benutzerverwaltung** (Core-Hub Logins + Linux-User, sudo) | ✅ |
-| **Rechte-Modell** (sudoers-Allowlist via install.sh) | ✅ |
+| System-Updates (apt/dnf/pacman: suchen + einspielen) | ✅ |
+| Docker-Backup (Volumes via busybox) | ✅ |
+| Verzeichnis-Backup (tar.gz) | ✅ |
+| VM-Backup (qcow2 komprimiert) | ✅ |
+| Backup Download / Löschen | ✅ |
+| SMB-Freigaben (anlegen/löschen, smbd steuern, SMB-User) | ✅ |
+| Benutzerverwaltung (Core-Hub Logins + Linux-User, sudo) | ✅ |
+| Rechte-Modell (sudoers-Allowlist via install.sh) | ✅ |
 
-### ✅ Phase 5 – Automatisches HTTPS (implementiert)
+### ✅ Phase 5 – Automatisches HTTPS
 
 | Feature | Status |
 |---|---|
-| **Reverse-Proxy** auf Caddy-Basis | ✅ |
-| **HTTPS pro Host** per Schalter aktivieren/deaktivieren | ✅ |
-| **HTTPS für alle** Hosts auf einmal | ✅ |
-| **Interne CA** (`tls internal`) – automatische Zertifikate | ✅ |
-| **Root-CA Download** zum Installieren auf Geräten | ✅ |
-| **Auto-Vorschläge** aus laufenden Containern mit HTTP-Port | ✅ |
-| Caddyfile-Generierung + Reload per Klick | ✅ |
+| Reverse-Proxy auf Caddy-Basis | ✅ |
+| HTTPS pro Host per Schalter aktivieren/deaktivieren | ✅ |
+| HTTPS für alle Hosts auf einmal | ✅ |
+| Interne CA (`tls internal`) – automatische Zertifikate | ✅ |
+| Root-CA Download | ✅ |
+| Auto-Vorschläge aus laufenden Containern mit HTTP-Port | ✅ |
 
-#### So funktioniert das HTTPS-Modul
-1. Jeder Container mit HTTP-Port bekommt einen Hostnamen (z.B. `dienst.lan`).
-2. Schalter „HTTPS" pro Host → Caddy terminiert TLS mit selbst erzeugtem Zertifikat.
-3. Core-Hub schreibt einen verwalteten Block in `/etc/caddy/Caddyfile` und lädt Caddy neu.
-4. Root-CA einmal herunterladen + auf Geräten installieren → überall grünes Schloss.
-5. Für öffentliche Domains nutzt Caddy automatisch Let's Encrypt.
-
-### ✅ Phase 6 – Einstellungen & Migration (implementiert)
+### ✅ Phase 6 – Einstellungen & Migration
 
 | Feature | Status |
 |---|---|
 | Einstellungen-Seite, Passwort ändern | ✅ |
 | System-Info + erkannte Module | ✅ |
-| **Migration Export/Import** (DB + Zertifikate + SMB) als .tar.gz | ✅ |
-| Import per **Drag & Drop**, Neustart-Übernahme | ✅ |
+| Migration Export/Import (DB + Zertifikate + SMB) als .tar.gz | ✅ |
+| Import per Drag & Drop | ✅ |
 
-### ✅ Phase 7 – Netzwerke, VLANs & Firewall (implementiert)
+### ✅ Phase 7 – Netzwerke, VLANs & Firewall
 
 | Feature | Status |
 |---|---|
 | Docker-Netzwerke auflisten/erstellen/löschen | ✅ |
-| **VLANs** via macvlan/ipvlan + Eltern-Schnittstelle + VLAN-ID | ✅ |
-| **Isolierte Netze** (internal) für unsichere Container | ✅ |
-| Container verbinden mit **fester IP** + Aliassen | ✅ |
-| **Firewall** (ufw): Regeln allow/deny/reject nach Port/IP | ✅ |
+| VLANs via macvlan/ipvlan + Eltern-Schnittstelle + VLAN-ID | ✅ |
+| Isolierte Netze (internal) | ✅ |
+| Container verbinden mit fester IP + Aliassen | ✅ |
+| Firewall (ufw): Regeln allow/deny/reject nach Port/IP | ✅ |
 
-### ✅ Phase 8 – Sicherheits-Check & Härtung (implementiert)
+### ✅ Phase 8 – Sicherheits-Check & Härtung
 
 | Feature | Status |
 |---|---|
-| **Sicherheits-Scan** mit Score (0–100) + Note | ✅ |
+| Sicherheits-Scan mit Score (0–100) + Note | ✅ |
 | SSH (Root-Login, Passwort-Auth), Firewall-Status | ✅ |
 | Sicherheitsupdates, Auto-Updates, fail2ban, Reboot | ✅ |
 | Konten ohne Passwort, mehrere UID-0, offene Ports | ✅ |
 | Docker: privilegierte Container, docker.sock-Mounts | ✅ |
-| Konkrete **Härtungs-Tipps** pro Fund | ✅ |
+| Härtungs-Tipps + 1-Klick-Aktionen pro Fund | ✅ |
 
----
-
-### ✅ Phase 9 – abgeschlossen
+### ✅ Phase 9
 
 | Feature | Status |
 |---|---|
 | Container „Update verfügbar"-Erkennung (Registry-Digest) + 1-Klick-Update | ✅ |
 | VM-Netzwerke (libvirt: NAT/isoliert/Bridge + VLAN, VM anhängen) | ✅ |
-| SSH ein-/ausschaltbar + 1-Klick-Härtung (Firewall/fail2ban/Auto-Updates/SSH) | ✅ |
-| **Virenschutz (ClamAV): installieren, Signaturen updaten, scannen** | ✅ |
-| Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, Zeit, AV) | ✅ |
-| **2FA (TOTP)** für Logins (einrichten/aktivieren/deaktivieren, Abfrage beim Login) | ✅ |
-| **Automatische Backup-Zeitpläne** (Cron-basiert, Aufbewahrung, „jetzt ausführen") | ✅ |
-| **Benachrichtigungen** (Webhook für Discord/Slack/eigene + E-Mail, je Ereignis) | ✅ |
-| **App-Vorlagen / 1-Klick-Install** beliebter Dienste (Nextcloud, Jellyfin, …) | ✅ |
-| **Versionsanzeige + Update-Prüfung** gegen GitHub-Releases | ✅ |
-| **Installer-Update-Modus**: erkennt bestehende Installation, aktualisiert datenschonend | ✅ |
+| SSH ein-/ausschaltbar + 1-Klick-Härtung | ✅ |
+| Virenschutz (ClamAV): installieren, Signaturen updaten, scannen | ✅ |
+| Erweiterte Sicherheits-Checks (Standard-Passwort, AppArmor/SELinux, AV) | ✅ |
+| 2FA (TOTP) für Logins | ✅ |
+| Automatische Backup-Zeitpläne (Cron, Aufbewahrung) | ✅ |
+| Benachrichtigungen (Webhook Discord/Slack + E-Mail, je Ereignis) | ✅ |
+| App-Vorlagen / 1-Klick-Install (Nextcloud, Jellyfin, …) | ✅ |
+| Versionsanzeige + Update-Prüfung gegen GitHub-Releases | ✅ |
 
-### ✅ Phase 10 – Qualität & Betrieb (implementiert)
-
-| Feature | Status |
-|---|---|
-| **Container-Detailseite** (Live-Logs-Polling, CPU/RAM-Sparkline, Env/Volumes/Ports) | ✅ |
-| **Bestätigungsdialoge** bei Löschen (Container, VMs, App-/Linux-Benutzer) | ✅ |
-| **Rate-Limiting** auf Login (5 Versuche / 15 min per IP) | ✅ |
-| **Session-Timeout** (2h Inaktivität → automatischer Logout) | ✅ |
-| **JWT-Ablaufzeit** von 7d auf 24h verkürzt | ✅ |
-| **Audit-Log-Rotation** (Einträge älter 90 Tage werden täglich gelöscht) | ✅ |
-| **Health-Endpunkt** `GET /health` (Version, Uptime – für Monitoring-Tools) | ✅ |
-| **System-Dark-Mode** als Standard falls keine Präferenz gespeichert | ✅ |
-| **Mobile-Optimierung** (Sidebar als Drawer, Touch-Targets, responsive Layouts) | ✅ |
-| **`.deb`-Paket** (`build-deb.sh` – baut ein installationsfertiges Debian-Paket) | ✅ |
-
-### ✅ Phase 11 – Alarme, E-Mail & Optimierung (implementiert)
+### ✅ Phase 10 – Qualität & Betrieb
 
 | Feature | Status |
 |---|---|
-| **SMTP-E-Mail-Versand** (Server/Port/User/Passwort/SSL im UI, Test-Mail) | ✅ |
-| **Alarm-Regeln**: vordefinierte Auffälligkeiten (SSH-Root, fail2ban-Sperren, Risiko-Ports, Score-Schwelle, privilegierte Container) | ✅ |
-| **Eigene Schwellwert-Regeln** (CPU/RAM/Disk über X % für Y Minuten) | ✅ |
-| **Empfänger pro Regel** (mehrere E-Mail-Adressen, sonst globale Adresse) | ✅ |
-| **Hintergrund-Monitor** (prüft alle 60 s, Anti-Spam-Cooldown 1 h) | ✅ |
-| **Optimierungs-Panel** im Dashboard (RAM-/CPU-Fresser, gestoppte Container, Swap, volle Platten) | ✅ |
-| **Web-Terminal** (interaktive Root-Shell per xterm.js + WebSocket, node-pty mit `script`-Fallback) | ✅ |
-| **Echter RAM-Wert** wie htop (aus /proc/meminfo) + Live-Updates alle 2 s | ✅ |
-| **CPU-Gesamtlast als Tortendiagramm**, Einzelkerne einklappbar | ✅ |
-| **HTTPS überall** (Caddy: HTTP→HTTPS-Redirect, Core-Hub nur auf localhost) | ✅ |
-| **Deinstallation** (`install.sh --deinstall [--purge]`) + `--update`-Modus | ✅ |
+| Container-Detailseite (Live-Logs-Polling, CPU/RAM-Sparkline, Env/Volumes/Ports) | ✅ |
+| Bestätigungsdialoge bei Löschen | ✅ |
+| Rate-Limiting auf Login (5 Versuche / 15 min per IP) | ✅ |
+| Session-Timeout (2h Inaktivität → automatischer Logout) | ✅ |
+| Audit-Log-Rotation (Einträge älter 90 Tage täglich gelöscht) | ✅ |
+| Health-Endpunkt `GET /health` | ✅ |
+| System-Dark-Mode als Standard | ✅ |
+| Mobile-Optimierung (Sidebar als Drawer, Touch-Targets) | ✅ |
+| `.deb`-Paket (`build-deb.sh`) | ✅ |
 
-### ✅ Phase 12 – Datei-Manager & 1-Klick-Update (implementiert)
+### ✅ Phase 11 – Alarme, E-Mail & Optimierung
 
 | Feature | Status |
 |---|---|
-| **Datei-Manager** (Verzeichnisbaum, Textdateien direkt bearbeiten) | ✅ |
+| SMTP-E-Mail-Versand (Server/Port/User/Passwort/SSL im UI, Test-Mail) | ✅ |
+| Alarm-Regeln: vordefinierte Auffälligkeiten (SSH-Root, fail2ban, Risiko-Ports, Score) | ✅ |
+| Eigene Schwellwert-Regeln (CPU/RAM/Disk über X % für Y Minuten) | ✅ |
+| Empfänger pro Regel (mehrere E-Mail-Adressen) | ✅ |
+| Hintergrund-Monitor (alle 60 s, Anti-Spam-Cooldown 1 h) | ✅ |
+| Optimierungs-Panel im Dashboard | ✅ |
+| Web-Terminal (xterm.js + WebSocket, node-pty mit `script`-Fallback) | ✅ |
+| Echter RAM-Wert wie htop (aus /proc/meminfo) | ✅ |
+| HTTPS überall (Caddy: HTTP→HTTPS-Redirect) | ✅ |
+| Deinstallation (`install.sh --deinstall [--purge]`) | ✅ |
+
+### ✅ Phase 12 – Datei-Manager & 1-Klick-Update
+
+| Feature | Status |
+|---|---|
+| Datei-Manager (Verzeichnisbaum, Textdateien bearbeiten) | ✅ |
 | Hochladen, Ordner anlegen, umbenennen, löschen, herunterladen | ✅ |
-| **Rechte (chmod) und Eigentümer/Gruppe** anzeigen und ändern – auch in `/etc`, `/opt` via sudoers | ✅ |
-| **1-Klick-Update in der Oberfläche** (`git pull` + `install.sh --update`, Live-Log) | ✅ |
-| Update-Prüfung gegen GitHub-Releases und `VERSION`-Datei (funktioniert auch bei privaten Repos) | ✅ |
-| **Konfigurations-Migration** (DB + Caddy-Zertifikate + SMB als `.tar.gz` exportieren/importieren) | ✅ |
-| **Container-Migration von Unraid** (Schritt-für-Schritt-Anleitung, `docs/MIGRATION.md`) | ✅ |
+| Rechte (chmod) und Eigentümer/Gruppe ändern (auch `/etc`, `/opt`) | ✅ |
+| 1-Klick-Update in der Oberfläche (git pull + install.sh, Live-Log) | ✅ |
+| Update-Prüfung gegen GitHub-Releases und VERSION-Datei | ✅ |
+| Konfigurations-Migration (DB + Caddy + SMB als `.tar.gz`) | ✅ |
+| Container-Migration von Unraid (Schritt-für-Schritt-Anleitung) | ✅ |
 
-### ✅ Phase 13 – GPU, KI/Ollama, Samba-Lifecycle & SSE-Logs (v0.7.1)
-
-| Feature | Status |
-|---|---|
-| **GPU-Dashboard-Panel** (NVIDIA via nvidia-smi, AMD via amdgpu sysfs; APU/UMA korrekt als Unified Memory) | ✅ |
-| GPU-Auslastung (%) + VRAM/UMA-Verbrauch als Donuts neben CPU/RAM auf dem Dashboard | ✅ |
-| **KI/Ollama-Seite** (Status, Modell-Liste, VRAM pro Modell, Start/Stop-Schalter) | ✅ |
-| **Hardware-Analyse**: RAM, GPU, VRAM; erkennt APU/UMA (Ryzen AI MAX, Apple Silicon-ähnlich) | ✅ |
-| **Empfohlene Modellgröße** (Formel: `(Basis − 4 GB) × 0,7`) mit aufklappbarer Erklärung | ✅ |
-| **Ollama Zugriffsmodus**: lokal (`127.0.0.1`) oder LAN (`0.0.0.0`) per Schalter – schreibt systemd-Override | ✅ |
-| Zugriffs-URLs (`http://IP:Port`, `http://Hostname:Port`) direkt in der UI; HTTPS-URL wenn Caddy-Proxy aktiv | ✅ |
-| **Beliebte Modell-Empfehlungen** (zuerst angezeigt), **HuggingFace GGUF-Suche** (darunter) | ✅ |
-| **GGUF-Quantisierungsselektor**: wähle Q4_K_M / Q5_K_M / Q8_0 … beim HF-Laden (via `hf.co/<repo>:<quant>`) | ✅ |
-| **Gleichzeitige Downloads**: mehrere Modelle parallel laden, Status pro Modell (Set-basiert) | ✅ |
-| **Samba Auto-Lifecycle**: startet automatisch + öffnet LAN-Firewall (Ports 137–139, 445) beim ersten Eintrag | ✅ |
-| Samba stoppt automatisch + blockiert Firewall wenn alle Freigaben entfernt werden | ✅ |
-| Internet-Zugang für Samba nur explizit über Sicherheitseinstellungen | ✅ |
-| **Container-Logs als SSE-Stream** (`follow: true`, kein Polling mehr) – Logs in Echtzeit | ✅ |
-| **Taskmanager Dienste-Tab**: systemd-Dienste starten / stoppen / neustarten / Autostart | ✅ |
-
-### ⏳ Geplant / Ideen (kommende Phasen)
+### ✅ Phase 13 – GPU, KI/Ollama, Samba-Lifecycle & SSE-Logs (`v0.7.1`)
 
 | Feature | Status |
 |---|---|
-| Mehrsprachigkeit (EN/DE) | ⏳ |
+| GPU-Dashboard-Panel (NVIDIA, AMD, APU/UMA korrekt) | ✅ |
+| GPU-Auslastung + VRAM als Donuts auf dem Dashboard | ✅ |
+| KI/Ollama-Seite (Status, Modell-Liste, VRAM, Start/Stop) | ✅ |
+| Hardware-Analyse: RAM, GPU, VRAM; empfohlene Modellgröße | ✅ |
+| Ollama Zugriffsmodus: lokal / LAN per Schalter (systemd-Override) | ✅ |
+| Zugriffs-URLs direkt in der UI; HTTPS-URL wenn Caddy-Proxy aktiv | ✅ |
+| Beliebte Modell-Empfehlungen + HuggingFace GGUF-Suche | ✅ |
+| GGUF-Quantisierungsselektor (Q4_K_M / Q5_K_M / Q8_0 …) | ✅ |
+| Gleichzeitige Downloads (mehrere Modelle parallel) | ✅ |
+| 1-Klick HTTPS via Caddy für Ollama (Hostname + alle LAN-IPs) | ✅ |
+| Samba Auto-Lifecycle: Start/Stop/Firewall automatisch | ✅ |
+| Container-Logs als SSE-Stream (Echtzeit, kein Polling) | ✅ |
+
+### ✅ Phase 14 – Firewall-Assistent, Virtuelle IPs, App-Store, i18n (`v0.7.3`)
+
+| Feature | Status |
+|---|---|
+| **Firewall-Assistent** – interner Port-Scan (ss -tulnpH): welche Dienste lauschen? | ✅ |
+| Aktive Verbindungen je Port (ss -tunH state established) | ✅ |
+| Pro Port: „Nur im LAN freigeben" / „Überall" / **„Ignorieren"** (dauerhaft ausblenden, SQLite) | ✅ |
+| Samba-Ports (139/445) nur im Assistenten zeigen, wenn Freigaben in smb.conf existieren | ✅ |
+| Redundante Block-Regeln erkennen (Standard-Richtlinie already deny) | ✅ |
+| SSH-Regel auf LAN beschränken (1-Klick: löscht Anywhere-Regel, legt 3 LAN-Regeln an) | ✅ |
+| Firewall-Toggle: Port 22 nur anlegen wenn keine Regel existiert; 80/443 nur LAN-only wenn leer | ✅ |
+| Bestehende LAN-Regeln werden beim Aktivieren **niemals** überschrieben | ✅ |
+| Docker-Published-Ports in Orphan-Erkennung einbeziehen | ✅ |
+| **Virtuelle IPs**: Container in macvlan/ipvlan-Netzwerke mit fester IP einhängen | ✅ |
+| Virtuelle IPs beim Erstellen und Bearbeiten von Containern wählbar (NetworksPicker) | ✅ |
+| Tab „Virtuelle IPs" in Netzwerke & VLANs: alle Container-IPs + VM-DHCP-Leases | ✅ |
+| **App-Store**: Unraid Community Store (tausende Apps) + Docker Hub Suche | ✅ |
+| Port-Konflikt-Prüfung vor Installation (mit Container-Name als Hinweis) | ✅ |
+| Fehlgeschlagene Installation hinterlässt keine Container-Leichen (automatisches Aufräumen) | ✅ |
+| Klartextübersetzung häufiger Docker-Fehler (address already in use) | ✅ |
+| **Dynamische Kategorie-Tabs** in Container-Übersicht (erscheinen automatisch) | ✅ |
+| **Mehrsprachigkeit (i18n)**: DE/EN umschaltbar, Browser-Autoerkennung, kein Framework | ✅ |
+| Sprachumschalter in den Einstellungen; erweiterbar auf weitere Sprachen | ✅ |
+
+### ⏳ Geplant / Ideen
+
+| Feature | Status |
+|---|---|
+| Weitere Sprachen (FR, ES, …) | ⏳ |
 | Reverse-Proxy: weitere Backends (nginx/Traefik) | ⏳ |
-
----
-
-### 📓 Historie – ursprüngliche Phase-Planung
-
-- HTTPS (selbstsigniert / Let's Encrypt via ACME)
-- 2-Faktor-Authentifizierung (TOTP)
-- Benachrichtigungen (E-Mail, Webhook)
-- Dark/Light automatisch (System-Präferenz)
-- Mobile-Optimierung
-- `.deb`-Paket für einfache Installation
+| Alle Seiteninhalte auf i18n-Schlüssel umstellen | ⏳ |
 
 ---
 
@@ -261,7 +259,7 @@ Font: Inter.
 
 - Niemals ohne Passwort betreiben
 - Default-Passwort `admin` nach erstem Login sofort ändern
-- Hinter einem Reverse-Proxy (nginx/Traefik) mit HTTPS betreiben
+- Hinter einem Reverse-Proxy mit HTTPS betreiben
 - Nur im lokalen Netzwerk oder per VPN zugänglich machen
 - Audit-Log ist aktiv: jede Aktion wird protokolliert
 

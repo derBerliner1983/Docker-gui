@@ -27,7 +27,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { error?: string }).error ?? `HTTP ${res.status}`);
+    const err = new Error((body as { error?: string }).error ?? `HTTP ${res.status}`) as Error & { data?: unknown; status?: number };
+    err.data = body;          // Zusatzdaten (z.B. Port-Konflikt-Vorschläge) erhalten
+    err.status = res.status;
+    throw err;
   }
   return res.json() as Promise<T>;
 }

@@ -368,8 +368,12 @@ export async function settingsRoutes(fastify: FastifyInstance) {
 
       if (installOk) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
       else { send('[!] Installer beendet mit Fehler. Bitte Log oben prüfen.'); }
+      // Explizites Abschluss-Signal: das Frontend schließt daraufhin den Stream
+      // (kein Auto-Reconnect) und pollt anschließend den Dienst bis er wieder online ist.
+      try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok: installOk })}\n\n`); } catch { /* closed */ }
     } catch (e) {
       send(`[Fehler] ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
+      try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok: false })}\n\n`); } catch { /* closed */ }
     }
     reply.raw.end();
   });

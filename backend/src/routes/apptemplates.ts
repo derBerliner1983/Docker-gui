@@ -191,6 +191,18 @@ async function usedHostPorts(): Promise<Map<string, string>> {
   return used;
 }
 
+/** Nächsten freien Host-Port ab `from` finden (nicht von Containern belegt, nicht in `also` reserviert). */
+function suggestFreePort(from: number, proto: string, used: Map<string, string>, also: Set<string>): number {
+  // Bei privilegierten Ports (z.B. 53) lieber in den hohen Bereich ausweichen
+  let candidate = from < 1024 ? from + 10000 : from + 1;
+  for (let i = 0; i < 5000; i++) {
+    const key = `${candidate}/${proto}`;
+    if (candidate <= 65535 && !used.has(key) && !also.has(key)) return candidate;
+    candidate = candidate >= 65535 ? 1024 : candidate + 1;
+  }
+  return from; // Fallback (sollte praktisch nie passieren)
+}
+
 interface InstallBody {
   name?: string;
   image: string;
@@ -303,16 +315,25 @@ export async function appTemplateRoutes(fastify: FastifyInstance) {
       // ── Vorab-Prüfung: schon belegte Host-Ports erkennen (bevor wir das Image ziehen) ──
       if (!usesOwnIp && body.networkMode !== 'host') {
         const used = await usedHostPorts();
+        const reserved = new Set<string>();   // bereits vorgeschlagene Ersatzports nicht doppelt vergeben
         const conflicts: string[] = [];
+        // Pro Konflikt einen freien Ersatz-Host-Port vorschlagen (Container-Port bleibt gleich)
+        const suggestions: { container: number; host: number; proto: string; suggestedHost: number; owner: string }[] = [];
         for (const p of body.ports ?? []) {
           const proto = (p.proto === 'udp' ? 'udp' : 'tcp');
           const owner = used.get(`${p.host}/${proto}`);
-          if (owner) conflicts.push(`Port ${p.host}/${proto} (belegt von „${owner}")`);
+          if (owner) {
+            const free = suggestFreePort(p.host, proto, used, reserved);
+            reserved.add(`${free}/${proto}`);
+            conflicts.push(`Port ${p.host}/${proto} (belegt von „${owner}") → frei: ${free}`);
+            suggestions.push({ container: p.container, host: p.host, proto, suggestedHost: free, owner });
+          }
         }
         if (conflicts.length) {
           return reply.status(409).send({
             error: `Host-Port bereits belegt: ${conflicts.join(', ')}. ` +
-              `Wähle einen anderen Host-Port – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).`,
+              `Übernimm die vorgeschlagenen freien Ports – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).`,
+            conflicts: suggestions,
           });
         }
       }
