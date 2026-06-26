@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
+import { PrefsProvider } from './lib/prefs';
 import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -74,7 +75,9 @@ export function App() {
     <I18nProvider>
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <PrefsProvider>
+            <AppRoutes />
+          </PrefsProvider>
         </AuthProvider>
       </BrowserRouter>
     </I18nProvider>

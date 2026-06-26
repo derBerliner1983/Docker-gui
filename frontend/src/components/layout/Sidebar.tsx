@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
+import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 
 interface SidebarProps {
@@ -53,6 +54,17 @@ const NAV = [
   },
 ];
 
+/** Einträge eines Abschnitts nach gespeicherter Reihenfolge sortieren (Unbekanntes ans Ende). */
+function orderItems<T extends { to: string }>(items: T[], saved?: string[]): T[] {
+  if (!saved || saved.length === 0) return items;
+  const rank = new Map(saved.map((to, i) => [to, i]));
+  return [...items].sort((a, b) => {
+    const ra = rank.has(a.to) ? rank.get(a.to)! : 999;
+    const rb = rank.has(b.to) ? rank.get(b.to)! : 999;
+    return ra - rb;
+  });
+}
+
 export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const { user, logout } = useAuth();
   const t = useT();
@@ -60,6 +72,11 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [kiInstalled, setKiInstalled] = useState(false);
+  const { prefs, setPref } = usePrefs();
+  const order = (prefs.sidebarOrder as Record<string, string[]>) || {};
+  // Aktuell gezogener Eintrag: Abschnitt + Ziel-Pfad
+  const [drag, setDrag] = useState<{ section: string; to: string } | null>(null);
+  const [dragOver, setDragOver] = useState<string | null>(null);
 
   useEffect(() => {
     api.settings.version()
@@ -74,6 +91,18 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   };
 
   const handleNavClick = () => { if (onMobileClose) onMobileClose(); };
+
+  // Drag & Drop: nur innerhalb desselben Abschnitts umsortieren
+  const onDrop = (sectionKey: string, items: { to: string }[], targetTo: string) => {
+    if (!drag || drag.section !== sectionKey || drag.to === targetTo) { setDrag(null); setDragOver(null); return; }
+    const current = orderItems(items, order[sectionKey]).map((i) => i.to);
+    const from = current.indexOf(drag.to);
+    const to = current.indexOf(targetTo);
+    if (from < 0 || to < 0) { setDrag(null); setDragOver(null); return; }
+    current.splice(to, 0, current.splice(from, 1)[0]);
+    setPref('sidebarOrder', { ...order, [sectionKey]: current });   // pro-Benutzer serverseitig
+    setDrag(null); setDragOver(null);
+  };
 
   return (
     <aside className={`sidebar${collapsed ? ' sidebar--collapsed' : ''}${mobileOpen ? ' sidebar--mobile-open' : ''}`}>
@@ -98,13 +127,21 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         {NAV.map((section) => (
           <div className="sidebar__section" key={section.labelKey}>
             <div className="sidebar__section-label">{t(section.labelKey)}</div>
-            {section.items.map(({ to, icon: Icon, labelKey }) => {
+            {orderItems(section.items, order[section.labelKey]).map(({ to, icon: Icon, labelKey }) => {
               const label = t(labelKey);
+              const isDragging = drag?.to === to;
+              const isOver = dragOver === to && drag?.section === section.labelKey && drag?.to !== to;
               return (
                 <NavLink
                   key={to}
                   to={to}
+                  draggable
+                  onDragStart={(e) => { setDrag({ section: section.labelKey, to }); e.dataTransfer.effectAllowed = 'move'; }}
+                  onDragEnd={() => { setDrag(null); setDragOver(null); }}
+                  onDragOver={(e) => { if (drag?.section === section.labelKey) { e.preventDefault(); setDragOver(to); } }}
+                  onDrop={(e) => { e.preventDefault(); onDrop(section.labelKey, section.items, to); }}
                   className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
+                  style={{ opacity: isDragging ? 0.4 : 1, ...(isOver ? { boxShadow: 'inset 0 2px 0 var(--color-accent)' } : {}) }}
                   title={collapsed ? label : undefined}
                   onClick={handleNavClick}
                 >

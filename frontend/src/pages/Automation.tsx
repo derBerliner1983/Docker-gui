@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Clock, Power, Plus, Trash2, Play, Square } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import type { CronJob, AutostartUnit } from '../lib/types';
@@ -136,7 +137,8 @@ export function Automation() {
     <>
       <Topbar title="Automatisierung" subtitle="Cronjobs & Autostart" onRefresh={load} refreshing={refreshing} />
       <main className="page">
-        {/* CRONTAB */}
+        <SortablePanels storageKey="automation" items={[
+          { id: 'cron', node: (
         <Panel
           title="Cronjobs"
           icon={<Clock size={15} />}
@@ -174,8 +176,8 @@ export function Automation() {
             </table>
           )}
         </Panel>
-
-        {/* AUTOSTART */}
+          ) },
+          { id: 'autostart', node: (
         <Panel
           title="Autostart"
           icon={<Power size={15} />}
@@ -227,6 +229,8 @@ export function Automation() {
             </table>
           </div>
         </Panel>
+          ) },
+        ]} />
       </main>
 
       <CronModal open={modalOpen} onClose={() => setModalOpen(false)} onSaved={load} />

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRight, Gauge, CheckCircle2, AlertTriangle, Info, ArrowRight, MonitorCheck } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Donut, donutColor } from '../components/ui/Donut';
 import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
@@ -93,7 +94,9 @@ export function Dashboard() {
         refreshing={refreshing}
       />
       <main className="page">
-        {/* ── PROZESSOR ── */}
+        <SortablePanels storageKey="dashboard" items={[
+          { id: 'cpu', node: (
+        /* ── PROZESSOR ── */
         <Panel
           title="Prozessor"
           icon={<Cpu size={15} />}
@@ -159,9 +162,8 @@ export function Dashboard() {
             </>
           )}
         </Panel>
-
-        {/* ── GPU ── */}
-        {stats?.gpu && stats.gpu.length > 0 && (() => {
+          ) },
+          ...(stats?.gpu && stats.gpu.length > 0 ? [{ id: 'gpu', node: ((() => {
           const g = stats.gpu![0];
           const vramPct = g.vramTotalMb && g.vramUsedMb != null ? Math.round((g.vramUsedMb / g.vramTotalMb) * 100) : null;
           return (
@@ -228,9 +230,9 @@ export function Dashboard() {
               </div>
             </Panel>
           );
-        })()}
-
-        {/* ── SYSTEM (RAM + Disk donuts) ── */}
+        })()) }] : []),
+          { id: 'system', node: (
+        /* ── SYSTEM (RAM + Disk donuts) ── */
         <Panel
           title="System"
           icon={<MemoryStick size={15} />}
@@ -305,8 +307,9 @@ export function Dashboard() {
             </div>
           )}
         </Panel>
-
-        {/* ── NETZWERK ── */}
+          ) },
+          { id: 'network', node: (
+        /* ── NETZWERK ── */
         <Panel
           title="Schnittstelle"
           icon={<Network size={15} />}
@@ -345,8 +348,9 @@ export function Dashboard() {
             </table>
           )}
         </Panel>
-
-        {/* ── OPTIMIERUNG ── */}
+          ) },
+          { id: 'optimize', node: (
+        /* ── OPTIMIERUNG ── */
         <Panel
           title="Optimierung"
           icon={<Gauge size={15} />}
@@ -383,6 +387,8 @@ export function Dashboard() {
             </div>
           )}
         </Panel>
+          ) },
+        ]} />
       </main>
     </>
   );

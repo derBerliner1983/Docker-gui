@@ -34,6 +34,7 @@ import { alertRoutes } from './routes/alerts';
 import { terminalRoutes } from './routes/terminal';
 import { fileRoutes } from './routes/files';
 import { kiRoutes } from './routes/ki';
+import { prefsRoutes } from './routes/prefs';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
@@ -94,6 +95,7 @@ async function main() {
   await fastify.register(terminalRoutes);
   await fastify.register(fileRoutes);
   await fastify.register(kiRoutes);
+  await fastify.register(prefsRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

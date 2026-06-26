@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ShieldCheck, Bug, Download, RefreshCw, Play, Search, CheckCircle2, AlertOctagon } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import type { AntivirusStatus } from '../lib/types';
@@ -76,8 +77,8 @@ export function Antivirus() {
             </div>
           </div>
         ) : (
-          <>
-            {/* Status */}
+          <SortablePanels storageKey="antivirus" items={[
+            { id: 'status', node: (
             <Panel title="Status" icon={<ShieldCheck size={15} />} subtitle={av.version} storageKey="av-status"
               actions={
                 <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
@@ -110,8 +111,8 @@ export function Antivirus() {
                 </div>
               )}
             </Panel>
-
-            {/* Scan */}
+            ) },
+            { id: 'scan', node: (
             <Panel title="Scan" icon={<Search size={15} />} subtitle={s?.running ? 'läuft…' : undefined} storageKey="av-scan">
               <div style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 14, flexWrap: 'wrap' }}>
                 <input className="input input--rect" value={scanPath} onChange={(e) => setScanPath(e.target.value)} placeholder="/home" style={{ flex: 1, minWidth: 220, fontFamily: 'var(--font-mono)' }} disabled={s?.running} />
@@ -173,7 +174,8 @@ export function Antivirus() {
 
               {s?.error && <div className="login-error" style={{ marginTop: 10 }}>{s.error}</div>}
             </Panel>
-          </>
+            ) },
+          ]} />
         )}
       </main>
     </>

@@ -4,6 +4,7 @@ import { ShieldAlert, ShieldCheck, AlertTriangle, Info, CheckCircle2, XCircle, L
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Donut } from '../components/ui/Donut';
 import { Switch } from '../components/ui/Switch';
 import { SecurityAlerts } from '../components/security/AlertsPanel';
@@ -464,7 +465,8 @@ export function Security() {
               </div>
             </div>
 
-            {/* Actionable findings */}
+            <SortablePanels storageKey="security" items={[
+            { id: 'action', node: (
             <Panel
               title="Handlungsbedarf"
               icon={<ShieldAlert size={15} />}
@@ -483,10 +485,9 @@ export function Security() {
                 </div>
               )}
             </Panel>
-
-            <SshPanel />
-
-            {/* Netzwerkzugang – kompakte Übersicht, Bearbeitung im Popup */}
+            ) },
+            { id: 'ssh', node: <SshPanel /> },
+            { id: 'network', node: (<>
             <Panel
               title="Netzwerkzugang"
               icon={<Globe size={15} />}
@@ -558,14 +559,10 @@ export function Security() {
                 {networkFindings.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
               </div>
             </Modal>
-
-            {/* E-Mail-Alarm-Regeln */}
-            <SecurityAlerts />
-
-            {/* Geräte & Sitzungen */}
-            <SessionsPanel />
-
-            {/* Passed checks */}
+            </>) },
+            { id: 'alerts', node: <SecurityAlerts /> },
+            { id: 'sessions', node: <SessionsPanel /> },
+            { id: 'passed', node: (
             <Panel
               title="Bestandene Prüfungen"
               icon={<ShieldCheck size={15} />}
@@ -577,6 +574,8 @@ export function Security() {
                 {passed.map((f) => <FindingRow key={f.id} f={f} onFix={fix} fixing={isFixing(f)} showZoneBadge={showZoneBadge} />)}
               </div>
             </Panel>
+            ) },
+            ]} />
           </>
         )}
       </main>

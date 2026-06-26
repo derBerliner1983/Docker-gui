@@ -152,6 +152,12 @@ export const api = {
     }) => req<{ ok: boolean; id: string; name: string }>('/api/app-templates/store/install', { method: 'POST', body: JSON.stringify(data) }),
   },
 
+  prefs: {
+    get: () => req<{ prefs: Record<string, unknown> }>('/api/prefs'),
+    update: (prefs: Record<string, unknown>) =>
+      req<{ ok: boolean; prefs: Record<string, unknown> }>('/api/prefs', { method: 'PUT', body: JSON.stringify({ prefs }) }),
+  },
+
   notifications: {
     list: () => req<{ notifications: NotificationItem[]; unread: number; config: NotificationConfig }>('/api/notifications'),
     markRead: () => req('/api/notifications/read', { method: 'POST' }),

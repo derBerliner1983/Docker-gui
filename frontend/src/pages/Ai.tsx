@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
@@ -674,7 +675,8 @@ export function Ai() {
           </div>
         </div>
 
-        {/* Aktiv geladene Modelle (RAM / GPU) */}
+        <SortablePanels storageKey="ai" items={[
+          { id: 'loaded', node: (
         <Panel
           title="Aktiv im Speicher"
           icon={<MemoryStick size={15} />}
@@ -742,8 +744,8 @@ export function Ai() {
             </div>
           )}
         </Panel>
-
-        {/* Installed models */}
+          ) },
+          { id: 'models', node: (
         <Panel title="Installierte Modelle" icon={<Cpu size={15} />} subtitle={`${models.length} Modelle · Klicken für Details`} storageKey="ki-models">
           {models.length === 0 ? (
             <div className="empty-state" style={{ padding: '32px 20px' }}>
@@ -834,8 +836,8 @@ export function Ai() {
             </div>
           )}
         </Panel>
-
-        {/* Download panel */}
+          ) },
+          { id: 'pull', node: (
         <Panel title="Modell laden" icon={<Download size={15} />} subtitle="Beliebte Modelle · HuggingFace-Suche" storageKey="ki-pull">
 
           {/* Download progress */}
@@ -970,6 +972,8 @@ export function Ai() {
             </div>
           </div>
         </Panel>
+          ) },
+        ]} />
       </main>
 
       {/* Model detail modal */}
