@@ -28,11 +28,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include',
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const rawMsg = (body as { error?: string }).error ?? `HTTP ${res.status}`;
-    // Backend-Meldungen sind auf Deutsch verfasst – sie dienen als i18n-Schlüssel
-    // und werden hier in die gewählte Sprache übersetzt (Fallback = Deutsch).
-    const err = new Error(tt(rawMsg)) as Error & { data?: unknown; status?: number; raw?: string };
+    const body = await res.json().catch(() => ({})) as { error?: string; errorKey?: string; errorVars?: Record<string, string | number> };
+    const rawMsg = body.error ?? `HTTP ${res.status}`;
+    // Übersetzte Meldung: bevorzugt strukturierter Schlüssel + Variablen
+    // (dynamische Texte), sonst der deutsche Quelltext als Schlüssel.
+    // Fallback bleibt immer der deutsche Originaltext.
+    const msg = body.errorKey ? tt(body.errorKey, body.errorVars) : tt(rawMsg);
+    const err = new Error(msg) as Error & { data?: unknown; status?: number; raw?: string };
     err.raw = rawMsg;         // Originaltext (z.B. für substring-Prüfungen)
     err.data = body;          // Zusatzdaten (z.B. Port-Konflikt-Vorschläge) erhalten
     err.status = res.status;

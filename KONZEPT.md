@@ -272,7 +272,8 @@ Font: Inter.
 | Panels, Dialoge, Buttons, Tooltips, `confirm()`/`alert()` auf `tt()` umgestellt | ✅ |
 | ~470 UI-Texte in EN/FR/ES/IT übersetzt (`frontend/src/lib/locales/*.ts`) | ✅ |
 | **Backend-Fehlermeldungen** werden zentral in `api.ts` (`req()`) via `tt()` übersetzt; Originaltext bleibt als `err.raw` erhalten | ✅ |
-| 77 Backend-Meldungen in EN/FR/ES/IT übersetzt | ✅ |
+| 77 statische Backend-Meldungen in EN/FR/ES/IT übersetzt | ✅ |
+| **Dynamische Backend-Meldungen** als `errorKey` + `errorVars` (Platzhalter) – Frontend setzt mit `tt(key, vars)` zusammen (z. B. Port-Konflikt, „Container existiert", Rate-Limit, Datei zu groß) | ✅ |
 | Neue Sprache/Anpassung = nur Locale-Datei mit `deutsch → übersetzt` editieren | ✅ |
 
 ### ⏳ Geplant / Ideen

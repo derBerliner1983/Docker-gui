@@ -87,4 +87,12 @@ export const de: Record<string, string> = {
   'settings.proxy.backend.nginx': 'nginx (geplant)',
   'settings.proxy.backend.traefik': 'Traefik (geplant)',
   'settings.proxy.backend.hint': 'Caddy bietet automatisches HTTPS über eine interne CA – ohne Domain. nginx/Traefik sind vorgesehen, aber noch nicht verfügbar.',
+
+  // ── Auto: dynamische Backend-Meldungen (Schlüssel + Platzhalter) ──
+  'err.dockerhub_unreachable': 'Docker Hub nicht erreichbar: {detail}',
+  'err.hostport_in_use': 'Host-Port bereits belegt: {list}. Übernimm die vorgeschlagenen freien Ports – oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP (dann entfällt der Port-Konflikt, z. B. für AdGuard/Pi-hole auf Port 53).',
+  'err.container_name_exists': 'Ein Container namens „{name}" existiert bereits. Bitte einen anderen Namen wählen.',
+  'err.hostport_allocated': 'Ein benötigter Host-Port ist bereits belegt (z. B. Port 53 durch systemd-resolved). Wähle einen anderen Host-Port oder gib dem Container über ein Macvlan-Netzwerk eine eigene IP.',
+  'err.too_many_attempts': 'Zu viele Fehlversuche. Bitte in {minutes} Minuten erneut versuchen.',
+  'err.file_too_large': 'Datei zu groß (max {kb} KB)',
 };

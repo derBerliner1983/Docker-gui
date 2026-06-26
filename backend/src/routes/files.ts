@@ -143,7 +143,7 @@ export async function fileRoutes(fastify: FastifyInstance) {
       const p = safePath(req.query.path);
       const stat = fs.statSync(p);
       if (stat.isDirectory()) return reply.status(400).send({ error: 'Ist ein Verzeichnis' });
-      if (stat.size > MAX_READ_BYTES) return reply.status(413).send({ error: `Datei zu groß (max ${MAX_READ_BYTES / 1024} KB)` });
+      if (stat.size > MAX_READ_BYTES) return reply.status(413).send({ error: `Datei zu groß (max ${MAX_READ_BYTES / 1024} KB)`, errorKey: 'err.file_too_large', errorVars: { kb: MAX_READ_BYTES / 1024 } });
       const content = fs.readFileSync(p, 'utf8');
       reply.send({ content, size: stat.size });
     } catch (e) {

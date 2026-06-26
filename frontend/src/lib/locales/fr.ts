@@ -582,4 +582,12 @@ export const fr: Record<string, string> = {
   'ufw nicht installiert': 'ufw non installé',
   'ufw nicht installiert – Firewall zuerst einrichten': 'ufw non installé – configurez d’abord le pare-feu',
   'virt-install nicht installiert (Paket: virtinst)': 'virt-install non installé (paquet : virtinst)',
+
+  // ── Auto: dynamische Backend-Meldungen (Schlüssel + Platzhalter) ──
+  'err.dockerhub_unreachable': 'Docker Hub injoignable : {detail}',
+  'err.hostport_in_use': 'Port hôte déjà utilisé : {list}. Appliquez les ports libres proposés – ou donnez au conteneur sa propre IP via un réseau macvlan (le conflit de port disparaît alors, p. ex. pour AdGuard/Pi-hole sur le port 53).',
+  'err.container_name_exists': 'Un conteneur nommé « {name} » existe déjà. Veuillez choisir un autre nom.',
+  'err.hostport_allocated': 'Un port hôte requis est déjà utilisé (p. ex. port 53 par systemd-resolved). Choisissez un autre port hôte ou donnez au conteneur sa propre IP via un réseau macvlan.',
+  'err.too_many_attempts': 'Trop de tentatives échouées. Réessayez dans {minutes} minutes.',
+  'err.file_too_large': 'Fichier trop volumineux (max {kb} Ko)',
 };

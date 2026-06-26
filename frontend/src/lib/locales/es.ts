@@ -582,4 +582,12 @@ export const es: Record<string, string> = {
   'ufw nicht installiert': 'ufw no instalado',
   'ufw nicht installiert – Firewall zuerst einrichten': 'ufw no instalado: configura primero el cortafuegos',
   'virt-install nicht installiert (Paket: virtinst)': 'virt-install no instalado (paquete: virtinst)',
+
+  // ── Auto: dynamische Backend-Meldungen (Schlüssel + Platzhalter) ──
+  'err.dockerhub_unreachable': 'Docker Hub no accesible: {detail}',
+  'err.hostport_in_use': 'Puerto del host ya en uso: {list}. Aplica los puertos libres sugeridos, o asigna al contenedor su propia IP mediante una red macvlan (así desaparece el conflicto de puertos, p. ej. para AdGuard/Pi-hole en el puerto 53).',
+  'err.container_name_exists': 'Ya existe un contenedor llamado «{name}». Elige otro nombre.',
+  'err.hostport_allocated': 'Un puerto del host necesario ya está en uso (p. ej. el puerto 53 por systemd-resolved). Elige otro puerto del host o asigna al contenedor su propia IP mediante una red macvlan.',
+  'err.too_many_attempts': 'Demasiados intentos fallidos. Inténtalo de nuevo en {minutes} minutos.',
+  'err.file_too_large': 'Archivo demasiado grande (máx {kb} KB)',
 };
