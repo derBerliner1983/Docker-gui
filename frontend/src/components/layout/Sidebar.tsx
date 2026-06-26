@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
+import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 
 interface SidebarProps {
@@ -53,13 +54,6 @@ const NAV = [
   },
 ];
 
-const ORDER_KEY = 'sidebar-order';
-
-function loadOrder(): Record<string, string[]> {
-  try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '{}'); }
-  catch { return {}; }
-}
-
 /** Einträge eines Abschnitts nach gespeicherter Reihenfolge sortieren (Unbekanntes ans Ende). */
 function orderItems<T extends { to: string }>(items: T[], saved?: string[]): T[] {
   if (!saved || saved.length === 0) return items;
@@ -78,7 +72,8 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [kiInstalled, setKiInstalled] = useState(false);
-  const [order, setOrder] = useState<Record<string, string[]>>(loadOrder);
+  const { prefs, setPref } = usePrefs();
+  const order = (prefs.sidebarOrder as Record<string, string[]>) || {};
   // Aktuell gezogener Eintrag: Abschnitt + Ziel-Pfad
   const [drag, setDrag] = useState<{ section: string; to: string } | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
@@ -105,9 +100,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
     const to = current.indexOf(targetTo);
     if (from < 0 || to < 0) { setDrag(null); setDragOver(null); return; }
     current.splice(to, 0, current.splice(from, 1)[0]);
-    const next = { ...order, [sectionKey]: current };
-    setOrder(next);
-    try { localStorage.setItem(ORDER_KEY, JSON.stringify(next)); } catch { /* */ }
+    setPref('sidebarOrder', { ...order, [sectionKey]: current });   // pro-Benutzer serverseitig
     setDrag(null); setDragOver(null);
   };
 

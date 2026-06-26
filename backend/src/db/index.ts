@@ -148,6 +148,13 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_device_sessions_token ON device_sessions(device_token);
   CREATE INDEX IF NOT EXISTS idx_device_sessions_user ON device_sessions(user_id);
+
+  -- Pro-Benutzer UI-Einstellungen (Sortierung von Sidebar/Panels u.a.) als JSON-Blob
+  CREATE TABLE IF NOT EXISTS user_prefs (
+    user_id    INTEGER PRIMARY KEY,
+    prefs      TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // SMTP-Konfiguration für echten E-Mail-Versand (an notification_config angehängt)
@@ -179,6 +186,14 @@ export const userQueries = {
   setTotpSecret: db.prepare<[string | null, number]>('UPDATE users SET totp_secret = ? WHERE id = ?'),
   setTotpEnabled: db.prepare<[number, number]>('UPDATE users SET totp_enabled = ? WHERE id = ?'),
   setTotpRequired: db.prepare<[number, number]>('UPDATE users SET totp_required = ? WHERE id = ?'),
+};
+
+export const prefsQueries = {
+  get: db.prepare<[number], { prefs: string }>('SELECT prefs FROM user_prefs WHERE user_id = ?'),
+  set: db.prepare<[number, string]>(
+    `INSERT INTO user_prefs (user_id, prefs, updated_at) VALUES (?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET prefs = excluded.prefs, updated_at = datetime('now')`
+  ),
 };
 
 export interface DeviceSessionRow {

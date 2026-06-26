@@ -1,14 +1,10 @@
 import { useState, type ReactNode } from 'react';
 import { GripVertical } from 'lucide-react';
+import { useOrder } from '../../lib/prefs';
 
 export interface SortableItem {
   id: string;
   node: ReactNode;
-}
-
-function loadOrder(key: string): string[] {
-  try { return JSON.parse(localStorage.getItem(`order:${key}`) || '[]'); }
-  catch { return []; }
 }
 
 function ordered(items: SortableItem[], saved: string[]): SortableItem[] {
@@ -23,7 +19,7 @@ function ordered(items: SortableItem[], saved: string[]): SortableItem[] {
  * Panels nicht ausgelöst wird. Die Reihenfolge wird im Browser gespeichert.
  */
 export function SortablePanels({ storageKey, items }: { storageKey: string; items: SortableItem[] }) {
-  const [order, setOrder] = useState<string[]>(() => loadOrder(storageKey));
+  const [order, setOrder] = useOrder('panelOrder', storageKey);   // pro-Benutzer serverseitig gespeichert
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);   // Panel, dessen Griff gegriffen wurde
@@ -38,7 +34,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
     if (from < 0 || to < 0) { setDragId(null); setOverId(null); return; }
     ids.splice(to, 0, ids.splice(from, 1)[0]);
     setOrder(ids);
-    try { localStorage.setItem(`order:${storageKey}`, JSON.stringify(ids)); } catch { /* */ }
     setDragId(null); setOverId(null); setArmed(null);
   };
 
