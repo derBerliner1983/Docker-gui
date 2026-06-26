@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, Cog, Square, Skull, Play, RotateCcw, Search, ChevronUp, ChevronDown, Power } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { api } from '../lib/api';
 import { formatBytes } from '../lib/utils';
 import type { ProcessInfo, SystemService } from '../lib/types';
@@ -147,7 +148,8 @@ export function TaskManager() {
         refreshing={refreshing}
       />
       <main className="page">
-        {/* PROZESSE */}
+        <SortablePanels storageKey="taskmanager" items={[
+          { id: 'processes', node: (
         <Panel
           title="Prozesse"
           icon={<Activity size={15} />}
@@ -215,8 +217,8 @@ export function TaskManager() {
             </table>
           </div>
         </Panel>
-
-        {/* DIENSTE */}
+          ) },
+          { id: 'services', node: (
         <Panel
           title="Dienste"
           icon={<Cog size={15} />}
@@ -313,6 +315,8 @@ export function TaskManager() {
             </table>
           </div>
         </Panel>
+          ) },
+        ]} />
       </main>
     </>
   );

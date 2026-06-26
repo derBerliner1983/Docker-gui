@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { HardDrive, Plus, Trash2, Download, Container, FolderArchive, MonitorPlay, Play, CalendarClock } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
@@ -334,7 +335,9 @@ export function Backups() {
         }
       />
       <main className="page">
-        <SchedulesPanel />
+        <SortablePanels storageKey="backups" items={[
+          { id: 'schedules', node: <SchedulesPanel /> },
+          { id: 'list', node: (
         <Panel title="Backups" icon={<HardDrive size={15} />} subtitle={formatBytes(totalSize)} storageKey="backups">
           {backups.length === 0 ? (
             <div className="empty-state" style={{ padding: '40px 20px' }}>
@@ -376,6 +379,8 @@ export function Backups() {
             </div>
           )}
         </Panel>
+          ) },
+        ]} />
       </main>
 
       <NewBackupModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={load} />

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Users as UsersIcon, Terminal, Plus, Trash2, KeyRound, Shield, ShieldCheck, ShieldOff, ShieldAlert, LogOut } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
+import { SortablePanels } from '../components/ui/SortablePanels';
 import { Modal } from '../components/ui/Modal';
 import { ConfirmModal } from '../components/ui/ConfirmModal';
 import { api } from '../lib/api';
@@ -170,7 +171,8 @@ export function Users() {
     <>
       <Topbar title="Benutzer" subtitle={`${appUsers.length} Logins · ${linuxUsers.length} Linux-Benutzer`} onRefresh={load} refreshing={refreshing} />
       <main className="page">
-        {/* Core-Hub Logins */}
+        <SortablePanels storageKey="users" items={[
+          { id: 'corehub', node: (
         <Panel
           title="Core-Hub Logins"
           icon={<UsersIcon size={15} />}
@@ -251,8 +253,8 @@ export function Users() {
             </div>
           )}
         </Panel>
-
-        {/* Linux Users */}
+          ) },
+          { id: 'linux', node: (
         <Panel
           title="Linux-Benutzer"
           icon={<Terminal size={15} />}
@@ -286,6 +288,8 @@ export function Users() {
             </table>
           </div>
         </Panel>
+          ) },
+        ]} />
       </main>
 
       <AppUserModal open={appModal} onClose={() => setAppModal(false)} onDone={load} />
