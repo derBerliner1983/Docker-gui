@@ -193,14 +193,38 @@ function FirewallAssistant({ open, onClose, rules, onChanged }: {
     finally { setFixing(null); }
   };
 
+  // Mehrfach-Aktionen (z.B. Port freigeben: LAN vs. überall)
+  const LAN_RANGES = '192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12';
+  const applyAction = async (a: NonNullable<FirewallFinding['actions']>[number]) => {
+    setFixing(a.id);
+    try {
+      if (a.kind === 'allow-any') {
+        await api.firewall.add({ action: 'allow', port: a.port, proto: a.proto || undefined });
+      } else if (a.kind === 'allow-lan') {
+        await api.firewall.add({ action: 'allow', port: a.port, proto: a.proto || undefined, from: LAN_RANGES });
+      } else if (a.kind === 'delete' && a.ruleNum != null) {
+        await api.firewall.remove(a.ruleNum);
+      } else if (a.kind === 'restrict-lan' && a.ruleNum != null) {
+        await api.firewall.restrictLan(a.ruleNum);
+      }
+      await onChanged();
+      await analyze();
+    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setFixing(null); }
+  };
+
   const sorted = [...findings].sort((a, b) => SEV_META[a.severity].order - SEV_META[b.severity].order);
   const allClear = !loading && findings.length === 0;
 
   return (
-    <Modal open={open} title="Firewall-Assistent — Regeln prüfen & optimieren" onClose={onClose} width={720}>
+    <Modal open={open} title="Firewall-Assistent — Port-Scan & Empfehlungen" onClose={onClose} width={720}>
+      <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+        Der Assistent scannt alle lauschenden Dienste und Regeln. Für jeden erreichbaren Dienst kannst du entscheiden:
+        nur im LAN freigeben, überall (Internet) freigeben – oder nichts tun (bleibt durch Standard-deny blockiert).
+      </div>
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, fontSize: 12.5, color: 'var(--color-muted)' }}>
         <span><b style={{ color: 'var(--color-fg)' }}>{meta.ruleCount}</b> Regeln</span>
-        {meta.listeningCount != null && <span><b style={{ color: 'var(--color-fg)' }}>{meta.listeningCount}</b> offene Ports (lauschend)</span>}
+        {meta.listeningCount != null && <span><b style={{ color: 'var(--color-fg)' }}>{meta.listeningCount}</b> lauschende Ports</span>}
         {meta.defaultIncoming && <span>Standard eingehend: <b style={{ color: meta.defaultIncoming === 'deny' ? 'var(--color-success)' : 'var(--color-warning)' }}>{meta.defaultIncoming}</b></span>}
         <button className="btn btn--ghost btn--sm" onClick={analyze} disabled={loading} style={{ marginLeft: 'auto' }}>
           {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={12} />} Neu prüfen
@@ -243,16 +267,34 @@ function FirewallAssistant({ open, onClose, rules, onChanged }: {
                   {f.detail && <div className="dtable__mono" style={{ fontSize: 11, color: 'var(--color-subtle)', marginTop: 3 }}>{f.detail}</div>}
                   <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginTop: 5, lineHeight: 1.5 }}>{f.recommendation}</div>
                 </div>
-                {f.fix && f.ruleNum != null && (
-                  <button
-                    className={`btn btn--sm ${f.severity === 'critical' ? 'btn--danger' : 'btn--outline'}`}
-                    style={{ flexShrink: 0, alignSelf: 'center', whiteSpace: 'nowrap' }}
-                    disabled={fixing === f.id}
-                    onClick={() => applyFix(f)}
-                  >
-                    {fixing === f.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wand2 size={12} />} {f.fixLabel ?? 'Beheben'}
-                  </button>
-                )}
+                {(f.fix && f.ruleNum != null) || f.actions?.length ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignSelf: 'center' }}>
+                    {f.fix && f.ruleNum != null && (
+                      <button
+                        className={`btn btn--sm ${f.severity === 'critical' ? 'btn--danger' : 'btn--outline'}`}
+                        style={{ whiteSpace: 'nowrap' }}
+                        disabled={fixing === f.id}
+                        onClick={() => applyFix(f)}
+                      >
+                        {fixing === f.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wand2 size={12} />} {f.fixLabel ?? 'Beheben'}
+                      </button>
+                    )}
+                    {f.actions?.map((a) => (
+                      <button
+                        key={a.id}
+                        className={`btn btn--sm ${a.kind === 'allow-any' ? 'btn--ghost' : a.kind === 'delete' ? 'btn--outline' : 'btn--primary'}`}
+                        style={{ whiteSpace: 'nowrap' }}
+                        disabled={fixing === a.id}
+                        onClick={() => applyAction(a)}
+                      >
+                        {fixing === a.id ? <span className="spinner" style={{ width: 12, height: 12 }} />
+                          : a.kind === 'allow-lan' ? <Lock size={12} />
+                          : a.kind === 'allow-any' ? <Network size={12} />
+                          : <Trash2 size={12} />} {a.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             );
           })}

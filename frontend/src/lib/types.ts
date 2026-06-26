@@ -357,6 +357,15 @@ export interface FirewallLogEntry {
   dpt: string;
 }
 
+export interface FirewallAction {
+  id: string;
+  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan';
+  label: string;
+  port?: string;
+  proto?: string;
+  ruleNum?: number;
+}
+
 export interface FirewallFinding {
   id: string;
   severity: 'critical' | 'warn' | 'info' | 'ok';
@@ -367,6 +376,7 @@ export interface FirewallFinding {
   port?: string;
   fix?: 'disable' | 'delete' | 'restrict-lan';
   fixLabel?: string;
+  actions?: FirewallAction[];
 }
 
 export interface FirewallAnalysis {
