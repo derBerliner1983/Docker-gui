@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Wand2, ShieldCheck, XCircle, Info, CheckCircle2, EyeOff } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { portInfo } from '../lib/utils';
-import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, FirewallFinding, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry } from '../lib/types';
+import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
   const [name, setName] = useState('');
@@ -136,186 +136,8 @@ function ruleToForm(r: FirewallRule): FwForm {
 
 const DIR_LABEL: Record<string, string> = { IN: 'Eingehend', OUT: 'Ausgehend', '': '–' };
 
-const SEV_META: Record<FirewallFinding['severity'], { color: string; bg: string; label: string; Icon: React.ElementType; order: number }> = {
-  critical: { color: 'var(--color-error)',   bg: 'rgba(239,68,68,.1)',  label: 'Kritisch', Icon: XCircle,       order: 0 },
-  warn:     { color: 'var(--color-warning)', bg: 'rgba(234,179,8,.1)',  label: 'Warnung',  Icon: AlertTriangle, order: 1 },
-  info:     { color: 'var(--color-info)',    bg: 'rgba(59,130,246,.1)', label: 'Hinweis',  Icon: Info,          order: 2 },
-  ok:       { color: 'var(--color-success)', bg: 'rgba(34,197,94,.1)',  label: 'OK',       Icon: CheckCircle2,  order: 3 },
-};
-
-/** Plausibilitäts-Assistent: prüft alle ufw-Regeln und bietet Ein-Klick-Korrekturen. */
-function FirewallAssistant({ open, onClose, rules, onChanged }: {
-  open: boolean; onClose: () => void; rules: FirewallRule[]; onChanged: () => Promise<void>;
-}) {
-  const [findings, setFindings] = useState<FirewallFinding[]>([]);
-  const [counts, setCounts] = useState({ critical: 0, warn: 0, info: 0 });
-  const [meta, setMeta] = useState<{ ruleCount: number; defaultIncoming?: string; listeningCount?: number }>({ ruleCount: 0 });
-  const [loading, setLoading] = useState(false);
-  const [fixing, setFixing] = useState<string | null>(null);
-
-  const analyze = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await api.firewall.analyze();
-      setFindings(res.findings);
-      setCounts(res.counts);
-      setMeta({ ruleCount: res.ruleCount, defaultIncoming: res.defaultIncoming, listeningCount: res.listeningCount });
-    } catch (err) { alert(err instanceof Error ? err.message : 'Analyse fehlgeschlagen'); }
-    finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => { if (open) void analyze(); }, [open, analyze]);
-
-  const applyFix = async (f: FirewallFinding) => {
-    if (f.ruleNum == null || !f.fix) return;
-    const rule = rules.find((r) => r.num === f.ruleNum);
-    setFixing(f.id);
-    try {
-      if (f.fix === 'restrict-lan') {
-        await api.firewall.restrictLan(f.ruleNum);
-      } else if (f.fix === 'delete') {
-        await api.firewall.remove(f.ruleNum);
-      } else if (f.fix === 'disable' && rule) {
-        const isPort = /^\d+(?::\d+)?(?:\/(tcp|udp))?$/i.test(rule.to);
-        const proto = rule.to.includes('/udp') ? 'udp' : rule.to.includes('/tcp') ? 'tcp' : undefined;
-        const port = isPort ? rule.to.replace(/\/(tcp|udp)$/i, '') : undefined;
-        await api.firewall.disable(f.ruleNum, {
-          action: rule.action.toLowerCase(), port, proto,
-          from: /anywhere/i.test(rule.from) ? undefined : rule.from,
-          direction: rule.direction ? rule.direction.toLowerCase() : undefined,
-          comment: rule.comment || undefined,
-          profile: isPort ? undefined : rule.to,
-        });
-      }
-      await onChanged();   // Regeln neu laden (Nummern verschieben sich)
-      await analyze();     // Analyse aktualisieren
-    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
-    finally { setFixing(null); }
-  };
-
-  // Mehrfach-Aktionen (z.B. Port freigeben: LAN vs. überall)
-  const LAN_RANGES = '192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12';
-  const applyAction = async (a: NonNullable<FirewallFinding['actions']>[number]) => {
-    setFixing(a.id);
-    try {
-      if (a.kind === 'allow-any') {
-        await api.firewall.add({ action: 'allow', port: a.port, proto: a.proto || undefined });
-      } else if (a.kind === 'allow-lan') {
-        await api.firewall.add({ action: 'allow', port: a.port, proto: a.proto || undefined, from: LAN_RANGES });
-      } else if (a.kind === 'delete' && a.ruleNum != null) {
-        await api.firewall.remove(a.ruleNum);
-      } else if (a.kind === 'restrict-lan' && a.ruleNum != null) {
-        await api.firewall.restrictLan(a.ruleNum);
-      } else if (a.kind === 'ignore' && a.port) {
-        await api.firewall.ignorePort(a.port);
-      }
-      await onChanged();
-      await analyze();
-    } catch (err) { alert(err instanceof Error ? err.message : 'Fehler'); }
-    finally { setFixing(null); }
-  };
-
-  const sorted = [...findings].sort((a, b) => SEV_META[a.severity].order - SEV_META[b.severity].order);
-  const allClear = !loading && findings.length === 0;
-
-  return (
-    <Modal open={open} title="Firewall-Assistent — Port-Scan & Empfehlungen" onClose={onClose} width={720}>
-      <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-        Der Assistent scannt alle lauschenden Dienste und Regeln. Für jeden erreichbaren Dienst kannst du entscheiden:
-        nur im LAN freigeben, überall (Internet) freigeben – oder nichts tun (bleibt durch Standard-deny blockiert).
-      </div>
-      <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, fontSize: 12.5, color: 'var(--color-muted)' }}>
-        <span><b style={{ color: 'var(--color-fg)' }}>{meta.ruleCount}</b> Regeln</span>
-        {meta.listeningCount != null && <span><b style={{ color: 'var(--color-fg)' }}>{meta.listeningCount}</b> lauschende Ports</span>}
-        {meta.defaultIncoming && <span>Standard eingehend: <b style={{ color: meta.defaultIncoming === 'deny' ? 'var(--color-success)' : 'var(--color-warning)' }}>{meta.defaultIncoming}</b></span>}
-        <button className="btn btn--ghost btn--sm" onClick={analyze} disabled={loading} style={{ marginLeft: 'auto' }}>
-          {loading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={12} />} Neu prüfen
-        </button>
-      </div>
-
-      {/* Zähler */}
-      {!allClear && (
-        <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-          {(['critical', 'warn', 'info'] as const).map((s) => {
-            const m = SEV_META[s];
-            return (
-              <div key={s} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: m.bg }}>
-                <m.Icon size={13} color={m.color} />
-                <b style={{ fontSize: 13 }}>{counts[s]}</b>
-                <span style={{ fontSize: 11, color: 'var(--color-muted)' }}>{m.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 40 }}><span className="spinner" style={{ width: 24, height: 24 }} /></div>
-      ) : allClear ? (
-        <div className="empty-state" style={{ padding: '36px 20px' }}>
-          <div className="empty-state__icon"><ShieldCheck size={40} strokeWidth={1.2} color="var(--color-success)" /></div>
-          <div className="empty-state__title">Alles in Ordnung</div>
-          <div className="empty-state__desc">Keine problematischen oder überflüssigen Regeln gefunden. Deine Firewall ist sauber konfiguriert.</div>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {sorted.map((f) => {
-            const m = SEV_META[f.severity];
-            return (
-              <div key={f.id} style={{ display: 'flex', gap: 12, padding: 12, borderRadius: 8, background: 'var(--color-surface-sunken)', border: `1px solid ${m.color}33` }}>
-                <m.Icon size={18} color={m.color} style={{ flexShrink: 0, marginTop: 1 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 600 }}>{f.title}</div>
-                  {f.detail && <div className="dtable__mono" style={{ fontSize: 11, color: 'var(--color-subtle)', marginTop: 3 }}>{f.detail}</div>}
-                  <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginTop: 5, lineHeight: 1.5 }}>{f.recommendation}</div>
-                </div>
-                {(f.fix && f.ruleNum != null) || f.actions?.length ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0, alignSelf: 'center' }}>
-                    {f.fix && f.ruleNum != null && (
-                      <button
-                        className={`btn btn--sm ${f.severity === 'critical' ? 'btn--danger' : 'btn--outline'}`}
-                        style={{ whiteSpace: 'nowrap' }}
-                        disabled={fixing === f.id}
-                        onClick={() => applyFix(f)}
-                      >
-                        {fixing === f.id ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Wand2 size={12} />} {f.fixLabel ?? 'Beheben'}
-                      </button>
-                    )}
-                    {f.actions?.map((a) => (
-                      <button
-                        key={a.id}
-                        className={`btn btn--sm ${a.kind === 'allow-any' ? 'btn--ghost' : a.kind === 'delete' ? 'btn--outline' : a.kind === 'ignore' ? 'btn--ghost' : 'btn--primary'}`}
-                        style={{ whiteSpace: 'nowrap', opacity: a.kind === 'ignore' ? 0.7 : 1 }}
-                        disabled={fixing === a.id}
-                        onClick={() => applyAction(a)}
-                        title={a.kind === 'ignore' ? 'Port als absichtlich blockiert markieren – wird nicht mehr angezeigt' : undefined}
-                      >
-                        {fixing === a.id ? <span className="spinner" style={{ width: 12, height: 12 }} />
-                          : a.kind === 'allow-lan' ? <Lock size={12} />
-                          : a.kind === 'allow-any' ? <Network size={12} />
-                          : a.kind === 'ignore' ? <EyeOff size={12} />
-                          : <Trash2 size={12} />} {a.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div style={{ marginTop: 14, fontSize: 11, color: 'var(--color-faint)', lineHeight: 1.6 }}>
-        Geparkte Regeln werden gemerkt und lassen sich jederzeit wieder aktivieren — ideal für Ports, die aktuell niemand braucht,
-        die ein Docker-Container aber später wieder öffnen soll.
-      </div>
-    </Modal>
-  );
-}
-
 function FirewallPanel() {
   const [rules, setRules] = useState<FirewallRule[]>([]);
-  const [assistantOpen, setAssistantOpen] = useState(false);
   const [disabled, setDisabled] = useState<FirewallDisabledRule[]>([]);
   const [available, setAvailable] = useState(true);
   const [active, setActive] = useState(false);
@@ -396,15 +218,12 @@ function FirewallPanel() {
       defaultCollapsed
       actions={available && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button className="btn btn--outline btn--sm" onClick={() => setAssistantOpen(true)} title="Regeln prüfen und optimieren">
-            <Wand2 size={13} /> Assistent
-          </button>
           <Switch checked={active} onChange={async (v) => {
             if (v) {
               const ok = confirm(
                 'Firewall aktivieren?\n\n' +
-                'Port 22 (SSH) wird nur dann automatisch freigegeben, wenn noch keine Regel dafür existiert – ' +
-                'damit du dich nicht ausperrst. Alle anderen Regeln werden nicht verändert.'
+                'Es werden KEINE Regeln automatisch hinzugefügt. Stelle vorher sicher, dass du eine ' +
+                'Regel für deinen Zugang (z. B. SSH Port 22 / Web-UI) angelegt hast, damit du dich nicht aussperrst.'
               );
               if (!ok) return;
             }
@@ -504,7 +323,6 @@ function FirewallPanel() {
           )}
         </>
       )}
-      <FirewallAssistant open={assistantOpen} onClose={() => setAssistantOpen(false)} rules={rules} onChanged={load} />
     </Panel>
   );
 }

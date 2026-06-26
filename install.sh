@@ -303,13 +303,10 @@ systemctl enable caddy 2>/dev/null || true
 systemctl restart caddy 2>/dev/null || true
 sleep 1
 
-# Falls die Firewall aktiv ist: Web-Ports (80/443) und SSH offen halten,
-# damit man sich nicht selbst aus der Weboberfläche aussperrt.
+# Hinweis: Es werden bewusst KEINE Firewall-Regeln automatisch hinzugefügt.
+# Der Admin entscheidet selbst über Freigaben (in Core-Hub unter „Sicherheit").
 if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow 80/tcp   >/dev/null 2>&1 || true
-  ufw allow 443/tcp  >/dev/null 2>&1 || true
-  ufw allow OpenSSH  >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null 2>&1 || true
-  info "Firewall aktiv: Ports 80/443 (Web) und SSH freigegeben."
+  info "Firewall ist aktiv – es werden keine Regeln automatisch geändert. Freigaben bitte selbst unter „Sicherheit\" setzen."
 fi
 
 # Systemd-Service
