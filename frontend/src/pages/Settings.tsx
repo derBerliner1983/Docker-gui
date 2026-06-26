@@ -1,13 +1,33 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2 } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { Switch } from '../components/ui/Switch';
 import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import { formatUptime, timeAgo } from '../lib/utils';
+import { useI18n, LANGUAGES } from '../lib/i18n';
 import type { NotificationItem, NotificationConfig, VersionInfo } from '../lib/types';
+
+function LanguagePanel() {
+  const { lang, setLang, t } = useI18n();
+  return (
+    <Panel title={t('settings.language')} icon={<Languages size={15} />} subtitle={t('settings.language.desc')} storageKey="set-lang">
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        {LANGUAGES.map((l) => (
+          <button
+            key={l.code}
+            className={`btn btn--sm ${lang === l.code ? 'btn--primary' : 'btn--outline'}`}
+            onClick={() => setLang(l.code)}
+          >
+            <span style={{ fontSize: 15 }}>{l.flag}</span> {l.label}
+          </button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
 
 function PasswordPanel() {
   const [current, setCurrent] = useState('');
@@ -482,6 +502,7 @@ export function Settings() {
     <>
       <Topbar title="Einstellungen" subtitle={info ? `Core-Hub v${info.version}` : undefined} />
       <main className="page">
+        <LanguagePanel />
         <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />
         <PasswordPanel />
         <TwoFactorPanel />
