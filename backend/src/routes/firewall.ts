@@ -610,10 +610,19 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
       if (req.body?.enable) {
-        // Aussperr-Schutz: SSH und Web-Ports (80/443 für die Oberfläche) zuerst freigeben,
-        // sonst ist Core-Hub nach dem Aktivieren nicht mehr erreichbar.
-        for (const r of ['22/tcp', '80/tcp', '443/tcp']) {
-          try { privExec(`ufw allow ${r}`, { timeout: 8000 }); } catch { /* evtl. schon vorhanden */ }
+        // Aussperr-Schutz: Ports 22/80/443 nur dann freigeben, wenn noch gar keine
+        // Regel dafür existiert – bestehende LAN-only- oder andere Regeln werden
+        // niemals überschrieben oder erweitert.
+        const currentStatus = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
+        const currentRules = parseUfw(currentStatus);
+        for (const [port, proto] of [['22', 'tcp'], ['80', 'tcp'], ['443', 'tcp']] as const) {
+          const hasRule = currentRules.some((r) => {
+            const pp = rulePort(r.to);
+            return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
+          });
+          if (!hasRule) {
+            try { privExec(`ufw allow ${port}/${proto}`, { timeout: 8000 }); } catch { /* ignorieren */ }
+          }
         }
       }
       privExec(`bash -c "yes | ufw ${req.body?.enable ? 'enable' : 'disable'}"`, { timeout: 8000 });
