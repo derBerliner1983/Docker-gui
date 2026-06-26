@@ -403,8 +403,8 @@ function FirewallPanel() {
             if (v) {
               const ok = confirm(
                 'Firewall aktivieren?\n\n' +
-                'Ports 22, 80 und 443 werden nur dann automatisch freigegeben, wenn noch keine Regel dafür existiert. ' +
-                'Bestehende LAN-Regeln oder andere Einschränkungen bleiben unberührt.'
+                'Port 22 (SSH) wird nur dann automatisch freigegeben, wenn noch keine Regel dafür existiert – ' +
+                'damit du dich nicht ausperrst. Alle anderen Regeln werden nicht verändert.'
               );
               if (!ok) return;
             }

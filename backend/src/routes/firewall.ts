@@ -610,19 +610,18 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
       if (req.body?.enable) {
-        // Aussperr-Schutz: Ports 22/80/443 nur dann freigeben, wenn noch gar keine
-        // Regel dafür existiert – bestehende LAN-only- oder andere Regeln werden
-        // niemals überschrieben oder erweitert.
+        // Aussperr-Schutz: NUR Port 22 (SSH) absichern – und auch nur dann, wenn
+        // noch gar keine Regel (weder LAN noch Anywhere) dafür existiert.
+        // Port 80/443 werden bewusst NICHT automatisch angelegt – wer die App
+        // erreichen kann, hat bereits eine passende Regel.
         const currentStatus = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
         const currentRules = parseUfw(currentStatus);
-        for (const [port, proto] of [['22', 'tcp'], ['80', 'tcp'], ['443', 'tcp']] as const) {
-          const hasRule = currentRules.some((r) => {
-            const pp = rulePort(r.to);
-            return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
-          });
-          if (!hasRule) {
-            try { privExec(`ufw allow ${port}/${proto}`, { timeout: 8000 }); } catch { /* ignorieren */ }
-          }
+        const hasSSH = currentRules.some((r) => {
+          const pp = rulePort(r.to);
+          return pp?.port === '22' && (r.action === 'ALLOW' || r.action === 'LIMIT');
+        });
+        if (!hasSSH) {
+          try { privExec(`ufw allow 22/tcp`, { timeout: 8000 }); } catch { /* ignorieren */ }
         }
       }
       privExec(`bash -c "yes | ufw ${req.body?.enable ? 'enable' : 'disable'}"`, { timeout: 8000 });
