@@ -399,34 +399,23 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
 
   // Nach dem Update den Dienst pollen, bis er wieder online ist (neuer Build läuft),
   // dann „fertig" melden und die laufende Version anzeigen.
-  const waitForRestart = async (priorBuild?: string) => {
-    setUpdateLog(l => [...l, '', '⏳ Warte auf Neustart des Dienstes…']);
+  const pollForNewVersion = async (priorBuild?: string) => {
     const started = Date.now();
-    // Bis zu 3 Minuten auf das Wiederhochfahren warten
-    while (Date.now() - started < 180_000) {
-      await new Promise(r => setTimeout(r, 2500));
+    while (Date.now() - started < 120_000) {
+      await new Promise(r => setTimeout(r, 3000));
       try {
         const res = await fetch('/health', { cache: 'no-store' });
         if (res.ok) {
           const h = await res.json().catch(() => null) as { version?: string } | null;
           const now = h?.version;
-          // Online und (falls bekannt) andere Build-Kennung als vorher → Update aktiv
-          if (now && (!priorBuild || now !== priorBuild)) {
-            setUpdateLog(l => [...l, `✓ Dienst wieder online – läuft jetzt auf v${now}.`]);
-            setUpdating(false);
-            setUpdateDone(true);
-            void check(false);
-            // kurze Pause, dann automatisch neu laden, damit das neue Frontend greift
-            setTimeout(() => location.reload(), 1500);
+          if (now && priorBuild && now !== priorBuild) {
+            setUpdateLog(l => [...l, `✓ Neue Version v${now} aktiv – lade Seite neu…`]);
+            setTimeout(() => location.reload(), 1000);
             return;
           }
         }
-      } catch { /* Dienst noch nicht erreichbar – weiter warten */ }
+      } catch { /* Dienst noch nicht erreichbar */ }
     }
-    // Timeout: trotzdem als fertig markieren, manuelles Neuladen anbieten
-    setUpdateLog(l => [...l, '— Zeitüberschreitung beim Warten. Bitte Seite manuell neu laden. —']);
-    setUpdating(false);
-    setUpdateDone(true);
   };
 
   const startUpdate = () => {
@@ -434,8 +423,19 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
     setUpdating(true);
     setUpdateDone(false);
     setUpdateLog(['▶ Update gestartet…']);
-    const priorBuild = ver?.current;        // z.B. "0.7.2+e7e4ed6"
+    const priorBuild = ver?.current;
     let finished = false;
+
+    const onDone = () => {
+      if (finished) return;
+      finished = true;
+      setUpdateLog(l => [...l, '', '✓ Installation abgeschlossen. Core-Hub wird neu gestartet…']);
+      setUpdating(false);
+      setUpdateDone(true);
+      void check(false);
+      void pollForNewVersion(priorBuild);
+    };
+
     const es = new EventSource('/api/settings/update/stream');
     es.onmessage = (evt) => {
       try {
@@ -443,21 +443,8 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
         setUpdateLog(l => [...l, d.line]);
       } catch { /* */ }
     };
-    // Explizites Abschluss-Signal vom Backend → Stream sauber schließen, dann pollen
-    es.addEventListener('done', () => {
-      finished = true;
-      es.close();
-      void waitForRestart(priorBuild);
-    });
-    es.onerror = () => {
-      // Verbindungsabbruch: entweder Dienst startet schon neu, oder echter Fehler.
-      // In beiden Fällen Stream schließen und auf das Wiederhochfahren warten.
-      es.close();
-      if (!finished) {
-        finished = true;
-        void waitForRestart(priorBuild);
-      }
-    };
+    es.addEventListener('done', () => { es.close(); onDone(); });
+    es.onerror = () => { es.close(); onDone(); };
   };
 
   return (
@@ -519,6 +506,11 @@ function VersionPanel({ installCmd }: { installCmd: string }) {
             {updateDone && (
               <button className="btn btn--primary btn--sm" style={{ marginTop: 10 }} onClick={() => location.reload()}>
                 <RotateCw size={13} /> Seite neu laden
+              </button>
+            )}
+            {updating && (
+              <button className="btn btn--outline btn--sm" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => { setUpdating(false); setUpdateDone(true); }}>
+                Abbrechen
               </button>
             )}
           </div>
