@@ -165,21 +165,48 @@ function rulePort(to: string): { port: string; proto: string } | null {
   return { port: m[1], proto: (m[2] ?? '').toLowerCase() };
 }
 
-/** Lauschende Ports → 'public' (0.0.0.0/extern) oder 'local' (nur 127.0.0.1). */
-function listeningPorts(): Map<string, 'public' | 'local'> {
-  const out = safeExec('ss -tulnH 2>/dev/null') || privExecSafe('ss -tulnH');
-  const map = new Map<string, 'public' | 'local'>();
+interface ListenInfo { scope: 'public' | 'local'; proc: string; protos: Set<string> }
+
+/** Lauschende Ports inkl. Prozessname und Protokoll(en). scope='public' = 0.0.0.0/extern, 'local' = nur 127.0.0.1. */
+function listeningPorts(): Map<string, ListenInfo> {
+  // -p liefert Prozessnamen (braucht root → privExec als Fallback)
+  const out = privExecSafe('ss -tulnpH') || safeExec('ss -tulnpH 2>/dev/null') || safeExec('ss -tulnH 2>/dev/null');
+  const map = new Map<string, ListenInfo>();
   for (const line of out.split('\n')) {
     const cols = line.trim().split(/\s+/);
     if (cols.length < 5) continue;
+    const proto = cols[0]; // tcp / udp
     const local = cols[4];
     const portM = local.match(/:(\d+)$/);
     if (!portM) continue;
     const port = portM[1];
     const addr = local.slice(0, local.lastIndexOf(':'));
     const isLocal = addr.startsWith('127.') || addr === '[::1]' || addr.includes('127.0.0.53');
-    const scope: 'public' | 'local' = isLocal ? 'local' : 'public';
-    if (map.get(port) !== 'public') map.set(port, scope);
+    const procM = line.match(/users:\(\("([^"]+)"/) || line.match(/"([^"]+)"/);
+    const proc = procM ? procM[1] : '';
+    const existing = map.get(port);
+    if (existing) {
+      if (!isLocal) existing.scope = 'public';
+      existing.protos.add(proto);
+      if (!existing.proc && proc) existing.proc = proc;
+    } else {
+      map.set(port, { scope: isLocal ? 'local' : 'public', proc, protos: new Set([proto]) });
+    }
+  }
+  return map;
+}
+
+/** Anzahl bestehender (established) Verbindungen je lokalem Port – Hinweis darauf, dass ein Port aktiv genutzt wird. */
+function establishedConns(): Map<string, number> {
+  const out = safeExec('ss -tunH state established 2>/dev/null') || privExecSafe('ss -tunH state established');
+  const map = new Map<string, number>();
+  for (const line of out.split('\n')) {
+    const cols = line.trim().split(/\s+/);
+    if (cols.length < 5) continue;
+    const local = cols[3];
+    const m = local.match(/:(\d+)$/);
+    if (!m) continue;
+    map.set(m[1], (map.get(m[1]) ?? 0) + 1);
   }
   return map;
 }
@@ -203,6 +230,16 @@ function dockerPublishedPorts(): Set<string> {
   return ports;
 }
 
+/** Eine konkrete Aktion, die der Assistent auf Knopfdruck ausführen kann. */
+interface FwAction {
+  id: string;
+  kind: 'allow-lan' | 'allow-any' | 'delete' | 'disable' | 'restrict-lan';
+  label: string;
+  port?: string;
+  proto?: string;
+  ruleNum?: number;
+}
+
 interface FwFinding {
   id: string;
   severity: 'critical' | 'warn' | 'info' | 'ok';
@@ -213,14 +250,22 @@ interface FwFinding {
   port?: string;
   fix?: 'disable' | 'delete' | 'restrict-lan';
   fixLabel?: string;
+  actions?: FwAction[];
 }
 
 /** Alle Regeln gegen Risiken, offene Ports und Redundanzen prüfen. */
-function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' | 'local'>, defIncoming: string, dockerPorts: Set<string>): FwFinding[] {
+function analyzeFirewall(
+  rules: FirewallRule[],
+  listening: Map<string, ListenInfo>,
+  defIncoming: string,
+  dockerPorts: Set<string>,
+  conns: Map<string, number>,
+): FwFinding[] {
   const findings: FwFinding[] = [];
+  const defaultBlocks = defIncoming === 'deny' || defIncoming === 'reject';
 
   // 1) Standard-Richtlinie eingehend sollte "deny" sein
-  if (defIncoming && defIncoming !== 'deny' && defIncoming !== 'reject') {
+  if (defIncoming && !defaultBlocks) {
     findings.push({
       id: 'default-incoming',
       severity: 'warn',
@@ -232,11 +277,26 @@ function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' 
 
   // 2) Pro Regel prüfen
   const seen = new Map<string, number>();
+  const allowedPorts = new Set<string>();
   for (const r of rules) {
     if (r.action === 'ALLOW' && r.direction === 'OUT') continue; // ausgehende Allows sind unkritisch
     const pp = rulePort(r.to);
     const fromClass = classifyFrom(r.from);
     const key = `${r.action}|${r.to}|${r.from}|${r.direction}`;
+    if (pp && r.action === 'ALLOW') allowedPorts.add(pp.port);
+
+    // Überflüssige Block-Regel: Default ist bereits deny
+    if ((r.action === 'DENY' || r.action === 'REJECT') && r.direction !== 'OUT' && defaultBlocks) {
+      findings.push({
+        id: `redundant-deny-${r.num}`, severity: 'info',
+        title: `Block-Regel #${r.num} ist überflüssig`,
+        detail: `Regel #${r.num}: ${r.raw}`,
+        recommendation: 'Eingehender Verkehr wird durch die Standard-Richtlinie ohnehin schon blockiert (deny). Diese ausdrückliche Block-Regel ändert nichts und kann entfernt werden.',
+        ruleNum: r.num,
+        actions: [{ id: `del-${r.num}`, kind: 'delete', label: 'Block-Regel löschen', ruleNum: r.num }],
+      });
+      continue;
+    }
 
     // Doppelte Regel
     if (seen.has(key)) {
@@ -284,7 +344,7 @@ function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' 
         });
       }
       // Dienst nur auf localhost → externe Freigabe unnötig
-      else if (listening.get(pp.port) === 'local') {
+      else if (listening.get(pp.port)?.scope === 'local') {
         findings.push({
           id: `loopback-${r.num}`, severity: 'info',
           title: `Port ${pp.port} ist offen, aber der Dienst läuft nur auf localhost`,
@@ -294,6 +354,34 @@ function analyzeFirewall(rules: FirewallRule[], listening: Map<string, 'public' 
         });
       }
     }
+  }
+
+  // 3) Port-Scan: lauschende Dienste, die (noch) nicht freigegeben sind → zur Freigabe anbieten
+  const sortedListen = [...listening.entries()].sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+  for (const [port, info] of sortedListen) {
+    if (info.scope !== 'public') continue;       // nur extern lauschende Dienste
+    if (allowedPorts.has(port)) continue;        // schon per Regel freigegeben
+    const proto = info.protos.size === 1 ? [...info.protos][0] : '';
+    const svc = info.proc || PORT_RISK[port]?.name || '';
+    const nConn = conns.get(port) ?? 0;
+    const risky = PORT_RISK[port]?.lanOnly;
+    const state = defaultBlocks
+      ? 'aktuell durch die Standard-Richtlinie (deny) blockiert'
+      : 'aktuell erreichbar (Standard erlaubt eingehend)';
+    findings.push({
+      id: `listen-${port}`,
+      severity: 'info',
+      title: `Port ${port}${svc ? ` (${svc})` : ''} lauscht${nConn ? ` – ${nConn} aktive Verbindung${nConn === 1 ? '' : 'en'}` : ''}`,
+      detail: `Dienst lauscht auf 0.0.0.0:${port}${proto ? '/' + proto : ''} — ${state}.`,
+      recommendation: risky
+        ? `${PORT_RISK[port]!.note} Falls überhaupt nötig, nur im LAN freigeben.`
+        : 'Soll dieser Dienst erreichbar sein? „Nur im LAN" (empfohlen) oder „Überall" (Internet). Wenn nicht gebraucht: nichts tun – bleibt blockiert.',
+      port,
+      actions: [
+        { id: `${port}-lan`, kind: 'allow-lan', label: 'Nur im LAN freigeben', port, proto },
+        { id: `${port}-any`, kind: 'allow-any', label: 'Überall freigeben', port, proto },
+      ],
+    });
   }
 
   return findings;
@@ -306,7 +394,8 @@ export function buildFirewallAnalysis() {
   const listening = listeningPorts();
   const def = defaultIncoming();
   const dockerPorts = dockerPublishedPorts();
-  const findings = analyzeFirewall(rules, listening, def, dockerPorts);
+  const conns = establishedConns();
+  const findings = analyzeFirewall(rules, listening, def, dockerPorts, conns);
   const counts = {
     critical: findings.filter((f) => f.severity === 'critical').length,
     warn: findings.filter((f) => f.severity === 'warn').length,
