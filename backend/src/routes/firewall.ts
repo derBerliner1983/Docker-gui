@@ -610,18 +610,25 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
       if (req.body?.enable) {
-        // Aussperr-Schutz: Ports 22/80/443 nur dann freigeben, wenn noch gar keine
-        // Regel dafür existiert – bestehende LAN-only- oder andere Regeln werden
-        // niemals überschrieben oder erweitert.
+        // Aussperr-Schutz: SSH (22) und Web-UI (80/443) nur anlegen wenn noch keine
+        // Regel existiert – und 80/443 immer nur LAN-only, niemals Anywhere.
         const currentStatus = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
         const currentRules = parseUfw(currentStatus);
-        for (const [port, proto] of [['22', 'tcp'], ['80', 'tcp'], ['443', 'tcp']] as const) {
-          const hasRule = currentRules.some((r) => {
-            const pp = rulePort(r.to);
-            return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
-          });
-          if (!hasRule) {
-            try { privExec(`ufw allow ${port}/${proto}`, { timeout: 8000 }); } catch { /* ignorieren */ }
+        const hasRuleFor = (port: string) => currentRules.some((r) => {
+          const pp = rulePort(r.to);
+          return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
+        });
+        // Port 22: nur SSH – falls gar keine Regel, einmal Anywhere (SSH-Fallback)
+        if (!hasRuleFor('22')) {
+          try { privExec(`ufw allow 22/tcp`, { timeout: 8000 }); } catch { /* ignorieren */ }
+        }
+        // Port 80/443: nur LAN – niemals Anywhere
+        const LAN = ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+        for (const port of ['80', '443']) {
+          if (!hasRuleFor(port)) {
+            for (const subnet of LAN) {
+              try { privExec(`ufw allow from ${subnet} to any port ${port} proto tcp`, { timeout: 8000 }); } catch { /* ignorieren */ }
+            }
           }
         }
       }
