@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink, Plus, X } from 'lucide-react';
+import { ArrowLeft, Play, Square, RotateCcw, Trash2, RefreshCw, ChevronDown, ChevronRight, SquareTerminal, Pencil, ExternalLink, Plus, X, Network } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { ContainerBadge } from '../components/ui/Badge';
 import { Sparkline } from '../components/ui/Sparkline';
@@ -9,7 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { ContainerTerminal } from '../components/ContainerTerminal';
 import { api } from '../lib/api';
 import { formatBytes, germanStatus, germanRestart } from '../lib/utils';
-import type { Container, DockerNetwork } from '../lib/types';
+import type { Container, DockerNetwork, HostInterface } from '../lib/types';
 
 const HISTORY_LEN = 40;
 const STATS_INTERVAL_MS = 3000;
@@ -55,69 +55,142 @@ function readPortLines(inspect: ContainerInspect | null): PortLine[] {
 
 // ── Reconfigure / Edit modal ─────────────────────────────────────────────────
 
+const CREATE_NEW = '__create_new__';
+
 function NetworksPicker({ networks, onChange }: {
   networks: { id: string; name: string; ip: string }[];
   onChange: (nets: { id: string; name: string; ip: string }[]) => void;
 }) {
   const [available, setAvailable] = useState<DockerNetwork[]>([]);
+  const [interfaces, setInterfaces] = useState<HostInterface[]>([]);
   const [addId, setAddId] = useState('');
+  const [pendingIp, setPendingIp] = useState('');
+  // Felder für neues Macvlan
+  const [creating, setCreating] = useState(false);
+  const [newParent, setNewParent] = useState('');
+  const [newSubnet, setNewSubnet] = useState('');
+  const [newGw, setNewGw] = useState('');
+  const [newVlan, setNewVlan] = useState('');
+  const [newIp, setNewIp] = useState('');
+  const [createErr, setCreateErr] = useState('');
+  const [createBusy, setCreateBusy] = useState(false);
+
+  const reload = () => {
+    api.networks.list().then((r) => setAvailable(r.networks.filter((n) => !n.builtin))).catch(() => {});
+  };
 
   useEffect(() => {
-    api.networks.list().then((r) => {
-      setAvailable(r.networks.filter((n) => !n.builtin));
-    }).catch(() => {});
+    reload();
+    api.networks.interfaces().then((r) => setInterfaces(r.interfaces)).catch(() => {});
   }, []);
 
   const add = () => {
+    if (addId === CREATE_NEW) { setCreating(true); return; }
     if (!addId) return;
     const net = available.find((n) => n.id === addId);
     if (!net || networks.find((n) => n.id === addId)) return;
-    onChange([...networks, { id: net.id, name: net.name, ip: '' }]);
+    onChange([...networks, { id: net.id, name: net.name, ip: pendingIp }]);
+    setAddId(''); setPendingIp('');
+  };
+
+  const createAndAdd = async () => {
+    if (!newParent) { setCreateErr('Bitte ein Interface (Parent) wählen.'); return; }
+    if (!newSubnet) { setCreateErr('Subnetz (CIDR) ist erforderlich.'); return; }
+    if (newIp && !/^\d{1,3}(\.\d{1,3}){3}$/.test(newIp)) { setCreateErr('Ungültige IP-Adresse.'); return; }
+    setCreateBusy(true); setCreateErr('');
+    const netName = `macvlan-${newParent}${newVlan ? '-' + newVlan : ''}`;
+    try {
+      await api.networks.create({ name: netName, driver: 'macvlan', parent: newParent, subnet: newSubnet, gateway: newGw || undefined, vlan: newVlan || undefined });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (!/exists|in use/i.test(msg)) { setCreateErr(`Fehler: ${msg}`); setCreateBusy(false); return; }
+    }
+    // Netzwerke neu laden und das neue direkt hinzufügen
+    try {
+      const r = await api.networks.list();
+      const all = r.networks.filter((n) => !n.builtin);
+      setAvailable(all);
+      const net = all.find((n) => n.name === netName);
+      if (net) onChange([...networks, { id: net.id, name: net.name, ip: newIp }]);
+    } catch { /* */ }
+    setCreating(false); setCreateBusy(false);
+    setNewParent(''); setNewSubnet(''); setNewGw(''); setNewVlan(''); setNewIp('');
     setAddId('');
   };
 
-  const updateIp = (id: string, ip: string) => {
-    onChange(networks.map((n) => n.id === id ? { ...n, ip } : n));
-  };
-
+  const updateIp = (id: string, ip: string) => onChange(networks.map((n) => n.id === id ? { ...n, ip } : n));
   const remove = (id: string) => onChange(networks.filter((n) => n.id !== id));
-
   const unattached = available.filter((n) => !networks.find((m) => m.id === n.id));
+  const selectedForAdd = unattached.find((n) => n.id === addId) ?? null;
 
   return (
     <div className="form-group">
-      <label className="form-label">Zusätzliche Netzwerke / Virtuelle IPs</label>
+      <label className="form-label">Netzwerk / IP-Adresse</label>
       <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 6 }}>
-        Für eigene IP im LAN: macvlan/ipvlan-Netzwerk wählen. IP leer lassen = automatisch aus Subnetz.
+        Mit einem Macvlan-Netzwerk bekommt der Container eine <strong>eigene IP im Heimnetz</strong> (kein Port-Mapping nötig).
       </div>
+
       {networks.map((n) => (
         <div key={n.id} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-          <span style={{ flex: '0 0 160px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
-          <input
-            className="input input--rect"
-            style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
-            placeholder="Feste IP (optional, z.B. 192.168.178.50)"
-            value={n.ip}
-            onChange={(e) => updateIp(n.id, e.target.value)}
-          />
-          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen">
-            <X size={12} />
-          </button>
+          <Network size={12} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+          <span style={{ flex: '0 0 140px', fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={n.name}>{n.name}</span>
+          <input className="input input--rect" style={{ flex: 1, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+            placeholder="Feste IP (z.B. 192.168.1.200)" value={n.ip}
+            onChange={(e) => updateIp(n.id, e.target.value)} />
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => remove(n.id)} title="Entfernen"><X size={12} /></button>
         </div>
       ))}
-      {unattached.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-          <select className="input input--rect" style={{ flex: 1, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
-            <option value="">— Netzwerk hinzufügen …</option>
-            {unattached.map((n) => (
-              <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>
-            ))}
+
+      {/* Neues Macvlan inline anlegen */}
+      {creating && (
+        <div style={{ background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: 10, marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 8 }}>Neues Macvlan-Netzwerk anlegen und verbinden:</div>
+          {createErr && <div className="login-error" style={{ marginBottom: 8 }}>{createErr}</div>}
+          <label className="form-label">Interface (Parent)</label>
+          <select className="input input--rect" style={{ width: '100%', marginBottom: 8 }} value={newParent} onChange={(e) => setNewParent(e.target.value)}>
+            <option value="">— wählen —</option>
+            {interfaces.map((i) => <option key={i.iface} value={i.iface}>{i.iface}{i.ip4 ? ` (${i.ip4})` : ''}</option>)}
           </select>
-          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <div style={{ flex: 2 }}>
+              <label className="form-label">Subnetz (CIDR)</label>
+              <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                placeholder="192.168.1.0/24" value={newSubnet} onChange={(e) => setNewSubnet(e.target.value.trim())} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">VLAN (optional)</label>
+              <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12 }}
+                placeholder="z.B. 20" value={newVlan} onChange={(e) => setNewVlan(e.target.value.replace(/[^0-9]/g, ''))} />
+            </div>
+          </div>
+          <label className="form-label">Gateway</label>
+          <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 8 }}
+            placeholder="192.168.1.1" value={newGw} onChange={(e) => setNewGw(e.target.value.trim())} />
+          <label className="form-label">Statische IP für diesen Container</label>
+          <input className="input input--rect" style={{ width: '100%', fontFamily: 'var(--font-mono)', fontSize: 12, marginBottom: 10 }}
+            placeholder="192.168.1.200 (leer = automatisch)" value={newIp} onChange={(e) => setNewIp(e.target.value.trim())} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn--primary btn--sm" onClick={createAndAdd} disabled={createBusy}>
+              {createBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Plus size={12} />} Anlegen & verbinden
+            </button>
+            <button className="btn btn--ghost btn--sm" onClick={() => { setCreating(false); setAddId(''); setCreateErr(''); }}>Abbrechen</button>
+          </div>
         </div>
       )}
-      {available.length === 0 && (
-        <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>Keine benutzerdefinierten Netzwerke vorhanden. Erst unter Netzwerke → Docker ein macvlan/ipvlan-Netzwerk anlegen.</div>
+
+      {!creating && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+          <select className="input input--rect" style={{ flex: 1, minWidth: 180, cursor: 'pointer', fontSize: 12 }} value={addId} onChange={(e) => setAddId(e.target.value)}>
+            <option value="">— Netzwerk hinzufügen …</option>
+            {unattached.map((n) => <option key={n.id} value={n.id}>{n.name} ({n.driver}{n.subnet ? ', ' + n.subnet : ''})</option>)}
+            <option value={CREATE_NEW}>＋ Neues Macvlan anlegen…</option>
+          </select>
+          {selectedForAdd && (
+            <input className="input input--rect" style={{ width: 190, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+              placeholder="IP (optional)" value={pendingIp} onChange={(e) => setPendingIp(e.target.value.trim())} />
+          )}
+          <button className="btn btn--outline btn--sm" onClick={add} disabled={!addId}><Plus size={12} /> Hinzufügen</button>
+        </div>
       )}
     </div>
   );
