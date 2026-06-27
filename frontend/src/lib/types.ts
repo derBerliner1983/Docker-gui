@@ -293,6 +293,8 @@ export interface ProxyCandidate {
   name: string;
   port: number;
   alreadyProxied: boolean;
+  reachableHost?: string;   // host-erreichbare Bridge-IP (als Ziel-Host nutzbar)
+  ownIps?: string[];        // eigene Macvlan/ipvlan-IPs (vom Host nicht erreichbar)
 }
 
 export interface NetEndpoint {

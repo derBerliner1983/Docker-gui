@@ -8,7 +8,7 @@ import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import type { ProxyHost, ProxyCandidate } from '../lib/types';
 
-function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+function AddHostModal({ open, onClose, onDone, macvlanIps }: { open: boolean; onClose: () => void; onDone: () => void; macvlanIps: string[] }) {
   const [candidates, setCandidates] = useState<ProxyCandidate[]>([]);
   const [selected, setSelected] = useState('');
   const [name, setName] = useState('');
@@ -31,9 +31,13 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
     if (c) {
       setName(c.name);
       setHostname(`${c.name}.lan`);
-      setPort(String(c.port));
+      if (c.port) setPort(String(c.port));
+      // Host-erreichbare Bridge-IP automatisch als Ziel vorschlagen (statt localhost)
+      if (c.reachableHost) setTargetHost(c.reachableHost);
     }
   };
+
+  const hostnameIsMacvlan = macvlanIps.includes(hostname.trim());
 
   const save = async () => {
     if (!hostname || !port) { setError('Hostname und Port erforderlich'); return; }
@@ -84,6 +88,11 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
         <label className="form-label">{tt('Hostname')}</label>
         <input className="input input--rect" placeholder={tt('nextcloud.lan')} value={hostname} onChange={(e) => setHostname(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
         <div className="form-hint">{tt('Trage diesen Namen in deinem Router/DNS oder der hosts-Datei auf die Server-IP ein.')}</div>
+        {hostnameIsMacvlan && (
+          <div className="login-error" style={{ marginTop: 6 }}>
+            ⚠ {tt('Diese IP gehört einem Macvlan-Container – Caddy kann sie nicht erreichen. Nutze hier die Host-Adresse (Servername/Host-IP), nicht die Container-IP.')}
+          </div>
+        )}
       </div>
       <div className="form-row">
         <div className="form-group">
@@ -108,7 +117,7 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
   );
 }
 
-function EditHostModal({ host, onClose, onDone }: { host: ProxyHost | null; onClose: () => void; onDone: () => void }) {
+function EditHostModal({ host, onClose, onDone, macvlanIps }: { host: ProxyHost | null; onClose: () => void; onDone: () => void; macvlanIps: string[] }) {
   const [name, setName] = useState('');
   const [hostname, setHostname] = useState('');
   const [targetHost, setTargetHost] = useState('');
@@ -116,6 +125,7 @@ function EditHostModal({ host, onClose, onDone }: { host: ProxyHost | null; onCl
   const [https, setHttps] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const hostnameIsMacvlan = macvlanIps.includes(hostname.trim());
 
   useEffect(() => {
     if (!host) return;
@@ -152,6 +162,11 @@ function EditHostModal({ host, onClose, onDone }: { host: ProxyHost | null; onCl
       <div className="form-group">
         <label className="form-label">{tt('Hostname')}</label>
         <input className="input input--rect" value={hostname} onChange={(e) => setHostname(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        {hostnameIsMacvlan && (
+          <div className="login-error" style={{ marginTop: 6 }}>
+            ⚠ {tt('Diese IP gehört einem Macvlan-Container – Caddy kann sie nicht erreichen. Nutze hier die Host-Adresse (Servername/Host-IP), nicht die Container-IP.')}
+          </div>
+        )}
       </div>
       <div className="form-row">
         <div className="form-group">
@@ -188,6 +203,7 @@ export function Proxy() {
   const [modalOpen, setModalOpen] = useState(false);
   const [busy, setBusy] = useState<Record<number, boolean>>({});
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [macvlanIps, setMacvlanIps] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -201,6 +217,7 @@ export function Proxy() {
     } finally {
       setRefreshing(false);
     }
+    api.proxy.candidates().then((r) => setMacvlanIps(r.macvlanIps ?? [])).catch(() => {});
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -333,8 +350,8 @@ export function Proxy() {
         )}
       </main>
 
-      <AddHostModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={load} />
-      <EditHostModal host={editHost} onClose={() => setEditHost(null)} onDone={load} />
+      <AddHostModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={load} macvlanIps={macvlanIps} />
+      <EditHostModal host={editHost} onClose={() => setEditHost(null)} onDone={load} macvlanIps={macvlanIps} />
     </>
   );
 }
