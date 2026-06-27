@@ -602,4 +602,7 @@ export const fr: Record<string, string> = {
   'Ziel-Host': 'Hôte cible',
   'Bei eigener Container-IP (Macvlan) hier die IP eintragen, sonst localhost.': 'Pour un conteneur avec sa propre IP (macvlan), saisissez cette IP ici, sinon localhost.',
   'automatisches Zertifikat (interne CA)': 'certificat automatique (CA interne)',
+
+  // ── Proxy: Macvlan-Warnung ──
+  'Diese IP gehört einem Macvlan-Container – Caddy kann sie nicht erreichen. Nutze hier die Host-Adresse (Servername/Host-IP), nicht die Container-IP.': 'Cette IP appartient à un conteneur macvlan – Caddy ne peut pas l’atteindre. Utilisez ici l’adresse de l’hôte (nom du serveur/IP de l’hôte), pas l’IP du conteneur.',
 };

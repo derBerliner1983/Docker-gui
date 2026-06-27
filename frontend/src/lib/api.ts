@@ -210,7 +210,7 @@ export const api = {
 
   proxy: {
     list: () => req<{ available: boolean; running: boolean; caReady: boolean; hosts: ProxyHost[]; message?: string }>('/api/proxy'),
-    candidates: () => req<{ candidates: ProxyCandidate[] }>('/api/proxy/candidates'),
+    candidates: () => req<{ candidates: ProxyCandidate[]; macvlanIps: string[] }>('/api/proxy/candidates'),
     create: (data: { containerId?: string; name: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean }) =>
       req('/api/proxy', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: { name?: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean }) =>

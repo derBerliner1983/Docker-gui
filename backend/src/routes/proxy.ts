@@ -97,21 +97,43 @@ export async function proxyRoutes(fastify: FastifyInstance) {
     });
   });
 
-  // Containers with published HTTP ports (candidates for a proxy host)
+  // Containers as proxy candidates – inkl. erreichbarer Bridge-IP (vom Host nutzbar)
+  // und eigener Macvlan-/ipvlan-IPs (vom Host NICHT erreichbar → für Warnungen).
   fastify.get('/api/proxy/candidates', { preHandler: requireAuth }, async (_req, reply) => {
     try {
+      // Treiber je Netzwerk ermitteln (bridge = host-erreichbar, macvlan/ipvlan = nicht)
+      const netDriver = new Map<string, string>();
+      try {
+        for (const n of await docker.listNetworks()) netDriver.set(n.Name, n.Driver);
+      } catch { /* */ }
+
       const containers = await docker.listContainers({ all: false });
       const existing = new Set(proxyQueries.getAll.all().map((h) => h.container_id));
-      const candidates = containers
-        .map((c) => {
-          const port = (c.Ports ?? []).find((p) => p.PublicPort)?.PublicPort;
-          const name = (c.Names[0] ?? '').replace(/^\//, '');
-          return port ? { id: c.Id, name, port, alreadyProxied: existing.has(c.Id) } : null;
-        })
-        .filter(Boolean);
-      reply.send({ candidates });
+      // Alle eigenen (macvlan/ipvlan) Container-IPs sammeln – für die Hostname-Warnung
+      const macvlanIps: string[] = [];
+
+      const candidates = containers.map((c) => {
+        const name = (c.Names[0] ?? '').replace(/^\//, '');
+        const nets = c.NetworkSettings?.Networks ?? {};
+        let reachableHost: string | undefined;          // bridge-IP (host-erreichbar)
+        const ownIps: string[] = [];                    // macvlan/ipvlan-IPs
+        for (const [netName, info] of Object.entries(nets)) {
+          const ip = (info as { IPAddress?: string }).IPAddress;
+          if (!ip) continue;
+          const drv = netDriver.get(netName) ?? (netName === 'bridge' ? 'bridge' : '');
+          if (drv === 'macvlan' || drv === 'ipvlan') { ownIps.push(ip); macvlanIps.push(ip); }
+          else if (!reachableHost) reachableHost = ip;  // bridge / custom bridge
+        }
+        // Interner Container-Port (bevorzugt veröffentlichter, sonst privater)
+        const pub = (c.Ports ?? []).find((p) => p.PublicPort)?.PublicPort;
+        const priv = (c.Ports ?? []).find((p) => p.PrivatePort && (p.Type ?? 'tcp') === 'tcp')?.PrivatePort;
+        const port = pub ?? priv ?? 0;
+        return { id: c.Id, name, port, alreadyProxied: existing.has(c.Id), reachableHost, ownIps };
+      });
+
+      reply.send({ candidates, macvlanIps });
     } catch {
-      reply.send({ candidates: [] });
+      reply.send({ candidates: [], macvlanIps: [] });
     }
   });
 
