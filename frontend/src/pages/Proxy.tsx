@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Lock, Unlock, ShieldCheck, Plus, Trash2, ExternalLink, Download, RefreshCw, Globe } from 'lucide-react';
+import { Lock, Unlock, ShieldCheck, Plus, Trash2, ExternalLink, Download, RefreshCw, Globe, Pencil } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
@@ -13,6 +13,7 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
   const [selected, setSelected] = useState('');
   const [name, setName] = useState('');
   const [hostname, setHostname] = useState('');
+  const [targetHost, setTargetHost] = useState('');
   const [port, setPort] = useState('');
   const [https, setHttps] = useState(true);
   const [error, setError] = useState('');
@@ -42,10 +43,11 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
         containerId: selected || undefined,
         name: name || hostname,
         hostname,
+        targetHost: targetHost || undefined,
         targetPort: parseInt(port),
         https,
       });
-      setSelected(''); setName(''); setHostname(''); setPort(''); setHttps(true);
+      setSelected(''); setName(''); setHostname(''); setTargetHost(''); setPort(''); setHttps(true);
       onDone(); onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Fehler');
@@ -85,13 +87,18 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
       </div>
       <div className="form-row">
         <div className="form-group">
+          <label className="form-label">{tt('Ziel-Host')}</label>
+          <input className="input input--rect" placeholder="localhost" value={targetHost} onChange={(e) => setTargetHost(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+          <div className="form-hint">{tt('Bei eigener Container-IP (Macvlan) hier die IP eintragen, sonst localhost.')}</div>
+        </div>
+        <div className="form-group">
           <label className="form-label">{tt('Ziel-Port')}</label>
           <input className="input input--rect" placeholder="8080" value={port} onChange={(e) => setPort(e.target.value)} />
         </div>
-        <div className="form-group">
-          <label className="form-label">{tt('Anzeigename')}</label>
-          <input className="input input--rect" placeholder={tt('Nextcloud')} value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Anzeigename')}</label>
+        <input className="input input--rect" placeholder={tt('Nextcloud')} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <label className="legend__item" style={{ cursor: 'pointer', marginTop: 4 }}>
         <Switch checked={https} onChange={setHttps} />
@@ -101,8 +108,77 @@ function AddHostModal({ open, onClose, onDone }: { open: boolean; onClose: () =>
   );
 }
 
+function EditHostModal({ host, onClose, onDone }: { host: ProxyHost | null; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState('');
+  const [hostname, setHostname] = useState('');
+  const [targetHost, setTargetHost] = useState('');
+  const [port, setPort] = useState('');
+  const [https, setHttps] = useState(true);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!host) return;
+    setName(host.name); setHostname(host.hostname);
+    setTargetHost(host.targetHost); setPort(String(host.targetPort));
+    setHttps(host.https); setError('');
+  }, [host]);
+
+  if (!host) return null;
+
+  const save = async () => {
+    if (!hostname || !port) { setError(tt('Hostname und Ziel-Port erforderlich')); return; }
+    setLoading(true); setError('');
+    try {
+      await api.proxy.update(host.id, {
+        name: name || hostname, hostname,
+        targetHost: targetHost || 'localhost', targetPort: parseInt(port), https,
+      });
+      onDone(); onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Fehler');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={!!host} title={tt('Proxy-Host bearbeiten')} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} {tt('Speichern')}
+        </button>
+      </>}>
+      {error && <div className="login-error">{error}</div>}
+      <div className="form-group">
+        <label className="form-label">{tt('Hostname')}</label>
+        <input className="input input--rect" value={hostname} onChange={(e) => setHostname(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label className="form-label">{tt('Ziel-Host')}</label>
+          <input className="input input--rect" placeholder="localhost" value={targetHost} onChange={(e) => setTargetHost(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+          <div className="form-hint">{tt('Bei eigener Container-IP (Macvlan) hier die IP eintragen, sonst localhost.')}</div>
+        </div>
+        <div className="form-group">
+          <label className="form-label">{tt('Ziel-Port')}</label>
+          <input className="input input--rect" placeholder="8080" value={port} onChange={(e) => setPort(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Anzeigename')}</label>
+        <input className="input input--rect" value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <label className="legend__item" style={{ cursor: 'pointer', marginTop: 4 }}>
+        <Switch checked={https} onChange={setHttps} />
+        <span><b>HTTPS</b> — <span className="text-muted">{tt('automatisches Zertifikat (interne CA)')}</span></span>
+      </label>
+    </Modal>
+  );
+}
+
 export function Proxy() {
   const t = useT();
+  const [editHost, setEditHost] = useState<ProxyHost | null>(null);
   const [hosts, setHosts] = useState<ProxyHost[]>([]);
   const [available, setAvailable] = useState(true);
   const [running, setRunning] = useState(false);
@@ -232,6 +308,9 @@ export function Proxy() {
                       <a className="btn btn--ghost btn--icon btn--sm" href={h.url} target="_blank" rel="noreferrer" title={tt('Öffnen')}>
                         <ExternalLink size={13} />
                       </a>
+                      <button className="btn btn--ghost btn--icon btn--sm" title={tt('Bearbeiten')} disabled={busy[h.id]} onClick={() => setEditHost(h)}>
+                        <Pencil size={13} />
+                      </button>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} title={tt('HTTPS umschalten')}>
                         <span style={{ fontSize: 11, color: 'var(--color-faint)', fontWeight: 600 }}>HTTPS</span>
                         <Switch checked={h.https} disabled={busy[h.id]} onChange={() => toggleHttps(h)} />
@@ -255,6 +334,7 @@ export function Proxy() {
       </main>
 
       <AddHostModal open={modalOpen} onClose={() => setModalOpen(false)} onDone={load} />
+      <EditHostModal host={editHost} onClose={() => setEditHost(null)} onDone={load} />
     </>
   );
 }

@@ -213,6 +213,8 @@ export const api = {
     candidates: () => req<{ candidates: ProxyCandidate[] }>('/api/proxy/candidates'),
     create: (data: { containerId?: string; name: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean }) =>
       req('/api/proxy', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: number, data: { name?: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean }) =>
+      req(`/api/proxy/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     setHttps: (id: number, https: boolean) =>
       req(`/api/proxy/${id}/https`, { method: 'POST', body: JSON.stringify({ https }) }),
     setHttpsAll: (https: boolean) =>

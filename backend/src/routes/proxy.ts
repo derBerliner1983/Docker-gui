@@ -139,6 +139,34 @@ export async function proxyRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Bestehenden Proxy-Host bearbeiten (Hostname/Ziel/Port/HTTPS)
+  fastify.put<{
+    Params: { id: string };
+    Body: { name?: string; hostname: string; targetHost?: string; targetPort: number; https?: boolean };
+  }>('/api/proxy/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    const id = parseInt(req.params.id);
+    const row = proxyQueries.getById.get(id);
+    if (!row) return reply.status(404).send({ error: 'Nicht gefunden' });
+    const b = req.body;
+    const hostname = (b?.hostname ?? '').trim().toLowerCase().replace(/[^a-z0-9.-]/g, '');
+    if (!hostname || !b?.targetPort) return reply.status(400).send({ error: 'Hostname und Ziel-Port erforderlich' });
+    try {
+      proxyQueries.update.run(
+        b.name || hostname,
+        hostname,
+        b.targetHost || 'localhost',
+        b.targetPort,
+        b.https === false ? 0 : 1,
+        id
+      );
+      if (caddyInstalled()) applyCaddy(proxyQueries.getAll.all());
+      auditQueries.log.run(req.user.id, 'proxy.update', hostname);
+      reply.send({ ok: true });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Proxy-Fehler' });
+    }
+  });
+
   // Toggle HTTPS for a single host
   fastify.post<{ Params: { id: string }; Body: { https: boolean } }>(
     '/api/proxy/:id/https',

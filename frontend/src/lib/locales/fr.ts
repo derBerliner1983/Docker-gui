@@ -596,4 +596,10 @@ export const fr: Record<string, string> = {
   'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': 'Redémarrer le serveur maintenant ? La connexion sera coupée 1–2 minutes.',
   'Server wird neu gestartet…': 'Le serveur redémarre…',
   'Beheben': 'Corriger',
+
+  // ── Proxy bearbeiten ──
+  'Proxy-Host bearbeiten': 'Modifier l’hôte proxy',
+  'Ziel-Host': 'Hôte cible',
+  'Bei eigener Container-IP (Macvlan) hier die IP eintragen, sonst localhost.': 'Pour un conteneur avec sa propre IP (macvlan), saisissez cette IP ici, sinon localhost.',
+  'automatisches Zertifikat (interne CA)': 'certificat automatique (CA interne)',
 };

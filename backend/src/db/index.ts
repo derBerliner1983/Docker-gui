@@ -311,6 +311,9 @@ export const proxyQueries = {
   ),
   setHttps: db.prepare<[number, number]>('UPDATE proxy_hosts SET https = ? WHERE id = ?'),
   setEnabled: db.prepare<[number, number]>('UPDATE proxy_hosts SET enabled = ? WHERE id = ?'),
+  update: db.prepare<[string, string, string, number, number, number]>(
+    'UPDATE proxy_hosts SET name = ?, hostname = ?, target_host = ?, target_port = ?, https = ? WHERE id = ?'
+  ),
   setHttpsAll: db.prepare<[number]>('UPDATE proxy_hosts SET https = ?'),
   delete: db.prepare<[number]>('DELETE FROM proxy_hosts WHERE id = ?'),
 };

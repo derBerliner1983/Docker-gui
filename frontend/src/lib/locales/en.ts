@@ -595,4 +595,10 @@ export const en: Record<string, string> = {
   'Server jetzt neu starten? Die Verbindung bricht für 1–2 Minuten ab.': 'Restart server now? The connection will drop for 1–2 minutes.',
   'Server wird neu gestartet…': 'Server is restarting…',
   'Beheben': 'Fix',
+
+  // ── Proxy bearbeiten ──
+  'Proxy-Host bearbeiten': 'Edit proxy host',
+  'Ziel-Host': 'Target host',
+  'Bei eigener Container-IP (Macvlan) hier die IP eintragen, sonst localhost.': 'For a container with its own IP (macvlan), enter that IP here, otherwise localhost.',
+  'automatisches Zertifikat (interne CA)': 'automatic certificate (internal CA)',
 };
