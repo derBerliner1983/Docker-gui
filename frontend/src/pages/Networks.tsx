@@ -900,7 +900,119 @@ function VirtualIpsPanel() {
   );
 }
 
-type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
+// ── Konnektivität: Wer kann wen erreichen (aus Docker-Netzwerk-Zugehörigkeit) ──
+function ConnectivityPanel({ networks, containers }: { networks: DockerNetwork[]; containers: Container[] }) {
+  type Mem = { net: string; driver: string; internal: boolean; ip: string };
+  const memberships = new Map<string, Mem[]>();
+  const allNames = new Set<string>();
+  for (const n of networks) {
+    if (n.name === 'none') continue;
+    for (const c of n.containers) {
+      if (!memberships.has(c.name)) memberships.set(c.name, []);
+      memberships.get(c.name)!.push({ net: n.name, driver: n.driver, internal: n.internal, ip: (c.ipv4 || '').replace(/\/\d+$/, '') });
+      allNames.add(c.name);
+    }
+  }
+  const names = [...allNames].sort();
+
+  // Veröffentlichte Host-Ports je Container (aus "0.0.0.0:8080->80/tcp")
+  const pub = new Map<string, string[]>();
+  for (const c of containers) {
+    const ps = (c.ports || []).filter((p) => p.includes('->')).map((p) => p.split('->')[0].split(':').pop() || '').filter(Boolean);
+    if (ps.length) pub.set(c.name, [...new Set(ps)]);
+  }
+
+  const sharesNet = (a: string, b: string) => {
+    const ma = memberships.get(a) || [], mb = memberships.get(b) || [];
+    return ma.some((x) => mb.some((y) => y.net === x.net));
+  };
+  const hostReaches = (a: string) =>
+    (memberships.get(a) || []).some((m) => m.driver === 'host' || (m.driver === 'bridge' && !m.internal)) || (pub.get(a)?.length ?? 0) > 0;
+  const lanReaches = (a: string) =>
+    (memberships.get(a) || []).some((m) => m.driver === 'macvlan' || m.driver === 'ipvlan') || (pub.get(a)?.length ?? 0) > 0;
+
+  const cell = (ok: boolean, self = false) => self
+    ? <span style={{ color: 'var(--color-faint)' }}>—</span>
+    : ok ? <span style={{ color: 'var(--color-success)', fontWeight: 700 }}>✓</span>
+         : <span style={{ color: 'var(--color-faint)' }}>✕</span>;
+
+  const named = networks.filter((n) => n.name !== 'none');
+
+  return (
+    <Panel title={tt('Konnektivität – wer erreicht wen')} icon={<Network size={15} />} storageKey="net-connectivity">
+      <div style={{ fontSize: 12, color: 'var(--color-muted)', margin: '6px 0 14px', lineHeight: 1.6 }}>
+        {tt('Zeigt, wer wen technisch erreichen kann (basierend auf Docker-Netzwerk-Zugehörigkeit). Container im selben Netzwerk erreichen sich gegenseitig.')}
+      </div>
+
+      {names.length === 0 ? (
+        <div className="empty-state" style={{ padding: '28px 20px' }}><div className="empty-state__desc">{tt('Keine laufenden Container.')}</div></div>
+      ) : (
+        <>
+          {/* Matrix */}
+          <div className="table-scroll">
+            <table className="dtable">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'left' }}>{tt('Von ↓ / Ziel →')}</th>
+                  {names.map((n) => <th key={n} style={{ fontSize: 11 }}>{n}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>🖥 {tt('Host')}</td>
+                  {names.map((n) => <td key={n} style={{ textAlign: 'center' }}>{cell(hostReaches(n))}</td>)}
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>🌐 LAN / Router</td>
+                  {names.map((n) => <td key={n} style={{ textAlign: 'center' }}>{cell(lanReaches(n))}</td>)}
+                </tr>
+                {names.map((from) => (
+                  <tr key={from}>
+                    <td style={{ fontWeight: 600 }}>📦 {from}</td>
+                    {names.map((to) => <td key={to} style={{ textAlign: 'center' }}>{cell(from === to ? false : sharesNet(from, to), from === to)}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Netzwerk-Gruppen */}
+          <div style={{ margin: '18px 0 8px', fontSize: 12, fontWeight: 600, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{tt('Netzwerke & Mitglieder')}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {named.map((n) => (
+              <div key={n.id} style={{ flex: '1 1 240px', minWidth: 220, border: '1px solid var(--color-border)', borderRadius: 8, padding: 10, background: 'var(--color-surface-sunken)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{n.name}</span>
+                  <span className={`badge badge--${DRIVER_BADGE[n.driver] ?? 'paused'}`}>{n.driver}</span>
+                  {n.internal && <span className="badge badge--dead">isoliert</span>}
+                </div>
+                {n.subnet && <div className="dtable__mono" style={{ fontSize: 11, color: 'var(--color-faint)', marginBottom: 6 }}>{n.subnet}</div>}
+                {n.containers.length === 0 ? (
+                  <div className="text-muted" style={{ fontSize: 11.5 }}>{tt('Keine Mitglieder')}</div>
+                ) : n.containers.map((c) => (
+                  <div key={c.container} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                    <span>📦 {c.name}</span>
+                    <span className="dtable__mono" style={{ color: 'var(--color-accent)' }}>{(c.ipv4 || '').replace(/\/\d+$/, '') || '—'}</span>
+                  </div>
+                ))}
+                {(n.driver === 'bridge' && !n.internal) && <div style={{ fontSize: 11, color: 'var(--color-success)', marginTop: 6 }}>🖥 {tt('vom Host erreichbar')}</div>}
+                {(n.driver === 'macvlan' || n.driver === 'ipvlan') && <div style={{ fontSize: 11, color: 'var(--color-warning)', marginTop: 6 }}>🌐 {tt('LAN-erreichbar, vom Host NICHT')}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Legende */}
+          <div style={{ marginTop: 16, fontSize: 11.5, color: 'var(--color-faint)', lineHeight: 1.7 }}>
+            <b>{tt('Legende')}:</b> ✓ = {tt('kann erreichen')} · ✕ = {tt('kein Weg')} · {tt('Container im selben Netzwerk erreichen sich auf ihren internen Ports')}.<br />
+            🖥 {tt('Host')}: {tt('erreicht Bridge-Container & veröffentlichte Ports, aber KEINE Macvlan-IPs')} · 🌐 LAN: {tt('erreicht Macvlan-IPs & veröffentlichte Host-Ports')}.
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips' | 'map';
 
 export function Networks() {
   const t = useT();
@@ -950,12 +1062,14 @@ export function Networks() {
           <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>{tt('Firewall')}</button>
           <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>{tt('Verbindungen')}</button>
           <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>{tt('Virtuelle IPs')}</button>
+          <button className={`filter-tab${view === 'map' ? ' filter-tab--active' : ''}`} onClick={() => setView('map')}>{tt('Konnektivität')}</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
         {view === 'firewall' && <FirewallPanel />}
         {view === 'connections' && <ConnectionsPanel />}
         {view === 'vips' && <VirtualIpsPanel />}
+        {view === 'map' && <ConnectivityPanel networks={networks} containers={containers} />}
         {view === 'docker' && networks.map((n) => (
           <Panel
             key={n.id}

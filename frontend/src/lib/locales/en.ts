@@ -604,4 +604,21 @@ export const en: Record<string, string> = {
 
   // ── Proxy: Macvlan-Warnung ──
   'Diese IP gehört einem Macvlan-Container – Caddy kann sie nicht erreichen. Nutze hier die Host-Adresse (Servername/Host-IP), nicht die Container-IP.': 'This IP belongs to a macvlan container – Caddy cannot reach it. Use the host address (server name/host IP) here, not the container IP.',
+
+  // ── Konnektivität ──
+  'Konnektivität': 'Connectivity',
+  'Konnektivität – wer erreicht wen': 'Connectivity – who reaches whom',
+  'Zeigt, wer wen technisch erreichen kann (basierend auf Docker-Netzwerk-Zugehörigkeit). Container im selben Netzwerk erreichen sich gegenseitig.': 'Shows who can technically reach whom (based on Docker network membership). Containers in the same network can reach each other.',
+  'Keine laufenden Container.': 'No running containers.',
+  'Von ↓ / Ziel →': 'From ↓ / To →',
+  'Netzwerke & Mitglieder': 'Networks & members',
+  'Keine Mitglieder': 'No members',
+  'vom Host erreichbar': 'reachable from host',
+  'LAN-erreichbar, vom Host NICHT': 'LAN-reachable, NOT from host',
+  'Legende': 'Legend',
+  'kann erreichen': 'can reach',
+  'kein Weg': 'no path',
+  'Container im selben Netzwerk erreichen sich auf ihren internen Ports': 'containers in the same network reach each other on their internal ports',
+  'erreicht Bridge-Container & veröffentlichte Ports, aber KEINE Macvlan-IPs': 'reaches bridge containers & published ports, but NOT macvlan IPs',
+  'erreicht Macvlan-IPs & veröffentlichte Host-Ports': 'reaches macvlan IPs & published host ports',
 };

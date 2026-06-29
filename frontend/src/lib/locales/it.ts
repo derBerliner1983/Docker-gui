@@ -605,4 +605,21 @@ export const it: Record<string, string> = {
 
   // ── Proxy: Macvlan-Warnung ──
   'Diese IP gehört einem Macvlan-Container – Caddy kann sie nicht erreichen. Nutze hier die Host-Adresse (Servername/Host-IP), nicht die Container-IP.': 'Questo IP appartiene a un container macvlan – Caddy non può raggiungerlo. Usa qui l’indirizzo dell’host (nome server/IP host), non l’IP del container.',
+
+  // ── Konnektivität ──
+  'Konnektivität': 'Connettività',
+  'Konnektivität – wer erreicht wen': 'Connettività – chi raggiunge chi',
+  'Zeigt, wer wen technisch erreichen kann (basierend auf Docker-Netzwerk-Zugehörigkeit). Container im selben Netzwerk erreichen sich gegenseitig.': 'Mostra chi può raggiungere chi tecnicamente (in base all’appartenenza alle reti Docker). I container nella stessa rete si raggiungono a vicenda.',
+  'Keine laufenden Container.': 'Nessun container in esecuzione.',
+  'Von ↓ / Ziel →': 'Da ↓ / A →',
+  'Netzwerke & Mitglieder': 'Reti e membri',
+  'Keine Mitglieder': 'Nessun membro',
+  'vom Host erreichbar': 'raggiungibile dall’host',
+  'LAN-erreichbar, vom Host NICHT': 'raggiungibile da LAN, NON dall’host',
+  'Legende': 'Legenda',
+  'kann erreichen': 'può raggiungere',
+  'kein Weg': 'nessun percorso',
+  'Container im selben Netzwerk erreichen sich auf ihren internen Ports': 'i container nella stessa rete si raggiungono sulle porte interne',
+  'erreicht Bridge-Container & veröffentlichte Ports, aber KEINE Macvlan-IPs': 'raggiunge i container bridge e le porte pubblicate, ma NON gli IP macvlan',
+  'erreicht Macvlan-IPs & veröffentlichte Host-Ports': 'raggiunge gli IP macvlan e le porte host pubblicate',
 };
