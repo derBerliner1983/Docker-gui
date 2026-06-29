@@ -622,4 +622,6 @@ export const fr: Record<string, string> = {
   'Container im selben Netzwerk erreichen sich auf ihren internen Ports': 'les conteneurs d’un même réseau s’atteignent sur leurs ports internes',
   'erreicht Bridge-Container & veröffentlichte Ports, aber KEINE Macvlan-IPs': 'atteint les conteneurs bridge et les ports publiés, mais PAS les IP macvlan',
   'erreicht Macvlan-IPs & veröffentlichte Host-Ports': 'atteint les IP macvlan et les ports hôte publiés',
+
+  'Im Browser öffnen': 'Ouvrir dans le navigateur',
 };

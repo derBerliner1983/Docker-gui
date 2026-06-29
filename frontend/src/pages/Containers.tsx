@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil, X, Network } from 'lucide-react';
+import { Plus, Play, Square, RotateCcw, Trash2, ScrollText, SquareTerminal, ChevronDown, ArrowUpCircle, Download, ExternalLink, Pencil, X, Network, Globe } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { ContainerBadge } from '../components/ui/Badge';
@@ -485,6 +485,16 @@ export function Containers() {
               <ArrowUpCircle size={11} /> Update
             </span>
           )}
+          {c.state === 'running' && c.ports.length > 0 && (() => {
+            const hostPort = c.ports[0].split(':')[0];
+            const href = `http://${window.location.hostname}:${hostPort}`;
+            return (
+              <a className="icon-btn" href={href} target="_blank" rel="noreferrer"
+                title={`${tt('Im Browser öffnen')}: ${href}`} onClick={(e) => e.stopPropagation()}>
+                <Globe size={14} />
+              </a>
+            );
+          })()}
           <ContainerBadge state={c.state} />
           <button
             className="icon-btn"
