@@ -636,4 +636,17 @@ export const es: Record<string, string> = {
   'Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.': 'Mueve los objetos libremente (guardado por usuario). Clic para abrir/cerrar detalles. Líneas = quién puede alcanzar a quién.',
   'Regel-Aktionen folgen (Phase B).': 'Acciones de regla próximamente (fase B).',
   'Zone (LAN/Internet/Tunnel)': 'Zona (LAN/Internet/Túnel)',
+
+  // ── Firewall-Studio Regeln ──
+  'Zugriff regeln': 'Gestionar acceso',
+  'von LAN': 'desde LAN',
+  'von Internet': 'desde Internet',
+  'von IP': 'desde IP',
+  'erlauben': 'permitir',
+  'sperren': 'bloquear',
+  'Bitte einen Port angeben.': 'Indica un puerto.',
+  'Bitte eine gültige IP/CIDR angeben.': 'Indica una IP/CIDR válida.',
+  'Regel angelegt.': 'Regla creada.',
+  '(von überall – auch Internet!)': '(desde cualquier sitio, ¡incl. Internet!)',
+  'Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).': 'Sin puerto publicado: control mediante aislamiento de red Docker (próximamente).',
 };

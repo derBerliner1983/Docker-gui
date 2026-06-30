@@ -1026,8 +1026,32 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
   const [sel, setSel] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
   const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
+  // Regel-Formular (Phase B – sichere ufw-Ebene)
+  const [rPort, setRPort] = useState('');
+  const [rSrc, setRSrc] = useState<'lan' | 'internet' | 'ip'>('lan');
+  const [rIp, setRIp] = useState('');
+  const [rAct, setRAct] = useState<'allow' | 'deny'>('allow');
+  const [rBusy, setRBusy] = useState(false);
+  const [rMsg, setRMsg] = useState('');
 
   useEffect(() => { api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {}); }, []);
+  // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
+  useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); }, [sel]);
+
+  const LAN_RANGES = '192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12';
+  const addRule = async (defaultPort: string) => {
+    const port = (rPort || defaultPort).replace(/[^0-9]/g, '');
+    if (!port) { setRMsg(tt('Bitte einen Port angeben.')); return; }
+    if (rSrc === 'ip' && !/^\d{1,3}(\.\d{1,3}){3}(\/\d+)?$/.test(rIp.trim())) { setRMsg(tt('Bitte eine gültige IP/CIDR angeben.')); return; }
+    const from = rSrc === 'lan' ? LAN_RANGES : rSrc === 'ip' ? rIp.trim() : undefined;
+    setRBusy(true); setRMsg('');
+    try {
+      await api.firewall.add({ action: rAct, port, proto: 'tcp', from });
+      setRMsg(tt('Regel angelegt.') + (from ? '' : ' ' + tt('(von überall – auch Internet!)')));
+    } catch (e) {
+      setRMsg(e instanceof Error ? e.message : 'Fehler');
+    } finally { setRBusy(false); }
+  };
 
   // ── Modell aufbauen ──
   const membership = new Map<string, { net: string; driver: string; internal: boolean; ip: string }[]>();
@@ -1186,7 +1210,38 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
                       {n.ip && <div><span style={{ color: 'var(--color-faint)' }}>IP: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{n.ip}</span></div>}
                       {n.nets && n.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{n.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
                       {n.ports && n.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{n.ports.join(', ')}</div>}
-                      <div style={{ marginTop: 4, color: 'var(--color-faint)' }}>{tt('Regel-Aktionen folgen (Phase B).')}</div>
+
+                      {/* Regel anlegen – nur sinnvoll für Host & Container mit veröffentlichtem Port (ufw) */}
+                      {(n.kind === 'host' || (n.ports && n.ports.length > 0)) ? (
+                        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                          style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>{tt('Zugriff regeln')}</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {(n.ports || []).map((p) => (
+                              <button key={p} className={`btn btn--sm ${rPort === p ? 'btn--primary' : 'btn--outline'}`} style={{ padding: '1px 7px', fontSize: 11 }} onClick={() => setRPort(p)}>{p}</button>
+                            ))}
+                            <input className="input input--rect" style={{ width: 70, height: 26, fontSize: 11 }} placeholder={tt('Port')} value={rPort} onChange={(e) => setRPort(e.target.value)} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 90 }} value={rSrc} onChange={(e) => setRSrc(e.target.value as typeof rSrc)}>
+                              <option value="lan">{tt('von LAN')}</option>
+                              <option value="internet">{tt('von Internet')}</option>
+                              <option value="ip">{tt('von IP')}</option>
+                            </select>
+                            <select className="input input--rect" style={{ height: 26, fontSize: 11, width: 84 }} value={rAct} onChange={(e) => setRAct(e.target.value as typeof rAct)}>
+                              <option value="allow">{tt('erlauben')}</option>
+                              <option value="deny">{tt('sperren')}</option>
+                            </select>
+                          </div>
+                          {rSrc === 'ip' && <input className="input input--rect" style={{ height: 26, fontSize: 11, fontFamily: 'var(--font-mono)' }} placeholder="192.168.1.50" value={rIp} onChange={(e) => setRIp(e.target.value)} />}
+                          <button className="btn btn--primary btn--sm" disabled={rBusy} onClick={() => addRule((n.ports || [])[0] || '')}>
+                            {rBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Regel anlegen')}
+                          </button>
+                          {rMsg && <div style={{ fontSize: 11, color: rMsg.includes('angelegt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{rMsg}</div>}
+                        </div>
+                      ) : n.kind === 'docker' ? (
+                        <div style={{ marginTop: 4, color: 'var(--color-faint)' }}>{tt('Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).')}</div>
+                      ) : null}
                     </div>
                   )}
                 </div>
