@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Server, Globe, Box, LayoutGrid, Table } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
 import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
+import { usePrefs } from '../lib/prefs';
 import { portInfo } from '../lib/utils';
 import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry } from '../lib/types';
 
@@ -1012,7 +1013,273 @@ function ConnectivityPanel({ networks, containers }: { networks: DockerNetwork[]
   );
 }
 
-type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips' | 'map';
+// ── Firewall-/Netzwerk-Studio: frei anordbare Karte (Phase A) ────────────────
+interface StudioNode { id: string; kind: 'host' | 'zone' | 'docker' | 'vm'; label: string; sub?: string; ip?: string; ports?: string[]; nets?: { net: string; driver: string }[]; }
+const NODE_W = 190, NODE_H = 58;
+
+function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; containers: Container[] }) {
+  const { prefs, setPref } = usePrefs();
+  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string }) || {};
+  const saved = layout.nodes || {};
+  const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
+  const [vms, setVms] = useState<VM[]>([]);
+  const [sel, setSel] = useState<string | null>(null);
+  const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
+  const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
+  // Regel-Formular (Phase B – sichere ufw-Ebene)
+  const [rPort, setRPort] = useState('');
+  const [rSrc, setRSrc] = useState<'lan' | 'internet' | 'ip'>('lan');
+  const [rIp, setRIp] = useState('');
+  const [rAct, setRAct] = useState<'allow' | 'deny'>('allow');
+  const [rBusy, setRBusy] = useState(false);
+  const [rMsg, setRMsg] = useState('');
+
+  useEffect(() => { api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {}); }, []);
+  // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
+  useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); }, [sel]);
+
+  const LAN_RANGES = '192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12';
+  const addRule = async (defaultPort: string) => {
+    const port = (rPort || defaultPort).replace(/[^0-9]/g, '');
+    if (!port) { setRMsg(tt('Bitte einen Port angeben.')); return; }
+    if (rSrc === 'ip' && !/^\d{1,3}(\.\d{1,3}){3}(\/\d+)?$/.test(rIp.trim())) { setRMsg(tt('Bitte eine gültige IP/CIDR angeben.')); return; }
+    const from = rSrc === 'lan' ? LAN_RANGES : rSrc === 'ip' ? rIp.trim() : undefined;
+    setRBusy(true); setRMsg('');
+    try {
+      await api.firewall.add({ action: rAct, port, proto: 'tcp', from });
+      setRMsg(tt('Regel angelegt.') + (from ? '' : ' ' + tt('(von überall – auch Internet!)')));
+    } catch (e) {
+      setRMsg(e instanceof Error ? e.message : 'Fehler');
+    } finally { setRBusy(false); }
+  };
+
+  // ── Modell aufbauen ──
+  const membership = new Map<string, { net: string; driver: string; internal: boolean; ip: string }[]>();
+  for (const n of networks) {
+    if (n.name === 'none') continue;
+    for (const c of n.containers) {
+      if (!membership.has(c.name)) membership.set(c.name, []);
+      membership.get(c.name)!.push({ net: n.name, driver: n.driver, internal: n.internal, ip: (c.ipv4 || '').replace(/\/\d+$/, '') });
+    }
+  }
+  const pubByName = new Map<string, string[]>();
+  for (const c of containers) {
+    const ps = (c.ports || []).filter((p) => p.includes('->')).map((p) => p.split('->')[0].split(':').pop() || '').filter(Boolean);
+    if (ps.length) pubByName.set(c.name, [...new Set(ps)]);
+  }
+  const dockerNames = [...new Set(networks.flatMap((n) => n.name === 'none' ? [] : n.containers.map((c) => c.name)))];
+  const tunnel = containers.find((c) => /newt|pangolin|wireguard|tailscale|wg-easy|zerotier/i.test(`${c.name} ${c.image}`));
+
+  const nodes: StudioNode[] = [
+    { id: 'zone:wan', kind: 'zone', label: 'Internet', sub: 'WAN' },
+    { id: 'zone:lan', kind: 'zone', label: 'LAN', sub: tt('Lokales Netz') },
+    ...(tunnel ? [{ id: 'zone:tunnel', kind: 'zone' as const, label: 'Tunnel', sub: tunnel.name }] : []),
+    { id: 'host', kind: 'host', label: 'Host', sub: tt('Server') },
+    ...dockerNames.map((name) => {
+      const m = membership.get(name) || [];
+      const ip = m.find((x) => x.driver === 'macvlan' || x.driver === 'ipvlan')?.ip || m[0]?.ip;
+      return { id: `docker:${name}`, kind: 'docker' as const, label: name, ip, ports: pubByName.get(name), nets: m.map((x) => ({ net: x.net, driver: x.driver })) };
+    }),
+    ...vms.map((v) => ({ id: `vm:${v.id}`, kind: 'vm' as const, label: v.name, sub: v.state })),
+  ];
+
+  // Standard-Layout, falls keine gespeicherte Position
+  const defPos = (id: string, i: number): { x: number; y: number } => {
+    if (id === 'zone:wan') return { x: 20, y: 20 };
+    if (id === 'zone:lan') return { x: 20, y: 110 };
+    if (id === 'zone:tunnel') return { x: 20, y: 200 };
+    if (id === 'host') return { x: 280, y: 110 };
+    const k = i; // dockers/vms rechts im Raster
+    return { x: 540 + (k % 2) * 210, y: 20 + Math.floor(k / 2) * 90 };
+  };
+  let gi = 0;
+  const posOf = (id: string): { x: number; y: number } => {
+    if (live[id]) return live[id];
+    if (saved[id]) return saved[id];
+    const isGrid = id.startsWith('docker:') || id.startsWith('vm:');
+    return defPos(id, isGrid ? gi++ : 0);
+  };
+  // gi muss deterministisch sein → Positionen vorab berechnen
+  const positions: Record<string, { x: number; y: number }> = {};
+  gi = 0;
+  for (const n of nodes) positions[n.id] = posOf(n.id);
+
+  // ── Erreichbarkeits-Kanten ──
+  const edges: [string, string][] = [];
+  const sharesNet = (a: string, b: string) => {
+    const ma = membership.get(a) || [], mb = membership.get(b) || [];
+    return ma.some((x) => mb.some((y) => y.net === x.net));
+  };
+  edges.push(['zone:wan', 'host']);
+  edges.push(['zone:lan', 'host']);
+  if (tunnel) edges.push(['zone:tunnel', `docker:${tunnel.name}`]);
+  for (const name of dockerNames) {
+    const m = membership.get(name) || [];
+    const hostReach = m.some((x) => x.driver === 'host' || (x.driver === 'bridge' && !x.internal)) || (pubByName.get(name)?.length ?? 0) > 0;
+    const lanReach = m.some((x) => x.driver === 'macvlan' || x.driver === 'ipvlan') || (pubByName.get(name)?.length ?? 0) > 0;
+    if (hostReach) edges.push(['host', `docker:${name}`]);
+    if (lanReach) edges.push(['zone:lan', `docker:${name}`]);
+  }
+  for (let i = 0; i < dockerNames.length; i++)
+    for (let j = i + 1; j < dockerNames.length; j++)
+      if (sharesNet(dockerNames[i], dockerNames[j])) edges.push([`docker:${dockerNames[i]}`, `docker:${dockerNames[j]}`]);
+
+  // ── Drag ──
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      if (!drag.current) return;
+      drag.current.moved = true;
+      setLive((l) => ({ ...l, [drag.current!.id]: { x: Math.max(0, e.clientX - drag.current!.ox), y: Math.max(0, e.clientY - drag.current!.oy) } }));
+    };
+    const up = () => {
+      if (drag.current && drag.current.moved) {
+        const id = drag.current.id;
+        setLive((l) => {
+          const p = l[id];
+          if (p) setPref('fwStudio', { ...layout, nodes: { ...saved, [id]: p } });
+          return l;
+        });
+      }
+      drag.current = null;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [layout, saved, setPref]);
+
+  const onDown = (e: React.MouseEvent, id: string) => {
+    const p = positions[id];
+    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+    drag.current = { id, ox: e.clientX - (rect.left + p.x), oy: e.clientY - (rect.top + p.y), moved: false };
+  };
+  const onClickNode = (id: string) => { if (!drag.current?.moved) setSel((s) => (s === id ? null : id)); };
+
+  const NODE_COLOR: Record<StudioNode['kind'], string> = {
+    host: 'var(--color-accent)', zone: 'var(--color-warning)', docker: 'var(--color-info, #3b82f6)', vm: '#a855f7',
+  };
+  const NODE_ICON: Record<StudioNode['kind'], React.ElementType> = { host: Server, zone: Globe, docker: Box, vm: MonitorPlay };
+
+  const maxY = Math.max(320, ...nodes.map((n) => positions[n.id].y + NODE_H + 120));
+
+  return (
+    <Panel title={tt('Firewall-Studio')} icon={<Network size={15} />} storageKey="fw-studio"
+      actions={
+        <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
+          <button className={`btn btn--sm ${sub === 'map' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('map'); setPref('fwStudio', { ...layout, sub: 'map' }); }}><LayoutGrid size={12} /> {tt('Karte')}</button>
+          <button className={`btn btn--sm ${sub === 'matrix' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('matrix'); setPref('fwStudio', { ...layout, sub: 'matrix' }); }}><Table size={12} /> {tt('Matrix')}</button>
+        </div>
+      }
+    >
+      {sub === 'matrix' ? (
+        <div style={{ marginTop: 8 }}><ConnectivityPanel networks={networks} containers={containers} /></div>
+      ) : (
+        <>
+          <div style={{ fontSize: 12, color: 'var(--color-muted)', margin: '6px 0 10px' }}>
+            {tt('Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.')}
+          </div>
+          <div style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
+            {/* Kanten */}
+            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: maxY, pointerEvents: 'none' }}>
+              {edges.map(([a, b], i) => {
+                const pa = positions[a], pb = positions[b];
+                if (!pa || !pb) return null;
+                return <line key={i} x1={pa.x + NODE_W / 2} y1={pa.y + NODE_H / 2} x2={pb.x + NODE_W / 2} y2={pb.y + NODE_H / 2}
+                  stroke="var(--color-accent)" strokeWidth={1.5} strokeOpacity={sel && sel !== a && sel !== b ? 0.12 : 0.4} />;
+              })}
+            </svg>
+            {/* Knoten */}
+            {nodes.map((n) => {
+              const p = positions[n.id];
+              const Icon = NODE_ICON[n.kind];
+              const isSel = sel === n.id;
+              return (
+                <div key={n.id} style={{ position: 'absolute', left: p.x, top: p.y, width: NODE_W }}>
+                  <div onMouseDown={(e) => onDown(e, n.id)} onClick={() => onClickNode(n.id)}
+                    style={{ cursor: 'grab', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8, height: NODE_H, padding: '0 10px',
+                      background: 'var(--color-surface)', border: `1px solid ${isSel ? NODE_COLOR[n.kind] : 'var(--color-border)'}`,
+                      borderLeft: `3px solid ${NODE_COLOR[n.kind]}`, borderRadius: 8, boxShadow: isSel ? '0 0 0 2px var(--color-accent-soft)' : 'none' }}>
+                    <Icon size={16} style={{ color: NODE_COLOR[n.kind], flexShrink: 0 }} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--color-faint)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.ip || n.sub || ''}</div>
+                    </div>
+                  </div>
+                  {isSel && (
+                    <div style={{ marginTop: 4, padding: 8, fontSize: 11.5, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, lineHeight: 1.6 }}>
+                      <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{n.kind}</div>
+                      {n.ip && <div><span style={{ color: 'var(--color-faint)' }}>IP: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{n.ip}</span></div>}
+                      {n.nets && n.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{n.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
+                      {n.ports && n.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{n.ports.join(', ')}</div>}
+
+                      {/* Regel anlegen – nur sinnvoll für Host & Container mit veröffentlichtem Port (ufw) */}
+                      {(n.kind === 'host' || (n.ports && n.ports.length > 0)) ? (
+                        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                          style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>{tt('Zugriff regeln')}</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {(n.ports || []).map((p) => (
+                              <button key={p} className={`btn btn--sm ${rPort === p ? 'btn--primary' : 'btn--outline'}`} style={{ padding: '1px 7px', fontSize: 11 }} onClick={() => setRPort(p)}>{p}</button>
+                            ))}
+                            <input className="input input--rect" style={{ width: 70, height: 26, fontSize: 11 }} placeholder={tt('Port')} value={rPort} onChange={(e) => setRPort(e.target.value)} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 90 }} value={rSrc} onChange={(e) => setRSrc(e.target.value as typeof rSrc)}>
+                              <option value="lan">{tt('von LAN')}</option>
+                              <option value="internet">{tt('von Internet')}</option>
+                              <option value="ip">{tt('von IP')}</option>
+                            </select>
+                            <select className="input input--rect" style={{ height: 26, fontSize: 11, width: 84 }} value={rAct} onChange={(e) => setRAct(e.target.value as typeof rAct)}>
+                              <option value="allow">{tt('erlauben')}</option>
+                              <option value="deny">{tt('sperren')}</option>
+                            </select>
+                          </div>
+                          {rSrc === 'ip' && <input className="input input--rect" style={{ height: 26, fontSize: 11, fontFamily: 'var(--font-mono)' }} placeholder="192.168.1.50" value={rIp} onChange={(e) => setRIp(e.target.value)} />}
+                          <button className="btn btn--primary btn--sm" disabled={rBusy} onClick={() => addRule((n.ports || [])[0] || '')}>
+                            {rBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Regel anlegen')}
+                          </button>
+                          {rMsg && <div style={{ fontSize: 11, color: rMsg.includes('angelegt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{rMsg}</div>}
+                        </div>
+                      ) : n.kind === 'docker' ? (
+                        <div style={{ marginTop: 4, color: 'var(--color-faint)' }}>{tt('Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).')}</div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 11, color: 'var(--color-faint)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--color-accent)' }}>● Host</span>
+            <span style={{ color: 'var(--color-warning)' }}>● {tt('Zone (LAN/Internet/Tunnel)')}</span>
+            <span style={{ color: 'var(--color-info, #3b82f6)' }}>● Docker</span>
+            <span style={{ color: '#a855f7' }}>● VM</span>
+          </div>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+// Umschalter: Studio (Standard) ⟷ klassische ufw-Tabelle (pro Benutzer gespeichert)
+function FirewallView({ networks, containers }: { networks: DockerNetwork[]; containers: Container[] }) {
+  const { prefs, setPref } = usePrefs();
+  const mode = (prefs.fwView as 'studio' | 'table') || 'studio';
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+        <button className={`btn btn--sm ${mode === 'studio' ? 'btn--primary' : 'btn--outline'}`} onClick={() => setPref('fwView', 'studio')}>
+          <LayoutGrid size={13} /> {tt('Studio')}
+        </button>
+        <button className={`btn btn--sm ${mode === 'table' ? 'btn--primary' : 'btn--outline'}`} onClick={() => setPref('fwView', 'table')}>
+          <Table size={13} /> {tt('ufw-Tabelle')}
+        </button>
+      </div>
+      {mode === 'studio' ? <FirewallStudio networks={networks} containers={containers} /> : <FirewallPanel />}
+    </>
+  );
+}
+
+type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
 
 export function Networks() {
   const t = useT();
@@ -1062,14 +1329,12 @@ export function Networks() {
           <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>{tt('Firewall')}</button>
           <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>{tt('Verbindungen')}</button>
           <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>{tt('Virtuelle IPs')}</button>
-          <button className={`filter-tab${view === 'map' ? ' filter-tab--active' : ''}`} onClick={() => setView('map')}>{tt('Konnektivität')}</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
-        {view === 'firewall' && <FirewallPanel />}
+        {view === 'firewall' && <FirewallView networks={networks} containers={containers} />}
         {view === 'connections' && <ConnectionsPanel />}
         {view === 'vips' && <VirtualIpsPanel />}
-        {view === 'map' && <ConnectivityPanel networks={networks} containers={containers} />}
         {view === 'docker' && networks.map((n) => (
           <Panel
             key={n.id}

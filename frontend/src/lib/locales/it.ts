@@ -624,4 +624,29 @@ export const it: Record<string, string> = {
   'erreicht Macvlan-IPs & veröffentlichte Host-Ports': 'raggiunge gli IP macvlan e le porte host pubblicate',
 
   'Im Browser öffnen': 'Apri nel browser',
+
+  // ── Firewall-Studio ──
+  'Firewall-Studio': 'Studio firewall',
+  'Studio': 'Studio',
+  'ufw-Tabelle': 'Tabella ufw',
+  'Karte': 'Mappa',
+  'Matrix': 'Matrice',
+  'Lokales Netz': 'Rete locale',
+  'Server': 'Server',
+  'Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.': 'Sposta gli oggetti liberamente (salvato per utente). Clic per aprire/chiudere i dettagli. Linee = chi può raggiungere chi.',
+  'Regel-Aktionen folgen (Phase B).': 'Azioni regola in arrivo (fase B).',
+  'Zone (LAN/Internet/Tunnel)': 'Zona (LAN/Internet/Tunnel)',
+
+  // ── Firewall-Studio Regeln ──
+  'Zugriff regeln': 'Gestisci accesso',
+  'von LAN': 'da LAN',
+  'von Internet': 'da Internet',
+  'von IP': 'da IP',
+  'erlauben': 'consenti',
+  'sperren': 'blocca',
+  'Bitte einen Port angeben.': 'Inserisci una porta.',
+  'Bitte eine gültige IP/CIDR angeben.': 'Inserisci un IP/CIDR valido.',
+  'Regel angelegt.': 'Regola creata.',
+  '(von überall – auch Internet!)': '(da ovunque – anche Internet!)',
+  'Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).': 'Nessuna porta pubblicata – controllo tramite isolamento rete Docker (in arrivo).',
 };
