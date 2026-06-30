@@ -1025,7 +1025,9 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
   const [vms, setVms] = useState<VM[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
-  const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  // gx/gy = Greif-Offset innerhalb des Knotens; cl/ct = Canvas-Ursprung beim Greifen
+  const drag = useRef<{ id: string; gx: number; gy: number; cl: number; ct: number; moved: boolean } | null>(null);
   // Regel-Formular (Phase B – sichere ufw-Ebene)
   const [rPort, setRPort] = useState('');
   const [rSrc, setRSrc] = useState<'lan' | 'internet' | 'ip'>('lan');
@@ -1093,9 +1095,11 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
     return { x: 540 + (k % 2) * 210, y: 20 + Math.floor(k / 2) * 90 };
   };
   let gi = 0;
+  const sane = (p?: { x: number; y: number }) =>
+    p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 4000 && p.y >= 0 && p.y <= 4000 ? p : undefined;
   const posOf = (id: string): { x: number; y: number } => {
-    if (live[id]) return live[id];
-    if (saved[id]) return saved[id];
+    const l = sane(live[id]); if (l) return l;
+    const s = sane(saved[id]); if (s) return s;
     const isGrid = id.startsWith('docker:') || id.startsWith('vm:');
     return defPos(id, isGrid ? gi++ : 0);
   };
@@ -1129,7 +1133,9 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
     const move = (e: MouseEvent) => {
       if (!drag.current) return;
       drag.current.moved = true;
-      setLive((l) => ({ ...l, [drag.current!.id]: { x: Math.max(0, e.clientX - drag.current!.ox), y: Math.max(0, e.clientY - drag.current!.oy) } }));
+      const d = drag.current;
+      // Position relativ zum Canvas, abzüglich Greif-Offset
+      setLive((l) => ({ ...l, [d.id]: { x: Math.max(0, (e.clientX - d.cl) - d.gx), y: Math.max(0, (e.clientY - d.ct) - d.gy) } }));
     };
     const up = () => {
       if (drag.current && drag.current.moved) {
@@ -1149,8 +1155,10 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
 
   const onDown = (e: React.MouseEvent, id: string) => {
     const p = positions[id];
-    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-    drag.current = { id, ox: e.clientX - (rect.left + p.x), oy: e.clientY - (rect.top + p.y), moved: false };
+    const c = canvasRef.current?.getBoundingClientRect();
+    if (!c) return;
+    // Greif-Offset = wo im Knoten gepackt wurde (Canvas-Koordinaten minus Knoten-Position)
+    drag.current = { id, cl: c.left, ct: c.top, gx: (e.clientX - c.left) - p.x, gy: (e.clientY - c.top) - p.y, moved: false };
   };
   const onClickNode = (id: string) => { if (!drag.current?.moved) setSel((s) => (s === id ? null : id)); };
 
@@ -1177,7 +1185,7 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
           <div style={{ fontSize: 12, color: 'var(--color-muted)', margin: '6px 0 10px' }}>
             {tt('Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.')}
           </div>
-          <div style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
+          <div ref={canvasRef} style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
             {/* Kanten */}
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: maxY, pointerEvents: 'none' }}>
               {edges.map(([a, b], i) => {
