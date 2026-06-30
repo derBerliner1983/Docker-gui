@@ -1019,7 +1019,7 @@ const NODE_W = 190, NODE_H = 58;
 
 function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
-  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string; cidr?: string }[] }) || {};
+  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string }[] }) || {};
   const saved = layout.nodes || {};
   const customZones = layout.zones || [];
   const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
@@ -1120,20 +1120,28 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     ...vms.map((v) => ({ id: `vm:${v.id}`, kind: 'vm' as const, label: v.name, sub: v.state })),
     ...customZones.map((z) => ({ id: z.id, kind: 'zone' as const, label: z.label, sub: z.sub })),
   ];
-  const addZone = () => {
-    const label = window.prompt(tt('Name der Zone (z. B. Gäste-WLAN, VPN, Standort B):'));
-    if (!label || !label.trim()) return;
-    const cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):')) || '').trim();
-    const id = `czone:${Date.now()}`;
-    setPref('fwStudio', { ...layout, zones: [...customZones, { id, label: label.trim(), cidr: cidr || undefined, sub: cidr || undefined }] });
+  type CZone = { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string };
+  const editZone = (existing?: CZone) => {
+    const label = window.prompt(tt('Name der Zone (z. B. Gäste-WLAN, VPN, Standort B):'), existing?.label || '');
+    if (label === null || !label.trim()) return;
+    const t = (window.prompt(tt('Typ – 1 = LAN, 2 = Internet, 3 = Tunnel (Pangolin/Cloudflare/VPN), 4 = Gerät/Router (IP):'),
+      existing?.type === 'lan' ? '1' : existing?.type === 'internet' ? '2' : existing?.type === 'device' ? '4' : '3') || '3').trim();
+    const type: CZone['type'] = t === '1' ? 'lan' : t === '2' ? 'internet' : t === '4' ? 'device' : 'tunnel';
+    let container: string | undefined;
+    let cidr: string | undefined;
+    if (type === 'tunnel') {
+      container = (window.prompt(tt('Lokaler Tunnel-Container (Name, z. B. newt/cloudflared – leer = externer/automatischer Einstieg):'), existing?.container || '') || '').trim() || undefined;
+      if (!container) cidr = (window.prompt(tt('Externer Einstieg – IP/Host (optional, z. B. 192.168.2.50 oder die Router-IP):'), existing?.cidr || '') || '').trim() || undefined;
+    } else {
+      cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):'), existing?.cidr || '') || '').trim() || undefined;
+    }
+    const typeLabel = type === 'lan' ? 'LAN' : type === 'internet' ? tt('Internet') : type === 'device' ? tt('Gerät') : tt('Tunnel');
+    const sub = type === 'tunnel' ? (container ? `${tt('Tunnel')} · ${container}` : (cidr ? `${tt('Tunnel')} · ${cidr}` : tt('Tunnel'))) : (cidr ? `${typeLabel} · ${cidr}` : typeLabel);
+    const z: CZone = { id: existing?.id || `czone:${Date.now()}`, label: label.trim(), type, container, cidr, sub };
+    setPref('fwStudio', { ...layout, zones: existing ? customZones.map((x) => x.id === existing.id ? z : x) : [...customZones, z] });
   };
-  const renameZone = (id: string) => {
-    const z = customZones.find((x) => x.id === id); if (!z) return;
-    const label = window.prompt(tt('Zone umbenennen:'), z.label);
-    if (label === null) return;
-    const cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):'), z.cidr || '') || '').trim();
-    setPref('fwStudio', { ...layout, zones: customZones.map((x) => x.id === id ? { ...x, label: label.trim() || x.label, cidr: cidr || undefined, sub: cidr || undefined } : x) });
-  };
+  const addZone = () => editZone();
+  const renameZone = (id: string) => { const z = customZones.find((x) => x.id === id); if (z) editZone(z); };
   const removeZone = (id: string) => {
     setPref('fwStudio', { ...layout, zones: customZones.filter((x) => x.id !== id) });
     setSel((s) => (s === id ? null : s));
@@ -1244,7 +1252,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   // ── Simulation: kann „von Quelle auf Ziel:Port" verbunden werden? ──
   const rulePortOf = (to: string) => (to.match(/^(\d+)/) || [])[1];
   const targetName = (n: StudioNode | null) => n && n.id.startsWith('docker:') ? n.id.slice('docker:'.length) : null;
-  const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (customZones.find((z) => z.id === simSrc)?.label || tt('Zone'));
+  const czoneOf = (s: string) => customZones.find((z) => z.id === s) || null;
+  // Ist die Quelle ein Tunnel-Einstieg? (eingebauter Auto-Tunnel oder eigene Zone vom Typ tunnel)
+  const isTunnelSrc = () => simSrc === 'tunnel' || czoneOf(simSrc)?.type === 'tunnel';
+  // Welcher lokale Container ist der Tunnel-Einstieg? (null = externer/unbekannter Einstieg)
+  const tunnelEntry = () => simSrc === 'tunnel' ? (tunnel?.name || null) : (czoneOf(simSrc)?.container || (czoneOf(simSrc)?.type === 'tunnel' ? (tunnel?.name || null) : null));
+  const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (czoneOf(simSrc)?.label || tt('Zone'));
   const runSim = () => {
     const target = nodes.find((n) => n.id === simTarget);
     if (!target) { setSimRes({ ok: false, reason: tt('Bitte ein Ziel wählen.'), fixable: false }); return; }
@@ -1253,21 +1266,30 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     const isHostOrPublished = target.kind === 'host' || published.length > 0;
     const tname = targetName(target);
 
-    // ── Tunnel-Pfad: Internet → Pangolin/Cloudflare → Tunnel-Container → Docker-Netz → Ziel ──
-    if (simSrc === 'tunnel') {
-      if (!tunnel) { setSimRes({ ok: false, reason: tt('Kein Tunnel-Container erkannt (z. B. newt, cloudflared, wireguard).'), fixable: false }); return; }
-      const shared = !!tname && sharesNet(tunnel.name, tname);
-      const sameAsTunnel = tname === tunnel.name;
+    // ── Tunnel-Pfad: Einstieg → (lokaler Tunnel-Container) → Docker-Netz → Ziel ──
+    if (isTunnelSrc()) {
+      const tc = tunnelEntry();
+      const z = czoneOf(simSrc);
+      const entry = simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : (z?.label || tt('Tunnel'));
       const hops: { label: string; ok: boolean | null; note?: string }[] = [
-        { label: tt('Internet → Pangolin/Cloudflare'), ok: true, note: tt('Tunnel ist ausgehend aufgebaut – ufw spielt hier keine Rolle.') },
-        { label: `${tt('Tunnel')} (${tunnel.name})`, ok: true },
+        { label: tt('Einstieg: {x}', { x: entry }), ok: true, note: tt('Tunnel ist ausgehend aufgebaut – ufw spielt hier keine Rolle.') },
       ];
+      // Externer Einstieg ohne lokalen Container: wir können den internen Pfad nicht prüfen
+      if (!tc) {
+        hops.push({ label: tt('Externer Einstieg (kein lokaler Container)'), ok: null, note: z?.cidr ? tt('Quelle: {x}', { x: z.cidr }) : tt('Kein lokaler Tunnel-Container hinterlegt – binde einen im Zonen-Dialog ein, um den internen Pfad zu testen.') });
+        hops.push({ label: `${target.label}`, ok: isHostOrPublished ? true : null, note: isHostOrPublished ? tt('Ziel hat einen veröffentlichten Port.') : tt('Kein veröffentlichter Port – nur intern über ein gemeinsames Netz erreichbar.') });
+        setSimRes({ ok: isHostOrPublished, reason: tt('Externer Tunnel-Einstieg: ohne lokalen Container prüfe ich nur bis zum veröffentlichten Port. Für den echten internen Pfad einen Tunnel-Container an die Zone binden.'), fixable: false, hops });
+        return;
+      }
+      hops.push({ label: tt('Tunnel-Container: {x}', { x: tc }), ok: true });
+      const shared = !!tname && sharesNet(tc, tname);
+      const sameAsTunnel = tname === tc;
       if (sameAsTunnel || shared) {
         hops.push({ label: `${tt('Docker-Netz')} → ${target.label}`, ok: true, note: sameAsTunnel ? tt('Ziel ist der Tunnel-Container selbst.') : tt('Gemeinsames Docker-Netz vorhanden.') });
         setSimRes({ ok: true, reason: port ? tt('Pfad vorhanden – mit Live-Test prüfen, ob der Port wirklich antwortet.') : tt('Pfad vorhanden. Ohne Port: Netzwerkweg ist frei, einzelne Ports per Live-Test prüfen.'), fixable: false, hops });
       } else {
-        hops.push({ label: `${tt('Docker-Netz')} → ${target.label}`, ok: false, note: tt('Kein gemeinsames Docker-Netz – {a} kann {b} nicht erreichen.', { a: tunnel.name, b: target.label }) });
-        setSimRes({ ok: false, reason: tt('Tunnel erreicht das Ziel nicht: {a} und {b} teilen kein Docker-Netz. Mit einem Klick verbinden.', { a: tunnel.name, b: target.label }), fixable: true, fixKind: 'link', linkPair: tname ? [tunnel.name, tname] : undefined, hops });
+        hops.push({ label: `${tt('Docker-Netz')} → ${target.label}`, ok: false, note: tt('Kein gemeinsames Docker-Netz – {a} kann {b} nicht erreichen.', { a: tc, b: target.label }) });
+        setSimRes({ ok: false, reason: tt('Tunnel erreicht das Ziel nicht: {a} und {b} teilen kein Docker-Netz. Mit einem Klick verbinden.', { a: tc, b: target.label }), fixable: true, fixKind: 'link', linkPair: tname ? [tc, tname] : undefined, hops });
       }
       return;
     }
@@ -1315,10 +1337,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     if (!target || !port) { setSimLive({ open: false, ms: 0, error: tt('Bitte Ziel und Port angeben.') }); return; }
     setSimLiveBusy(true); setSimLive(null);
     try {
-      // Tunnel-Quelle: echt AUS dem Tunnel-Container heraus testen (newt → Ziel)
-      if (simSrc === 'tunnel' && tunnel) {
+      // Tunnel-Quelle mit lokalem Container: echt AUS dem Tunnel-Container heraus testen
+      const tc = isTunnelSrc() ? tunnelEntry() : null;
+      if (tc) {
         const host = target.kind === 'host' ? '172.17.0.1' : (target.ip || '127.0.0.1');
-        const r = await api.networks.probeExec(tunnel.name, host, Number(port));
+        const r = await api.networks.probeExec(tc, host, Number(port));
         setSimLive(r.error === 'no-tool' ? { open: false, ms: r.ms, error: tt('Im Tunnel-Container fehlt nc/bash/wget – konnte nicht aus ihm heraus testen.') } : r);
       } else {
         const host = target.kind === 'host' ? '127.0.0.1' : (target.ip || '127.0.0.1');
@@ -1413,6 +1436,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setSel(null)}><X size={13} /></button>
                 </div>
                 <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{selNode.kind}</div>
+                {(() => { const z = czoneOf(selNode.id); if (!z) return null; return (<>
+                  {z.type && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Art')}: </span>{z.type === 'lan' ? 'LAN' : z.type === 'internet' ? tt('Internet') : z.type === 'device' ? tt('Gerät') : tt('Tunnel')}</div>}
+                  {z.container && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Tunnel-Container')}: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{z.container}</span></div>}
+                  {z.cidr && <div><span style={{ color: 'var(--color-faint)' }}>IP/CIDR: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{z.cidr}</span></div>}
+                </>); })()}
                 {selNode.ip && <div><span style={{ color: 'var(--color-faint)' }}>IP: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{selNode.ip}</span></div>}
                 {selNode.nets && selNode.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{selNode.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
                 {selNode.ports && selNode.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{selNode.ports.join(', ')}</div>}
