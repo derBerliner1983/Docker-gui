@@ -624,4 +624,16 @@ export const es: Record<string, string> = {
   'erreicht Macvlan-IPs & veröffentlichte Host-Ports': 'alcanza IP macvlan y puertos del host publicados',
 
   'Im Browser öffnen': 'Abrir en el navegador',
+
+  // ── Firewall-Studio ──
+  'Firewall-Studio': 'Estudio de cortafuegos',
+  'Studio': 'Estudio',
+  'ufw-Tabelle': 'Tabla ufw',
+  'Karte': 'Mapa',
+  'Matrix': 'Matriz',
+  'Lokales Netz': 'Red local',
+  'Server': 'Servidor',
+  'Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.': 'Mueve los objetos libremente (guardado por usuario). Clic para abrir/cerrar detalles. Líneas = quién puede alcanzar a quién.',
+  'Regel-Aktionen folgen (Phase B).': 'Acciones de regla próximamente (fase B).',
+  'Zone (LAN/Internet/Tunnel)': 'Zona (LAN/Internet/Túnel)',
 };
