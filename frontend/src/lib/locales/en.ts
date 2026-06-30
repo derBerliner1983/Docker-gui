@@ -658,4 +658,22 @@ export const en: Record<string, string> = {
   'Bitte einen Ziel-Container wählen.': 'Please choose a target container.',
   'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Connected – both now share a dedicated network.',
   'Verbindung getrennt.': 'Connection removed.',
+
+  // ── Studio Simulation ──
+  'Verbindung simulieren': 'Simulate connection',
+  'bestimmte IP': 'specific IP',
+  'Simulieren': 'Simulate',
+  'Erreichbar': 'Reachable',
+  'Blockiert': 'Blocked',
+  'Freischalten': 'Allow',
+  'Bitte ein Ziel wählen.': 'Please choose a target.',
+  'Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).': 'Reachable via the tunnel (Pangolin/Newt forwards).',
+  'Tunnel hat keinen Pfad zum Ziel.': 'Tunnel has no path to the target.',
+  'Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).': 'No published port – not reachable from outside (only via tunnel/proxy).',
+  'Firewall inaktiv – Port ist offen.': 'Firewall inactive – port is open.',
+  'Erlaubt durch Firewall-Regel.': 'Allowed by firewall rule.',
+  'Durch Firewall blockiert (deny-Regel).': 'Blocked by firewall (deny rule).',
+  'Keine Freigabe – Standard blockiert (default deny).': 'No allow rule – default blocks (default deny).',
+  'Freigegeben – Regel erstellt.': 'Allowed – rule created.',
+  'Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.': 'Estimate based on Docker networks, published ports & firewall rules. Tunnel = access from the internet via Pangolin/Newt.',
 };

@@ -659,4 +659,22 @@ export const es: Record<string, string> = {
   'Bitte einen Ziel-Container wählen.': 'Elige un contenedor destino.',
   'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Conectados: ambos comparten ahora una red dedicada.',
   'Verbindung getrennt.': 'Conexión eliminada.',
+
+  // ── Studio Simulation ──
+  'Verbindung simulieren': 'Simular conexión',
+  'bestimmte IP': 'IP específica',
+  'Simulieren': 'Simular',
+  'Erreichbar': 'Accesible',
+  'Blockiert': 'Bloqueado',
+  'Freischalten': 'Permitir',
+  'Bitte ein Ziel wählen.': 'Elige un destino.',
+  'Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).': 'Accesible por el túnel (Pangolin/Newt reenvía).',
+  'Tunnel hat keinen Pfad zum Ziel.': 'El túnel no tiene ruta al destino.',
+  'Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).': 'Sin puerto publicado: no accesible desde fuera (solo por túnel/proxy).',
+  'Firewall inaktiv – Port ist offen.': 'Cortafuegos inactivo: el puerto está abierto.',
+  'Erlaubt durch Firewall-Regel.': 'Permitido por una regla del cortafuegos.',
+  'Durch Firewall blockiert (deny-Regel).': 'Bloqueado por el cortafuegos (regla deny).',
+  'Keine Freigabe – Standard blockiert (default deny).': 'Sin regla de permiso: bloqueo por defecto (default deny).',
+  'Freigegeben – Regel erstellt.': 'Permitido: regla creada.',
+  'Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.': 'Estimación según redes Docker, puertos publicados y reglas del cortafuegos. Túnel = acceso desde Internet vía Pangolin/Newt.',
 };
