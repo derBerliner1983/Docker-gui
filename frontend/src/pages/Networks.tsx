@@ -1015,6 +1015,77 @@ function ConnectivityPanel({ networks, containers }: { networks: DockerNetwork[]
 
 // ── Firewall-/Netzwerk-Studio: frei anordbare Karte (Phase A) ────────────────
 interface StudioNode { id: string; kind: 'host' | 'zone' | 'docker' | 'vm'; label: string; sub?: string; ip?: string; ports?: string[]; nets?: { net: string; driver: string }[]; }
+type CZone = { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string };
+
+// Formular-Fenster für eigene Zonen (Tunnel-Einstieg, Gerät/Router, LAN/Internet)
+function ZoneModal({ open, zone, dockerNames, onClose, onSave }: { open: boolean; zone?: CZone; dockerNames: string[]; onClose: () => void; onSave: (z: CZone, existing?: CZone) => void }) {
+  const [label, setLabel] = useState('');
+  const [type, setType] = useState<NonNullable<CZone['type']>>('tunnel');
+  const [container, setContainer] = useState('');
+  const [cidr, setCidr] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setLabel(zone?.label || ''); setType(zone?.type || 'tunnel');
+    setContainer(zone?.container || ''); setCidr(zone?.cidr || '');
+  }, [open, zone]);
+  if (!open) return null;
+  const typeLabel = type === 'lan' ? 'LAN' : type === 'internet' ? tt('Internet') : type === 'device' ? tt('Gerät') : tt('Tunnel');
+  const save = () => {
+    if (!label.trim()) return;
+    const c = type === 'tunnel' ? (container.trim() || undefined) : undefined;
+    const ip = (type === 'tunnel' && c) ? undefined : (cidr.trim() || undefined);
+    const sub = type === 'tunnel'
+      ? (c ? `${tt('Tunnel')} · ${c}` : (ip ? `${tt('Tunnel')} · ${ip}` : tt('Tunnel')))
+      : (ip ? `${typeLabel} · ${ip}` : typeLabel);
+    onSave({ id: zone?.id || `czone:${Date.now()}`, label: label.trim(), type, container: c, cidr: ip, sub }, zone);
+    onClose();
+  };
+  return (
+    <Modal open={open} title={zone ? tt('Zone bearbeiten') : tt('Zone hinzufügen')} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={!label.trim()}>{tt('Speichern')}</button>
+      </>}>
+      <div className="form-group">
+        <label className="form-label">{tt('Name')}</label>
+        <input className="input input--rect" autoFocus placeholder={tt('z. B. Gäste-WLAN, VPN, Standort B')} value={label} onChange={(e) => setLabel(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Art')}</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([['tunnel', tt('Tunnel')], ['lan', 'LAN'], ['internet', tt('Internet')], ['device', tt('Gerät/Router')]] as const).map(([v, l]) => (
+            <button key={v} type="button" className={`btn btn--sm ${type === v ? 'btn--primary' : 'btn--outline'}`} onClick={() => setType(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {type === 'tunnel' ? (
+        <>
+          <div className="form-group">
+            <label className="form-label">{tt('Lokaler Tunnel-Container')}</label>
+            <select className="input input--rect" value={container} onChange={(e) => setContainer(e.target.value)}>
+              <option value="">{tt('— externer/automatischer Einstieg —')}</option>
+              {dockerNames.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <div className="form-hint">{tt('z. B. newt oder cloudflared. Gebunden = echter Test aus diesem Container heraus.')}</div>
+          </div>
+          {!container && (
+            <div className="form-group">
+              <label className="form-label">{tt('Externer Einstieg – IP/Host (optional)')}</label>
+              <input className="input input--rect" placeholder="192.168.2.50" value={cidr} onChange={(e) => setCidr(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+              <div className="form-hint">{tt('Ein extra Gerät, eine feste IP oder die Router-IP. Ohne lokalen Container nur bis zum veröffentlichten Port prüfbar.')}</div>
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="form-group">
+          <label className="form-label">IP/CIDR {tt('(optional)')}</label>
+          <input className="input input--rect" placeholder="10.8.0.0/24" value={cidr} onChange={(e) => setCidr(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+          <div className="form-hint">{tt('Wird als Quelle für Simulation und Firewall-Regeln genutzt.')}</div>
+        </div>
+      )}
+    </Modal>
+  );
+}
 const NODE_W = 190, NODE_H = 58;
 
 function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
@@ -1025,6 +1096,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
   const [vms, setVms] = useState<VM[]>([]);
   const [sel, setSel] = useState<string | null>(null);
+  const [zoneEdit, setZoneEdit] = useState<{ open: boolean; zone?: CZone }>({ open: false });
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement>(null);
   // gx/gy = Greif-Offset innerhalb des Knotens; cl/ct = Canvas-Ursprung beim Greifen
@@ -1120,28 +1192,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     ...vms.map((v) => ({ id: `vm:${v.id}`, kind: 'vm' as const, label: v.name, sub: v.state })),
     ...customZones.map((z) => ({ id: z.id, kind: 'zone' as const, label: z.label, sub: z.sub })),
   ];
-  type CZone = { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string };
-  const editZone = (existing?: CZone) => {
-    const label = window.prompt(tt('Name der Zone (z. B. Gäste-WLAN, VPN, Standort B):'), existing?.label || '');
-    if (label === null || !label.trim()) return;
-    const t = (window.prompt(tt('Typ – 1 = LAN, 2 = Internet, 3 = Tunnel (Pangolin/Cloudflare/VPN), 4 = Gerät/Router (IP):'),
-      existing?.type === 'lan' ? '1' : existing?.type === 'internet' ? '2' : existing?.type === 'device' ? '4' : '3') || '3').trim();
-    const type: CZone['type'] = t === '1' ? 'lan' : t === '2' ? 'internet' : t === '4' ? 'device' : 'tunnel';
-    let container: string | undefined;
-    let cidr: string | undefined;
-    if (type === 'tunnel') {
-      container = (window.prompt(tt('Lokaler Tunnel-Container (Name, z. B. newt/cloudflared – leer = externer/automatischer Einstieg):'), existing?.container || '') || '').trim() || undefined;
-      if (!container) cidr = (window.prompt(tt('Externer Einstieg – IP/Host (optional, z. B. 192.168.2.50 oder die Router-IP):'), existing?.cidr || '') || '').trim() || undefined;
-    } else {
-      cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):'), existing?.cidr || '') || '').trim() || undefined;
-    }
-    const typeLabel = type === 'lan' ? 'LAN' : type === 'internet' ? tt('Internet') : type === 'device' ? tt('Gerät') : tt('Tunnel');
-    const sub = type === 'tunnel' ? (container ? `${tt('Tunnel')} · ${container}` : (cidr ? `${tt('Tunnel')} · ${cidr}` : tt('Tunnel'))) : (cidr ? `${typeLabel} · ${cidr}` : typeLabel);
-    const z: CZone = { id: existing?.id || `czone:${Date.now()}`, label: label.trim(), type, container, cidr, sub };
+  const saveZone = (z: CZone, existing?: CZone) => {
     setPref('fwStudio', { ...layout, zones: existing ? customZones.map((x) => x.id === existing.id ? z : x) : [...customZones, z] });
   };
-  const addZone = () => editZone();
-  const renameZone = (id: string) => { const z = customZones.find((x) => x.id === id); if (z) editZone(z); };
+  const addZone = () => setZoneEdit({ open: true });
+  const renameZone = (id: string) => { const z = customZones.find((x) => x.id === id); if (z) setZoneEdit({ open: true, zone: z }); };
   const removeZone = (id: string) => {
     setPref('fwStudio', { ...layout, zones: customZones.filter((x) => x.id !== id) });
     setSel((s) => (s === id ? null : s));
@@ -1606,6 +1661,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
           </div>
         </>
       )}
+      <ZoneModal open={zoneEdit.open} zone={zoneEdit.zone} dockerNames={dockerNames}
+        onClose={() => setZoneEdit({ open: false })} onSave={saveZone} />
     </Panel>
   );
 }
