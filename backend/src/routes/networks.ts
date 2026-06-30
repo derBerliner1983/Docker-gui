@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import net from 'node:net';
 import Dockerode from 'dockerode';
 import si from 'systeminformation';
 import { requireAuth, requireAdmin } from '../middleware/auth';
@@ -172,6 +173,28 @@ export async function networkRoutes(fastify: FastifyInstance) {
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'Trennen fehlgeschlagen' });
     }
+  });
+
+  // ── Echter TCP-Test: ist host:port vom Server aus erreichbar? ──
+  fastify.post<{ Body: { host: string; port: number; timeout?: number } }>('/api/networks/probe', { preHandler: requireAdmin }, async (req, reply) => {
+    const host = (req.body?.host ?? '').trim();
+    const port = Number(req.body?.port);
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(host) || !port || port < 1 || port > 65535) {
+      return reply.status(400).send({ error: 'Host und Port erforderlich' });
+    }
+    const timeout = Math.min(5000, Math.max(500, Number(req.body?.timeout) || 2000));
+    const start = Date.now();
+    const result = await new Promise<{ open: boolean; ms: number; error?: string }>((resolve) => {
+      const sock = new net.Socket();
+      let done = false;
+      const fin = (open: boolean, error?: string) => { if (done) return; done = true; try { sock.destroy(); } catch { /* */ } resolve({ open, ms: Date.now() - start, error }); };
+      sock.setTimeout(timeout);
+      sock.once('connect', () => fin(true));
+      sock.once('timeout', () => fin(false, 'timeout'));
+      sock.once('error', (e: Error) => fin(false, e.message));
+      sock.connect(port, host);
+    });
+    reply.send(result);
   });
 
   fastify.post<{ Params: { id: string }; Body: { container: string } }>(

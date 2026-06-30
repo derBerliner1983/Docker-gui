@@ -236,6 +236,7 @@ export const api = {
       req(`/api/networks/${id}/disconnect`, { method: 'POST', body: JSON.stringify({ container }) }),
     link: (a: string, b: string) => req<{ ok: boolean; network: string }>('/api/networks/link', { method: 'POST', body: JSON.stringify({ a, b }) }),
     unlink: (a: string, b: string) => req('/api/networks/unlink', { method: 'POST', body: JSON.stringify({ a, b }) }),
+    probe: (host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/networks/probe', { method: 'POST', body: JSON.stringify({ host, port }) }),
   },
 
   security: {

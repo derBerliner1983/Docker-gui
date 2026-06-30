@@ -1019,8 +1019,9 @@ const NODE_W = 190, NODE_H = 58;
 
 function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
-  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string }) || {};
+  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string }[] }) || {};
   const saved = layout.nodes || {};
+  const customZones = layout.zones || [];
   const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
   const [vms, setVms] = useState<VM[]>([]);
   const [sel, setSel] = useState<string | null>(null);
@@ -1049,6 +1050,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [simPort, setSimPort] = useState('');
   const [simRes, setSimRes] = useState<{ ok: boolean; reason: string; fixable: boolean } | null>(null);
   const [simBusy, setSimBusy] = useState(false);
+  const [simLive, setSimLive] = useState<{ open: boolean; ms: number; error?: string } | null>(null);
+  const [simLiveBusy, setSimLiveBusy] = useState(false);
 
   useEffect(() => {
     api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {});
@@ -1111,7 +1114,24 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       return { id: `docker:${name}`, kind: 'docker' as const, label: name, ip, ports: pubByName.get(name), nets: m.map((x) => ({ net: x.net, driver: x.driver })) };
     }),
     ...vms.map((v) => ({ id: `vm:${v.id}`, kind: 'vm' as const, label: v.name, sub: v.state })),
+    ...customZones.map((z) => ({ id: z.id, kind: 'zone' as const, label: z.label, sub: z.sub })),
   ];
+  const addZone = () => {
+    const label = window.prompt(tt('Name der Zone (z. B. Gäste-WLAN, VPN, Standort B):'));
+    if (!label || !label.trim()) return;
+    const id = `czone:${Date.now()}`;
+    setPref('fwStudio', { ...layout, zones: [...customZones, { id, label: label.trim() }] });
+  };
+  const renameZone = (id: string) => {
+    const z = customZones.find((x) => x.id === id); if (!z) return;
+    const label = window.prompt(tt('Zone umbenennen:'), z.label);
+    if (label === null) return;
+    setPref('fwStudio', { ...layout, zones: customZones.map((x) => x.id === id ? { ...x, label: label.trim() || x.label } : x) });
+  };
+  const removeZone = (id: string) => {
+    setPref('fwStudio', { ...layout, zones: customZones.filter((x) => x.id !== id) });
+    setSel((s) => (s === id ? null : s));
+  };
 
   // Standard-Layout, falls keine gespeicherte Position
   const defPos = (id: string, i: number): { x: number; y: number } => {
@@ -1119,6 +1139,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     if (id === 'zone:lan') return { x: 20, y: 110 };
     if (id === 'zone:tunnel') return { x: 20, y: 200 };
     if (id === 'host') return { x: 280, y: 110 };
+    if (id.startsWith('czone:')) return { x: 20, y: 290 + (i % 4) * 80 }; // eigene Zonen linke Spalte
     const k = i; // dockers/vms rechts im Raster
     return { x: 540 + (k % 2) * 210, y: 20 + Math.floor(k / 2) * 90 };
   };
@@ -1128,7 +1149,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const posOf = (id: string): { x: number; y: number } => {
     const l = sane(live[id]); if (l) return l;
     const s = sane(saved[id]); if (s) return s;
-    const isGrid = id.startsWith('docker:') || id.startsWith('vm:');
+    const isGrid = id.startsWith('docker:') || id.startsWith('vm:') || id.startsWith('czone:');
     return defPos(id, isGrid ? gi++ : 0);
   };
   // gi muss deterministisch sein → Positionen vorab berechnen
@@ -1136,25 +1157,35 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   gi = 0;
   for (const n of nodes) positions[n.id] = posOf(n.id);
 
-  // ── Erreichbarkeits-Kanten ──
-  const edges: [string, string][] = [];
+  // ── Erreichbarkeits-Kanten (mit Label & optionalem Link-Paar zum Trennen) ──
+  type Edge = { a: string; b: string; label?: string; link?: [string, string] };
+  const edges: Edge[] = [];
   const sharesNet = (a: string, b: string) => {
     const ma = membership.get(a) || [], mb = membership.get(b) || [];
     return ma.some((x) => mb.some((y) => y.net === x.net));
   };
-  edges.push(['zone:wan', 'host']);
-  edges.push(['zone:lan', 'host']);
-  if (tunnel) edges.push(['zone:tunnel', `docker:${tunnel.name}`]);
+  // gemeinsames cl-* Link-Netz (vom Studio gebaut) → trennbar
+  const sharedLink = (a: string, b: string) => {
+    const ma = membership.get(a) || [], mb = membership.get(b) || [];
+    return ma.some((x) => x.net.startsWith('cl-') && mb.some((y) => y.net === x.net));
+  };
+  const portLabel = (name: string) => { const p = pubByName.get(name) || []; return p.length ? p.slice(0, 3).join(', ') + (p.length > 3 ? '…' : '') : undefined; };
+  edges.push({ a: 'zone:wan', b: 'host' });
+  edges.push({ a: 'zone:lan', b: 'host' });
+  if (tunnel) edges.push({ a: 'zone:tunnel', b: `docker:${tunnel.name}` });
   for (const name of dockerNames) {
     const m = membership.get(name) || [];
     const hostReach = m.some((x) => x.driver === 'host' || (x.driver === 'bridge' && !x.internal)) || (pubByName.get(name)?.length ?? 0) > 0;
     const lanReach = m.some((x) => x.driver === 'macvlan' || x.driver === 'ipvlan') || (pubByName.get(name)?.length ?? 0) > 0;
-    if (hostReach) edges.push(['host', `docker:${name}`]);
-    if (lanReach) edges.push(['zone:lan', `docker:${name}`]);
+    if (hostReach) edges.push({ a: 'host', b: `docker:${name}`, label: portLabel(name) });
+    if (lanReach) edges.push({ a: 'zone:lan', b: `docker:${name}`, label: portLabel(name) });
   }
   for (let i = 0; i < dockerNames.length; i++)
     for (let j = i + 1; j < dockerNames.length; j++)
-      if (sharesNet(dockerNames[i], dockerNames[j])) edges.push([`docker:${dockerNames[i]}`, `docker:${dockerNames[j]}`]);
+      if (sharesNet(dockerNames[i], dockerNames[j])) {
+        const isLink = sharedLink(dockerNames[i], dockerNames[j]);
+        edges.push({ a: `docker:${dockerNames[i]}`, b: `docker:${dockerNames[j]}`, link: isLink ? [dockerNames[i], dockerNames[j]] : undefined });
+      }
 
   // ── Drag ──
   useEffect(() => {
@@ -1237,6 +1268,16 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     catch (e) { setSimRes({ ok: false, reason: e instanceof Error ? e.message : 'Fehler', fixable: false }); }
     finally { setSimBusy(false); }
   };
+  const runLive = async () => {
+    const target = nodes.find((n) => n.id === simTarget);
+    const port = simPort.replace(/[^0-9]/g, '');
+    if (!target || !port) { setSimLive({ open: false, ms: 0, error: tt('Bitte Ziel und Port angeben.') }); return; }
+    const host = target.kind === 'host' ? '127.0.0.1' : (target.ip || '127.0.0.1');
+    setSimLiveBusy(true); setSimLive(null);
+    try { setSimLive(await api.networks.probe(host, Number(port))); }
+    catch (e) { setSimLive({ open: false, ms: 0, error: e instanceof Error ? e.message : 'Fehler' }); }
+    finally { setSimLiveBusy(false); }
+  };
 
   return (
     <Panel title={tt('Firewall-Studio')} icon={<Network size={15} />} storageKey="fw-studio"
@@ -1244,6 +1285,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
           <button className={`btn btn--sm ${sub === 'map' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('map'); setPref('fwStudio', { ...layout, sub: 'map' }); }}><LayoutGrid size={12} /> {tt('Karte')}</button>
           <button className={`btn btn--sm ${sub === 'matrix' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('matrix'); setPref('fwStudio', { ...layout, sub: 'matrix' }); }}><Table size={12} /> {tt('Matrix')}</button>
+          {sub === 'map' && <button className="btn btn--sm btn--outline" onClick={addZone} title={tt('Eigene Zone (Tunnel/LAN/Internet) hinzufügen')}><Plus size={12} /> {tt('Zone')}</button>}
         </div>
       }
     >
@@ -1257,11 +1299,31 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
           <div ref={canvasRef} style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
             {/* Kanten */}
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: maxY, pointerEvents: 'none' }}>
-              {edges.map(([a, b], i) => {
+              {edges.map((ed, i) => {
+                const { a, b, label, link } = ed;
                 const pa = positions[a], pb = positions[b];
                 if (!pa || !pb) return null;
-                return <line key={i} x1={pa.x + NODE_W / 2} y1={pa.y + NODE_H / 2} x2={pb.x + NODE_W / 2} y2={pb.y + NODE_H / 2}
-                  stroke="var(--color-accent)" strokeWidth={1.5} strokeOpacity={sel && sel !== a && sel !== b ? 0.12 : 0.4} />;
+                const x1 = pa.x + NODE_W / 2, y1 = pa.y + NODE_H / 2, x2 = pb.x + NODE_W / 2, y2 = pb.y + NODE_H / 2;
+                const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+                const dim = sel && sel !== a && sel !== b ? 0.12 : 0.4;
+                return (
+                  <g key={i}>
+                    <line x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={link ? 'var(--color-success)' : 'var(--color-accent)'} strokeWidth={link ? 2 : 1.5}
+                      strokeDasharray={link ? '5 4' : undefined} strokeOpacity={dim} />
+                    {link && (
+                      <circle cx={mx} cy={my} r={9} fill="var(--color-surface)" stroke="var(--color-success)" strokeWidth={1.5}
+                        style={{ pointerEvents: 'all', cursor: 'pointer' }} opacity={dim < 0.2 ? 0.3 : 1}
+                        onClick={async () => { if (window.confirm(tt('Verbindung {a} ↔ {b} trennen?', { a: link[0], b: link[1] }))) { try { await api.networks.unlink(link[0], link[1]); onChanged?.(); } catch (e) { alert(e instanceof Error ? e.message : 'Fehler'); } } }}>
+                        <title>{tt('Verbindung trennen')}</title>
+                      </circle>
+                    )}
+                    {link && <text x={mx} y={my + 3.5} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--color-success)" style={{ pointerEvents: 'none' }}>×</text>}
+                    {label && !link && (
+                      <text x={mx} y={my - 3} textAnchor="middle" fontSize={9.5} fill="var(--color-muted)" opacity={dim < 0.2 ? 0.4 : 0.9} style={{ pointerEvents: 'none' }}>{label}</text>
+                    )}
+                  </g>
+                );
               })}
             </svg>
             {/* Knoten (nur Box – Details im Inspector rechts) */}
@@ -1291,6 +1353,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, fontSize: 11.5, lineHeight: 1.6, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{selNode.label}</span>
+                  {selNode.id.startsWith('czone:') && <>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Zone umbenennen')} onClick={() => renameZone(selNode.id)}><Pencil size={13} /></button>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Zone entfernen')} onClick={() => removeZone(selNode.id)}><Trash2 size={13} /></button>
+                  </>}
                   <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setSel(null)}><X size={13} /></button>
                 </div>
                 <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{selNode.kind}</div>
@@ -1381,7 +1447,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               </div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Ziel')}</label>
-                <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); }}>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); setSimLive(null); }}>
                   <option value="">{tt('— wählen —')}</option>
                   {nodes.filter((n) => n.kind === 'host' || n.kind === 'docker').map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
                 </select>
@@ -1391,6 +1457,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 <input className="input input--rect" style={{ height: 30, fontSize: 12, width: 80 }} placeholder="443" value={simPort} onChange={(e) => setSimPort(e.target.value)} />
               </div>
               <button className="btn btn--outline btn--sm" onClick={runSim}><Activity size={13} /> {tt('Simulieren')}</button>
+              <button className="btn btn--outline btn--sm" disabled={simLiveBusy} onClick={runLive} title={tt('Echter TCP-Verbindungstest vom Server aus.')}>
+                {simLiveBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Activity size={13} />} {tt('Live-Test')}
+              </button>
             </div>
             {simRes && (
               <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -1404,7 +1473,18 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 )}
               </div>
             )}
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.')}</div>
+            {simLive && (
+              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                background: simLive.open ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.1)', border: `1px solid ${simLive.open ? 'var(--color-success)' : 'var(--color-danger)'}33` }}>
+                <span style={{ fontWeight: 700, color: simLive.open ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                  {simLive.open ? '✓ ' + tt('Port offen (Live)') : '✕ ' + tt('Port geschlossen (Live)')}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--color-muted)', flex: 1 }}>
+                  {simLive.open ? tt('TCP-Verbindung hergestellt in {ms} ms.', { ms: String(simLive.ms) }) : (simLive.error === 'timeout' ? tt('Zeitüberschreitung – keine Antwort.') : simLive.error || tt('Verbindung abgelehnt.'))}
+                </span>
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt. Live-Test prüft die TCP-Verbindung tatsächlich – vom Server aus gesehen.')}</div>
           </div>
         </>
       )}
