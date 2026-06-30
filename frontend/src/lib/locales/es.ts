@@ -649,4 +649,14 @@ export const es: Record<string, string> = {
   'Regel angelegt.': 'Regla creada.',
   '(von überall – auch Internet!)': '(desde cualquier sitio, ¡incl. Internet!)',
   'Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).': 'Sin puerto publicado: control mediante aislamiento de red Docker (próximamente).',
+
+  // ── Studio: Container verbinden ──
+  'Mit Container verbinden': 'Conectar con contenedor',
+  '— Ziel-Container —': '— Contenedor destino —',
+  'verbinden': 'conectar',
+  'trennen': 'desconectar',
+  'Legt ein eigenes Netz nur für dieses Paar an – nichts anderes wird verändert.': 'Crea una red dedicada solo para este par; no se cambia nada más.',
+  'Bitte einen Ziel-Container wählen.': 'Elige un contenedor destino.',
+  'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Conectados: ambos comparten ahora una red dedicada.',
+  'Verbindung getrennt.': 'Conexión eliminada.',
 };

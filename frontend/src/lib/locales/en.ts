@@ -648,4 +648,14 @@ export const en: Record<string, string> = {
   'Regel angelegt.': 'Rule created.',
   '(von überall – auch Internet!)': '(from anywhere – incl. internet!)',
   'Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).': 'No published port – control via Docker network isolation (coming).',
+
+  // ── Studio: Container verbinden ──
+  'Mit Container verbinden': 'Connect to container',
+  '— Ziel-Container —': '— Target container —',
+  'verbinden': 'connect',
+  'trennen': 'disconnect',
+  'Legt ein eigenes Netz nur für dieses Paar an – nichts anderes wird verändert.': 'Creates a dedicated network just for this pair – nothing else is changed.',
+  'Bitte einen Ziel-Container wählen.': 'Please choose a target container.',
+  'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Connected – both now share a dedicated network.',
+  'Verbindung getrennt.': 'Connection removed.',
 };
