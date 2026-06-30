@@ -1019,7 +1019,7 @@ const NODE_W = 190, NODE_H = 58;
 
 function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
-  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string }[] }) || {};
+  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string; cidr?: string }[] }) || {};
   const saved = layout.nodes || {};
   const customZones = layout.zones || [];
   const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
@@ -1044,14 +1044,18 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [fwRules, setFwRules] = useState<FirewallRule[]>([]);
   const [fwActive, setFwActive] = useState(false);
   // Simulation
-  const [simSrc, setSimSrc] = useState<'lan' | 'internet' | 'tunnel' | 'ip'>('internet');
+  const [simSrc, setSimSrc] = useState<string>('internet');
   const [simIp, setSimIp] = useState('');
   const [simTarget, setSimTarget] = useState('');
   const [simPort, setSimPort] = useState('');
-  const [simRes, setSimRes] = useState<{ ok: boolean; reason: string; fixable: boolean } | null>(null);
+  const [simRes, setSimRes] = useState<{ ok: boolean; reason: string; fixable: boolean; fixKind?: 'ufw' | 'link'; linkPair?: [string, string]; hops?: { label: string; ok: boolean | null; note?: string }[] } | null>(null);
   const [simBusy, setSimBusy] = useState(false);
   const [simLive, setSimLive] = useState<{ open: boolean; ms: number; error?: string } | null>(null);
   const [simLiveBusy, setSimLiveBusy] = useState(false);
+  // Routing-Tabelle (Diagnose)
+  const [routeData, setRouteData] = useState<{ routes: string[]; addrs: string[] } | null>(null);
+  const [showRoutes, setShowRoutes] = useState(false);
+  const [routeBusy, setRouteBusy] = useState(false);
 
   useEffect(() => {
     api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {});
@@ -1119,14 +1123,16 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const addZone = () => {
     const label = window.prompt(tt('Name der Zone (z. B. Gäste-WLAN, VPN, Standort B):'));
     if (!label || !label.trim()) return;
+    const cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):')) || '').trim();
     const id = `czone:${Date.now()}`;
-    setPref('fwStudio', { ...layout, zones: [...customZones, { id, label: label.trim() }] });
+    setPref('fwStudio', { ...layout, zones: [...customZones, { id, label: label.trim(), cidr: cidr || undefined, sub: cidr || undefined }] });
   };
   const renameZone = (id: string) => {
     const z = customZones.find((x) => x.id === id); if (!z) return;
     const label = window.prompt(tt('Zone umbenennen:'), z.label);
     if (label === null) return;
-    setPref('fwStudio', { ...layout, zones: customZones.map((x) => x.id === id ? { ...x, label: label.trim() || x.label } : x) });
+    const cidr = (window.prompt(tt('IP/CIDR der Zone (optional, z. B. 10.8.0.0/24 für VPN):'), z.cidr || '') || '').trim();
+    setPref('fwStudio', { ...layout, zones: customZones.map((x) => x.id === id ? { ...x, label: label.trim() || x.label, cidr: cidr || undefined, sub: cidr || undefined } : x) });
   };
   const removeZone = (id: string) => {
     setPref('fwStudio', { ...layout, zones: customZones.filter((x) => x.id !== id) });
@@ -1227,6 +1233,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const NODE_ICON: Record<StudioNode['kind'], React.ElementType> = { host: Server, zone: Globe, docker: Box, vm: MonitorPlay };
 
   const maxY = Math.max(320, ...nodes.map((n) => positions[n.id].y + NODE_H + 40));
+  const maxX = Math.max(760, ...nodes.map((n) => positions[n.id].x + NODE_W + 40));
   const selNode = nodes.find((n) => n.id === sel) || null;
 
   // Aktive Studio-Verbindungen (cl-* Paar-Netze) eines Containers
@@ -1236,19 +1243,36 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
 
   // ── Simulation: kann „von Quelle auf Ziel:Port" verbunden werden? ──
   const rulePortOf = (to: string) => (to.match(/^(\d+)/) || [])[1];
+  const targetName = (n: StudioNode | null) => n && n.id.startsWith('docker:') ? n.id.slice('docker:'.length) : null;
+  const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (customZones.find((z) => z.id === simSrc)?.label || tt('Zone'));
   const runSim = () => {
     const target = nodes.find((n) => n.id === simTarget);
     if (!target) { setSimRes({ ok: false, reason: tt('Bitte ein Ziel wählen.'), fixable: false }); return; }
     const port = simPort.replace(/[^0-9]/g, '');
     const published = target.ports || [];
     const isHostOrPublished = target.kind === 'host' || published.length > 0;
+    const tname = targetName(target);
+
+    // ── Tunnel-Pfad: Internet → Pangolin/Cloudflare → Tunnel-Container → Docker-Netz → Ziel ──
     if (simSrc === 'tunnel') {
-      const reach = !!tunnel && (sharesNet(tunnel.name, target.label) || isHostOrPublished);
-      setSimRes(reach
-        ? { ok: true, reason: tt('Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).'), fixable: false }
-        : { ok: false, reason: tt('Tunnel hat keinen Pfad zum Ziel.'), fixable: false });
+      if (!tunnel) { setSimRes({ ok: false, reason: tt('Kein Tunnel-Container erkannt (z. B. newt, cloudflared, wireguard).'), fixable: false }); return; }
+      const shared = !!tname && sharesNet(tunnel.name, tname);
+      const sameAsTunnel = tname === tunnel.name;
+      const hops: { label: string; ok: boolean | null; note?: string }[] = [
+        { label: tt('Internet → Pangolin/Cloudflare'), ok: true, note: tt('Tunnel ist ausgehend aufgebaut – ufw spielt hier keine Rolle.') },
+        { label: `${tt('Tunnel')} (${tunnel.name})`, ok: true },
+      ];
+      if (sameAsTunnel || shared) {
+        hops.push({ label: `${tt('Docker-Netz')} → ${target.label}`, ok: true, note: sameAsTunnel ? tt('Ziel ist der Tunnel-Container selbst.') : tt('Gemeinsames Docker-Netz vorhanden.') });
+        setSimRes({ ok: true, reason: port ? tt('Pfad vorhanden – mit Live-Test prüfen, ob der Port wirklich antwortet.') : tt('Pfad vorhanden. Ohne Port: Netzwerkweg ist frei, einzelne Ports per Live-Test prüfen.'), fixable: false, hops });
+      } else {
+        hops.push({ label: `${tt('Docker-Netz')} → ${target.label}`, ok: false, note: tt('Kein gemeinsames Docker-Netz – {a} kann {b} nicht erreichen.', { a: tunnel.name, b: target.label }) });
+        setSimRes({ ok: false, reason: tt('Tunnel erreicht das Ziel nicht: {a} und {b} teilen kein Docker-Netz. Mit einem Klick verbinden.', { a: tunnel.name, b: target.label }), fixable: true, fixKind: 'link', linkPair: tname ? [tunnel.name, tname] : undefined, hops });
+      }
       return;
     }
+
+    // ── Internet / LAN / IP / eigene Zone → ufw-Pfad ──
     if (!isHostOrPublished) { setSimRes({ ok: false, reason: tt('Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).'), fixable: false }); return; }
     if (!port) { setSimRes({ ok: false, reason: tt('Bitte einen Port angeben.'), fixable: false }); return; }
     if (!fwActive) { setSimRes({ ok: true, reason: tt('Firewall inaktiv – Port ist offen.'), fixable: false }); return; }
@@ -1256,25 +1280,51 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     const denied = matchPort.find((r) => r.action === 'DENY' || r.action === 'REJECT');
     const allowed = matchPort.find((r) => r.action === 'ALLOW' || r.action === 'LIMIT');
     if (allowed && !denied) { setSimRes({ ok: true, reason: tt('Erlaubt durch Firewall-Regel.'), fixable: false }); return; }
-    if (denied) { setSimRes({ ok: false, reason: tt('Durch Firewall blockiert (deny-Regel).'), fixable: true }); return; }
-    setSimRes({ ok: false, reason: tt('Keine Freigabe – Standard blockiert (default deny).'), fixable: true });
+    if (denied) { setSimRes({ ok: false, reason: tt('Durch Firewall blockiert (deny-Regel).'), fixable: true, fixKind: 'ufw' }); return; }
+    setSimRes({ ok: false, reason: tt('Keine Freigabe – Standard blockiert (default deny).'), fixable: true, fixKind: 'ufw' });
   };
   const simFix = async () => {
-    const port = simPort.replace(/[^0-9]/g, '');
-    if (!port) return;
-    const from = simSrc === 'lan' ? LAN_RANGES : simSrc === 'ip' ? simIp.trim() : undefined;
     setSimBusy(true);
-    try { await api.firewall.add({ action: 'allow', port, proto: 'tcp', from }); setSimRes({ ok: true, reason: tt('Freigegeben – Regel erstellt.'), fixable: false }); onChanged?.(); }
+    try {
+      if (simRes?.fixKind === 'link' && simRes.linkPair) {
+        await api.networks.link(simRes.linkPair[0], simRes.linkPair[1]);
+        setSimRes({ ok: true, reason: tt('Verbunden – {a} und {b} teilen jetzt ein eigenes Netz. Jetzt Live-Test ausführen.', { a: simRes.linkPair[0], b: simRes.linkPair[1] }), fixable: false });
+        onChanged?.();
+      } else {
+        const port = simPort.replace(/[^0-9]/g, '');
+        if (!port) { setSimBusy(false); return; }
+        const cz = customZones.find((z) => z.id === simSrc);
+        const from = simSrc === 'lan' ? LAN_RANGES : simSrc === 'ip' ? simIp.trim() : (cz?.cidr || undefined);
+        await api.firewall.add({ action: 'allow', port, proto: 'tcp', from });
+        setSimRes({ ok: true, reason: tt('Freigegeben – Regel erstellt.'), fixable: false });
+        onChanged?.();
+      }
+    }
     catch (e) { setSimRes({ ok: false, reason: e instanceof Error ? e.message : 'Fehler', fixable: false }); }
     finally { setSimBusy(false); }
+  };
+  const loadRoutes = async () => {
+    setRouteBusy(true);
+    try { setRouteData(await api.networks.routes()); setShowRoutes(true); }
+    catch { setRouteData({ routes: [], addrs: [] }); setShowRoutes(true); }
+    finally { setRouteBusy(false); }
   };
   const runLive = async () => {
     const target = nodes.find((n) => n.id === simTarget);
     const port = simPort.replace(/[^0-9]/g, '');
     if (!target || !port) { setSimLive({ open: false, ms: 0, error: tt('Bitte Ziel und Port angeben.') }); return; }
-    const host = target.kind === 'host' ? '127.0.0.1' : (target.ip || '127.0.0.1');
     setSimLiveBusy(true); setSimLive(null);
-    try { setSimLive(await api.networks.probe(host, Number(port))); }
+    try {
+      // Tunnel-Quelle: echt AUS dem Tunnel-Container heraus testen (newt → Ziel)
+      if (simSrc === 'tunnel' && tunnel) {
+        const host = target.kind === 'host' ? '172.17.0.1' : (target.ip || '127.0.0.1');
+        const r = await api.networks.probeExec(tunnel.name, host, Number(port));
+        setSimLive(r.error === 'no-tool' ? { open: false, ms: r.ms, error: tt('Im Tunnel-Container fehlt nc/bash/wget – konnte nicht aus ihm heraus testen.') } : r);
+      } else {
+        const host = target.kind === 'host' ? '127.0.0.1' : (target.ip || '127.0.0.1');
+        setSimLive(await api.networks.probe(host, Number(port)));
+      }
+    }
     catch (e) { setSimLive({ open: false, ms: 0, error: e instanceof Error ? e.message : 'Fehler' }); }
     finally { setSimLiveBusy(false); }
   };
@@ -1296,9 +1346,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
           <div style={{ fontSize: 12, color: 'var(--color-muted)', margin: '6px 0 10px' }}>
             {tt('Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.')}
           </div>
-          <div ref={canvasRef} style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
+          <div style={{ position: 'relative' }}>
+          <div style={{ overflow: 'auto', maxHeight: '72vh', border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)' }}>
+          <div ref={canvasRef} style={{ position: 'relative', width: maxX, height: maxY }}>
             {/* Kanten */}
-            <svg style={{ position: 'absolute', inset: 0, width: '100%', height: maxY, pointerEvents: 'none' }}>
+            <svg style={{ position: 'absolute', inset: 0, width: maxX, height: maxY, pointerEvents: 'none' }}>
               {edges.map((ed, i) => {
                 const { a, b, label, link } = ed;
                 const pa = positions[a], pb = positions[b];
@@ -1346,10 +1398,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 </div>
               );
             })}
-
-            {/* Inspector rechts – immer voll sichtbar */}
+          </div>
+          </div>
+            {/* Inspector rechts – immer voll sichtbar (außerhalb des Scroll-Bereichs) */}
             {selNode && (
-              <div onMouseDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 10, right: 10, width: 250, maxHeight: maxY - 20, overflowY: 'auto',
+              <div onMouseDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 10, right: 10, width: 250, maxHeight: '68vh', overflowY: 'auto', zIndex: 5,
                 background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, fontSize: 11.5, lineHeight: 1.6, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{selNode.label}</span>
@@ -1434,11 +1487,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Quelle')}</label>
-                <select className="input input--rect" style={{ height: 30, fontSize: 12 }} value={simSrc} onChange={(e) => setSimSrc(e.target.value as typeof simSrc)}>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12 }} value={simSrc} onChange={(e) => { setSimSrc(e.target.value); setSimRes(null); setSimLive(null); }}>
                   <option value="internet">{tt('Internet')}</option>
                   <option value="lan">LAN</option>
                   {tunnel && <option value="tunnel">{tt('Tunnel')} ({tunnel.name})</option>}
                   <option value="ip">{tt('bestimmte IP')}</option>
+                  {customZones.map((z) => <option key={z.id} value={z.id}>{z.label}{z.cidr ? ` (${z.cidr})` : ''}</option>)}
                 </select>
               </div>
               {simSrc === 'ip' && <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1468,9 +1522,22 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 <span style={{ fontSize: 12, color: 'var(--color-muted)', flex: 1 }}>{simRes.reason}</span>
                 {!simRes.ok && simRes.fixable && (
                   <button className="btn btn--primary btn--sm" disabled={simBusy} onClick={simFix}>
-                    {simBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Freischalten')}
+                    {simBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : (simRes.fixKind === 'link' ? <Link2 size={12} /> : <Shield size={12} />)} {simRes.fixKind === 'link' ? tt('Verbinden') : tt('Freischalten')}
                   </button>
                 )}
+              </div>
+            )}
+            {/* Pfad-Erklärung: jeder Hop von Quelle bis Ziel */}
+            {simRes?.hops && simRes.hops.length > 0 && (
+              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-sunken)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-faint)', marginBottom: 4 }}>{tt('Pfad')}: {srcLabel()} → {nodes.find((n) => n.id === simTarget)?.label || '?'}</div>
+                {simRes.hops.map((h, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11.5, padding: '2px 0' }}>
+                    <span style={{ color: h.ok === false ? 'var(--color-danger)' : h.ok === true ? 'var(--color-success)' : 'var(--color-faint)', fontWeight: 700, width: 14, flexShrink: 0 }}>{h.ok === false ? '✕' : h.ok === true ? '✓' : '•'}</span>
+                    <span style={{ flexShrink: 0, fontWeight: 600 }}>{h.label}</span>
+                    {h.note && <span style={{ color: 'var(--color-faint)' }}>— {h.note}</span>}
+                  </div>
+                ))}
               </div>
             )}
             {simLive && (
@@ -1485,6 +1552,29 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               </div>
             )}
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt. Live-Test prüft die TCP-Verbindung tatsächlich – vom Server aus gesehen.')}</div>
+          </div>
+
+          {/* ── Routing-Tabelle (Diagnose: wo hängt es?) ── */}
+          <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{tt('Routing-Tabelle')}</div>
+              <button className="btn btn--outline btn--sm" disabled={routeBusy} onClick={() => (showRoutes ? setShowRoutes(false) : loadRoutes())}>
+                {routeBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <RefreshCw size={13} />} {showRoutes ? tt('Ausblenden') : tt('Anzeigen')}
+              </button>
+            </div>
+            {showRoutes && routeData && (
+              <div style={{ marginTop: 8, display: 'grid', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 3 }}>{tt('Schnittstellen (ip addr)')}</div>
+                  <pre style={{ margin: 0, fontSize: 11, fontFamily: 'var(--font-mono)', overflowX: 'auto', color: 'var(--color-muted)', background: 'var(--color-surface-sunken)', padding: 8, borderRadius: 6 }}>{routeData.addrs.join('\n') || '—'}</pre>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', marginBottom: 3 }}>{tt('Routen (ip route)')}</div>
+                  <pre style={{ margin: 0, fontSize: 11, fontFamily: 'var(--font-mono)', overflowX: 'auto', color: 'var(--color-muted)', background: 'var(--color-surface-sunken)', padding: 8, borderRadius: 6 }}>{routeData.routes.join('\n') || '—'}</pre>
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Zeigt die Host-Routen & Schnittstellen. docker0/br-* sind die Docker-Bridges – getrennte br-* bedeuten isolierte Container-Netze.')}</div>
+              </div>
+            )}
           </div>
         </>
       )}

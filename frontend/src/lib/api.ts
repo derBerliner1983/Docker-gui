@@ -237,6 +237,8 @@ export const api = {
     link: (a: string, b: string) => req<{ ok: boolean; network: string }>('/api/networks/link', { method: 'POST', body: JSON.stringify({ a, b }) }),
     unlink: (a: string, b: string) => req('/api/networks/unlink', { method: 'POST', body: JSON.stringify({ a, b }) }),
     probe: (host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/networks/probe', { method: 'POST', body: JSON.stringify({ host, port }) }),
+    probeExec: (container: string, host: string, port: number) => req<{ open: boolean; ms: number; error?: string; method?: string }>('/api/networks/probe-exec', { method: 'POST', body: JSON.stringify({ container, host, port }) }),
+    routes: () => req<{ routes: string[]; addrs: string[] }>('/api/networks/routes'),
   },
 
   security: {

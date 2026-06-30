@@ -1,11 +1,32 @@
 import type { FastifyInstance } from 'fastify';
 import net from 'node:net';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import Dockerode from 'dockerode';
 import si from 'systeminformation';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { auditQueries } from '../db/index';
 
+const execFileP = promisify(execFile);
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
+
+// Führt ein Kommando in einem Container aus und liefert stdout+stderr+ExitCode.
+async function dockerExec(container: string, cmd: string[]): Promise<{ out: string; code: number | null }> {
+  const c = docker.getContainer(container);
+  const exec = await c.exec({ Cmd: cmd, AttachStdout: true, AttachStderr: true });
+  const stream = await exec.start({ hijack: true, stdin: false });
+  const out = await new Promise<string>((resolve) => {
+    let buf = '';
+    const chunks: Buffer[] = [];
+    stream.on('data', (d: Buffer) => chunks.push(d));
+    stream.on('end', () => { buf = Buffer.concat(chunks).toString('utf-8'); resolve(buf); });
+    stream.on('error', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+  });
+  const info = await exec.inspect().catch(() => null);
+  // Docker-Multiplex-Header (8 Byte je Frame) grob entfernen
+  const clean = out.replace(/[\x00-\x08\x0e-\x1f]/g, '').trim();
+  return { out: clean, code: info?.ExitCode ?? null };
+}
 
 interface NetEndpoint {
   container: string;
@@ -195,6 +216,43 @@ export async function networkRoutes(fastify: FastifyInstance) {
       sock.connect(port, host);
     });
     reply.send(result);
+  });
+
+  // ── Echter Test AUS einem Container heraus (Tunnel-Pfad: newt → Ziel) ──
+  // Versucht nacheinander nc / bash-/dev/tcp / wget, je nachdem was im Image vorhanden ist.
+  fastify.post<{ Body: { container: string; host: string; port: number } }>('/api/networks/probe-exec', { preHandler: requireAdmin }, async (req, reply) => {
+    const container = (req.body?.container ?? '').trim();
+    const host = (req.body?.host ?? '').trim();
+    const port = Number(req.body?.port);
+    if (!container || !/^[a-zA-Z0-9_.:-]+$/.test(host) || !port || port < 1 || port > 65535) {
+      return reply.status(400).send({ error: 'Container, Host und Port erforderlich' });
+    }
+    const script =
+      `h='${host}'; p='${port}';` +
+      `if command -v nc >/dev/null 2>&1; then nc -w 3 -z "$h" "$p" >/dev/null 2>&1 && echo CH_OPEN || echo CH_CLOSED;` +
+      `elif command -v bash >/dev/null 2>&1; then timeout 3 bash -c "exec 3<>/dev/tcp/$h/$p" >/dev/null 2>&1 && echo CH_OPEN || echo CH_CLOSED;` +
+      `elif command -v wget >/dev/null 2>&1; then wget -q -T 3 -O /dev/null "http://$h:$p" >/dev/null 2>&1 && echo CH_OPEN || echo CH_CLOSED;` +
+      `else echo CH_NOTOOL; fi`;
+    try {
+      const start = Date.now();
+      const { out } = await dockerExec(container, ['sh', '-c', script]);
+      const ms = Date.now() - start;
+      if (out.includes('CH_OPEN')) return reply.send({ open: true, ms, method: 'exec' });
+      if (out.includes('CH_NOTOOL')) return reply.send({ open: false, ms, error: 'no-tool', method: 'exec' });
+      return reply.send({ open: false, ms, error: 'closed', method: 'exec' });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Exec fehlgeschlagen' });
+    }
+  });
+
+  // ── Routing-Tabelle des Hosts (zur Diagnose, wo es hängt) ──
+  fastify.get('/api/networks/routes', { preHandler: requireAuth }, async (_req, reply) => {
+    const run = async (args: string[]) => {
+      try { const { stdout } = await execFileP('ip', args, { timeout: 4000 }); return stdout.trim().split('\n').filter(Boolean); }
+      catch { return [] as string[]; }
+    };
+    const [routes, addrs] = await Promise.all([run(['route']), run(['-br', 'addr'])]);
+    reply.send({ routes, addrs });
   });
 
   fastify.post<{ Params: { id: string }; Body: { container: string } }>(
