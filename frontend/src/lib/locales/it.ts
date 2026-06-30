@@ -659,4 +659,22 @@ export const it: Record<string, string> = {
   'Bitte einen Ziel-Container wählen.': 'Scegli un container di destinazione.',
   'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Collegati – ora condividono una rete dedicata.',
   'Verbindung getrennt.': 'Connessione rimossa.',
+
+  // ── Studio Simulation ──
+  'Verbindung simulieren': 'Simula connessione',
+  'bestimmte IP': 'IP specifico',
+  'Simulieren': 'Simula',
+  'Erreichbar': 'Raggiungibile',
+  'Blockiert': 'Bloccato',
+  'Freischalten': 'Consenti',
+  'Bitte ein Ziel wählen.': 'Scegli una destinazione.',
+  'Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).': 'Raggiungibile via tunnel (Pangolin/Newt inoltra).',
+  'Tunnel hat keinen Pfad zum Ziel.': 'Il tunnel non ha un percorso verso la destinazione.',
+  'Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).': 'Nessuna porta pubblicata – non raggiungibile dall’esterno (solo via tunnel/proxy).',
+  'Firewall inaktiv – Port ist offen.': 'Firewall inattivo – la porta è aperta.',
+  'Erlaubt durch Firewall-Regel.': 'Consentito da una regola firewall.',
+  'Durch Firewall blockiert (deny-Regel).': 'Bloccato dal firewall (regola deny).',
+  'Keine Freigabe – Standard blockiert (default deny).': 'Nessuna regola di permesso – blocco predefinito (default deny).',
+  'Freigegeben – Regel erstellt.': 'Consentito – regola creata.',
+  'Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.': 'Stima basata su reti Docker, porte pubblicate e regole firewall. Tunnel = accesso da Internet via Pangolin/Newt.',
 };

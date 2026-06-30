@@ -1039,8 +1039,21 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [linkTo, setLinkTo] = useState('');
   const [linkBusy, setLinkBusy] = useState(false);
   const [linkMsg, setLinkMsg] = useState('');
+  // ufw-Regeln (für Simulation)
+  const [fwRules, setFwRules] = useState<FirewallRule[]>([]);
+  const [fwActive, setFwActive] = useState(false);
+  // Simulation
+  const [simSrc, setSimSrc] = useState<'lan' | 'internet' | 'tunnel' | 'ip'>('internet');
+  const [simIp, setSimIp] = useState('');
+  const [simTarget, setSimTarget] = useState('');
+  const [simPort, setSimPort] = useState('');
+  const [simRes, setSimRes] = useState<{ ok: boolean; reason: string; fixable: boolean } | null>(null);
+  const [simBusy, setSimBusy] = useState(false);
 
-  useEffect(() => { api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {}); }, []);
+  useEffect(() => {
+    api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {});
+    api.firewall.list().then((r) => { setFwRules(r.rules || []); setFwActive(!!r.active); }).catch(() => {});
+  }, [networks]);
   // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
   useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); setLinkTo(''); setLinkMsg(''); }, [sel]);
 
@@ -1182,7 +1195,48 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   };
   const NODE_ICON: Record<StudioNode['kind'], React.ElementType> = { host: Server, zone: Globe, docker: Box, vm: MonitorPlay };
 
-  const maxY = Math.max(320, ...nodes.map((n) => positions[n.id].y + NODE_H + 120));
+  const maxY = Math.max(320, ...nodes.map((n) => positions[n.id].y + NODE_H + 40));
+  const selNode = nodes.find((n) => n.id === sel) || null;
+
+  // Aktive Studio-Verbindungen (cl-* Paar-Netze) eines Containers
+  const linksOf = (name: string) => networks
+    .filter((n) => n.name.startsWith('cl-') && n.containers.some((c) => c.name === name))
+    .map((n) => ({ net: n.name, partner: n.containers.find((c) => c.name !== name)?.name || '?' }));
+
+  // ── Simulation: kann „von Quelle auf Ziel:Port" verbunden werden? ──
+  const rulePortOf = (to: string) => (to.match(/^(\d+)/) || [])[1];
+  const runSim = () => {
+    const target = nodes.find((n) => n.id === simTarget);
+    if (!target) { setSimRes({ ok: false, reason: tt('Bitte ein Ziel wählen.'), fixable: false }); return; }
+    const port = simPort.replace(/[^0-9]/g, '');
+    const published = target.ports || [];
+    const isHostOrPublished = target.kind === 'host' || published.length > 0;
+    if (simSrc === 'tunnel') {
+      const reach = !!tunnel && (sharesNet(tunnel.name, target.label) || isHostOrPublished);
+      setSimRes(reach
+        ? { ok: true, reason: tt('Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).'), fixable: false }
+        : { ok: false, reason: tt('Tunnel hat keinen Pfad zum Ziel.'), fixable: false });
+      return;
+    }
+    if (!isHostOrPublished) { setSimRes({ ok: false, reason: tt('Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).'), fixable: false }); return; }
+    if (!port) { setSimRes({ ok: false, reason: tt('Bitte einen Port angeben.'), fixable: false }); return; }
+    if (!fwActive) { setSimRes({ ok: true, reason: tt('Firewall inaktiv – Port ist offen.'), fixable: false }); return; }
+    const matchPort = fwRules.filter((r) => rulePortOf(r.to) === port);
+    const denied = matchPort.find((r) => r.action === 'DENY' || r.action === 'REJECT');
+    const allowed = matchPort.find((r) => r.action === 'ALLOW' || r.action === 'LIMIT');
+    if (allowed && !denied) { setSimRes({ ok: true, reason: tt('Erlaubt durch Firewall-Regel.'), fixable: false }); return; }
+    if (denied) { setSimRes({ ok: false, reason: tt('Durch Firewall blockiert (deny-Regel).'), fixable: true }); return; }
+    setSimRes({ ok: false, reason: tt('Keine Freigabe – Standard blockiert (default deny).'), fixable: true });
+  };
+  const simFix = async () => {
+    const port = simPort.replace(/[^0-9]/g, '');
+    if (!port) return;
+    const from = simSrc === 'lan' ? LAN_RANGES : simSrc === 'ip' ? simIp.trim() : undefined;
+    setSimBusy(true);
+    try { await api.firewall.add({ action: 'allow', port, proto: 'tcp', from }); setSimRes({ ok: true, reason: tt('Freigegeben – Regel erstellt.'), fixable: false }); onChanged?.(); }
+    catch (e) { setSimRes({ ok: false, reason: e instanceof Error ? e.message : 'Fehler', fixable: false }); }
+    finally { setSimBusy(false); }
+  };
 
   return (
     <Panel title={tt('Firewall-Studio')} icon={<Network size={15} />} storageKey="fw-studio"
@@ -1210,7 +1264,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   stroke="var(--color-accent)" strokeWidth={1.5} strokeOpacity={sel && sel !== a && sel !== b ? 0.12 : 0.4} />;
               })}
             </svg>
-            {/* Knoten */}
+            {/* Knoten (nur Box – Details im Inspector rechts) */}
             {nodes.map((n) => {
               const p = positions[n.id];
               const Icon = NODE_ICON[n.kind];
@@ -1227,75 +1281,130 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                       <div style={{ fontSize: 10.5, color: 'var(--color-faint)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.ip || n.sub || ''}</div>
                     </div>
                   </div>
-                  {isSel && (
-                    <div style={{ marginTop: 4, padding: 8, fontSize: 11.5, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8, lineHeight: 1.6 }}>
-                      <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{n.kind}</div>
-                      {n.ip && <div><span style={{ color: 'var(--color-faint)' }}>IP: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{n.ip}</span></div>}
-                      {n.nets && n.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{n.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
-                      {n.ports && n.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{n.ports.join(', ')}</div>}
-
-                      {/* Regel anlegen – nur sinnvoll für Host & Container mit veröffentlichtem Port (ufw) */}
-                      {(n.kind === 'host' || (n.ports && n.ports.length > 0)) ? (
-                        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-                          style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>{tt('Zugriff regeln')}</div>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {(n.ports || []).map((p) => (
-                              <button key={p} className={`btn btn--sm ${rPort === p ? 'btn--primary' : 'btn--outline'}`} style={{ padding: '1px 7px', fontSize: 11 }} onClick={() => setRPort(p)}>{p}</button>
-                            ))}
-                            <input className="input input--rect" style={{ width: 70, height: 26, fontSize: 11 }} placeholder={tt('Port')} value={rPort} onChange={(e) => setRPort(e.target.value)} />
-                          </div>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 90 }} value={rSrc} onChange={(e) => setRSrc(e.target.value as typeof rSrc)}>
-                              <option value="lan">{tt('von LAN')}</option>
-                              <option value="internet">{tt('von Internet')}</option>
-                              <option value="ip">{tt('von IP')}</option>
-                            </select>
-                            <select className="input input--rect" style={{ height: 26, fontSize: 11, width: 84 }} value={rAct} onChange={(e) => setRAct(e.target.value as typeof rAct)}>
-                              <option value="allow">{tt('erlauben')}</option>
-                              <option value="deny">{tt('sperren')}</option>
-                            </select>
-                          </div>
-                          {rSrc === 'ip' && <input className="input input--rect" style={{ height: 26, fontSize: 11, fontFamily: 'var(--font-mono)' }} placeholder="192.168.1.50" value={rIp} onChange={(e) => setRIp(e.target.value)} />}
-                          <button className="btn btn--primary btn--sm" disabled={rBusy} onClick={() => addRule((n.ports || [])[0] || '')}>
-                            {rBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Regel anlegen')}
-                          </button>
-                          {rMsg && <div style={{ fontSize: 11, color: rMsg.includes('angelegt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{rMsg}</div>}
-                        </div>
-                      ) : null}
-
-                      {/* Container verbinden (Docker-Netz-Trennung) */}
-                      {n.kind === 'docker' && (
-                        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
-                          style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                          <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>{tt('Mit Container verbinden')}</div>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 110 }} value={linkTo} onChange={(e) => setLinkTo(e.target.value)}>
-                              <option value="">{tt('— Ziel-Container —')}</option>
-                              {dockerNames.filter((d) => d !== n.label).map((d) => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                            <button className="btn btn--primary btn--sm" disabled={linkBusy || !linkTo} onClick={() => doLink(n.label, linkTo, true)}>
-                              {linkBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Link2 size={12} />} {tt('verbinden')}
-                            </button>
-                            <button className="btn btn--outline btn--sm" disabled={linkBusy || !linkTo} onClick={() => doLink(n.label, linkTo, false)}>
-                              <Unlink size={12} /> {tt('trennen')}
-                            </button>
-                          </div>
-                          <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Legt ein eigenes Netz nur für dieses Paar an – nichts anderes wird verändert.')}</div>
-                          {linkMsg && <div style={{ fontSize: 11, color: linkMsg.includes('Verbun') || linkMsg.includes('getrennt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{linkMsg}</div>}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}
+
+            {/* Inspector rechts – immer voll sichtbar */}
+            {selNode && (
+              <div onMouseDown={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 10, right: 10, width: 250, maxHeight: maxY - 20, overflowY: 'auto',
+                background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, fontSize: 11.5, lineHeight: 1.6, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{selNode.label}</span>
+                  <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setSel(null)}><X size={13} /></button>
+                </div>
+                <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{selNode.kind}</div>
+                {selNode.ip && <div><span style={{ color: 'var(--color-faint)' }}>IP: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{selNode.ip}</span></div>}
+                {selNode.nets && selNode.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{selNode.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
+                {selNode.ports && selNode.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{selNode.ports.join(', ')}</div>}
+
+                {(selNode.kind === 'host' || (selNode.ports && selNode.ports.length > 0)) && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ fontWeight: 600 }}>{tt('Zugriff regeln')}</div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {(selNode.ports || []).map((p) => (
+                        <button key={p} className={`btn btn--sm ${rPort === p ? 'btn--primary' : 'btn--outline'}`} style={{ padding: '1px 7px', fontSize: 11 }} onClick={() => setRPort(p)}>{p}</button>
+                      ))}
+                      <input className="input input--rect" style={{ width: 70, height: 26, fontSize: 11 }} placeholder={tt('Port')} value={rPort} onChange={(e) => setRPort(e.target.value)} />
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 80 }} value={rSrc} onChange={(e) => setRSrc(e.target.value as typeof rSrc)}>
+                        <option value="lan">{tt('von LAN')}</option>
+                        <option value="internet">{tt('von Internet')}</option>
+                        <option value="ip">{tt('von IP')}</option>
+                      </select>
+                      <select className="input input--rect" style={{ height: 26, fontSize: 11, width: 84 }} value={rAct} onChange={(e) => setRAct(e.target.value as typeof rAct)}>
+                        <option value="allow">{tt('erlauben')}</option>
+                        <option value="deny">{tt('sperren')}</option>
+                      </select>
+                    </div>
+                    {rSrc === 'ip' && <input className="input input--rect" style={{ height: 26, fontSize: 11, fontFamily: 'var(--font-mono)' }} placeholder="192.168.1.50" value={rIp} onChange={(e) => setRIp(e.target.value)} />}
+                    <button className="btn btn--primary btn--sm" disabled={rBusy} onClick={() => addRule((selNode.ports || [])[0] || '')}>
+                      {rBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Regel anlegen')}
+                    </button>
+                    {rMsg && <div style={{ fontSize: 11, color: rMsg.includes('angelegt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{rMsg}</div>}
+                  </div>
+                )}
+
+                {selNode.kind === 'docker' && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <div style={{ fontWeight: 600 }}>{tt('Mit Container verbinden')}</div>
+                    {linksOf(selNode.label).length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {linksOf(selNode.label).map((lk) => (
+                          <div key={lk.net} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+                            <Link2 size={11} style={{ color: 'var(--color-success)' }} /> <span style={{ flex: 1 }}>{lk.partner}</span>
+                            <button className="btn btn--ghost btn--icon btn--sm" title={tt('trennen')} disabled={linkBusy} onClick={() => doLink(selNode.label, lk.partner, false)}><Unlink size={12} /></button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 100 }} value={linkTo} onChange={(e) => setLinkTo(e.target.value)}>
+                        <option value="">{tt('— Ziel-Container —')}</option>
+                        {dockerNames.filter((d) => d !== selNode.label).map((d) => <option key={d} value={d}>{d}</option>)}
+                      </select>
+                      <button className="btn btn--primary btn--sm" disabled={linkBusy || !linkTo} onClick={() => doLink(selNode.label, linkTo, true)}>
+                        {linkBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Link2 size={12} />} {tt('verbinden')}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Legt ein eigenes Netz nur für dieses Paar an – nichts anderes wird verändert.')}</div>
+                    {linkMsg && <div style={{ fontSize: 11, color: linkMsg.includes('Verbun') || linkMsg.includes('getrennt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{linkMsg}</div>}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div style={{ marginTop: 10, fontSize: 11, color: 'var(--color-faint)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-accent)' }}>● Host</span>
             <span style={{ color: 'var(--color-warning)' }}>● {tt('Zone (LAN/Internet/Tunnel)')}</span>
             <span style={{ color: 'var(--color-info, #3b82f6)' }}>● Docker</span>
             <span style={{ color: '#a855f7' }}>● VM</span>
+          </div>
+
+          {/* ── Simulation ── */}
+          <div style={{ marginTop: 14, padding: 12, border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>{tt('Verbindung simulieren')}</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>{tt('Quelle')}</label>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12 }} value={simSrc} onChange={(e) => setSimSrc(e.target.value as typeof simSrc)}>
+                  <option value="internet">{tt('Internet')}</option>
+                  <option value="lan">LAN</option>
+                  {tunnel && <option value="tunnel">{tt('Tunnel')} ({tunnel.name})</option>}
+                  <option value="ip">{tt('bestimmte IP')}</option>
+                </select>
+              </div>
+              {simSrc === 'ip' && <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>IP</label>
+                <input className="input input--rect" style={{ height: 30, fontSize: 12, width: 140, fontFamily: 'var(--font-mono)' }} placeholder="203.0.113.5" value={simIp} onChange={(e) => setSimIp(e.target.value)} />
+              </div>}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>{tt('Ziel')}</label>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); }}>
+                  <option value="">{tt('— wählen —')}</option>
+                  {nodes.filter((n) => n.kind === 'host' || n.kind === 'docker').map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>{tt('Port')}</label>
+                <input className="input input--rect" style={{ height: 30, fontSize: 12, width: 80 }} placeholder="443" value={simPort} onChange={(e) => setSimPort(e.target.value)} />
+              </div>
+              <button className="btn btn--outline btn--sm" onClick={runSim}><Activity size={13} /> {tt('Simulieren')}</button>
+            </div>
+            {simRes && (
+              <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                background: simRes.ok ? 'rgba(34,197,94,.1)' : 'rgba(234,179,8,.1)', border: `1px solid ${simRes.ok ? 'var(--color-success)' : 'var(--color-warning)'}33` }}>
+                <span style={{ fontWeight: 700, color: simRes.ok ? 'var(--color-success)' : 'var(--color-warning)' }}>{simRes.ok ? '✓ ' + tt('Erreichbar') : '✕ ' + tt('Blockiert')}</span>
+                <span style={{ fontSize: 12, color: 'var(--color-muted)', flex: 1 }}>{simRes.reason}</span>
+                {!simRes.ok && simRes.fixable && (
+                  <button className="btn btn--primary btn--sm" disabled={simBusy} onClick={simFix}>
+                    {simBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Shield size={12} />} {tt('Freischalten')}
+                  </button>
+                )}
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.')}</div>
           </div>
         </>
       )}

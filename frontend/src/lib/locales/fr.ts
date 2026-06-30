@@ -659,4 +659,22 @@ export const fr: Record<string, string> = {
   'Bitte einen Ziel-Container wählen.': 'Veuillez choisir un conteneur cible.',
   'Verbunden – beide teilen jetzt ein eigenes Netz.': 'Connectés – les deux partagent maintenant un réseau dédié.',
   'Verbindung getrennt.': 'Connexion supprimée.',
+
+  // ── Studio Simulation ──
+  'Verbindung simulieren': 'Simuler la connexion',
+  'bestimmte IP': 'IP spécifique',
+  'Simulieren': 'Simuler',
+  'Erreichbar': 'Accessible',
+  'Blockiert': 'Bloqué',
+  'Freischalten': 'Autoriser',
+  'Bitte ein Ziel wählen.': 'Veuillez choisir une cible.',
+  'Über den Tunnel erreichbar (Pangolin/Newt leitet weiter).': 'Accessible via le tunnel (Pangolin/Newt transfère).',
+  'Tunnel hat keinen Pfad zum Ziel.': 'Le tunnel n’a pas de chemin vers la cible.',
+  'Kein veröffentlichter Port – von außen nicht erreichbar (nur über Tunnel/Proxy).': 'Aucun port publié – non accessible de l’extérieur (seulement via tunnel/proxy).',
+  'Firewall inaktiv – Port ist offen.': 'Pare-feu inactif – le port est ouvert.',
+  'Erlaubt durch Firewall-Regel.': 'Autorisé par une règle pare-feu.',
+  'Durch Firewall blockiert (deny-Regel).': 'Bloqué par le pare-feu (règle deny).',
+  'Keine Freigabe – Standard blockiert (default deny).': 'Aucune autorisation – blocage par défaut (default deny).',
+  'Freigegeben – Regel erstellt.': 'Autorisé – règle créée.',
+  'Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt.': 'Estimation basée sur les réseaux Docker, les ports publiés et les règles pare-feu. Tunnel = accès depuis Internet via Pangolin/Newt.',
 };
