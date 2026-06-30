@@ -1017,7 +1017,7 @@ function ConnectivityPanel({ networks, containers }: { networks: DockerNetwork[]
 interface StudioNode { id: string; kind: 'host' | 'zone' | 'docker' | 'vm'; label: string; sub?: string; ip?: string; ports?: string[]; nets?: { net: string; driver: string }[]; }
 const NODE_W = 190, NODE_H = 58;
 
-function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; containers: Container[] }) {
+function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
   const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string }) || {};
   const saved = layout.nodes || {};
@@ -1025,7 +1025,9 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
   const [vms, setVms] = useState<VM[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
-  const drag = useRef<{ id: string; ox: number; oy: number; moved: boolean } | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  // gx/gy = Greif-Offset innerhalb des Knotens; cl/ct = Canvas-Ursprung beim Greifen
+  const drag = useRef<{ id: string; gx: number; gy: number; cl: number; ct: number; moved: boolean } | null>(null);
   // Regel-Formular (Phase B – sichere ufw-Ebene)
   const [rPort, setRPort] = useState('');
   const [rSrc, setRSrc] = useState<'lan' | 'internet' | 'ip'>('lan');
@@ -1033,10 +1035,25 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
   const [rAct, setRAct] = useState<'allow' | 'deny'>('allow');
   const [rBusy, setRBusy] = useState(false);
   const [rMsg, setRMsg] = useState('');
+  // Verbinden zweier Container (Docker-Netz-Trennung)
+  const [linkTo, setLinkTo] = useState('');
+  const [linkBusy, setLinkBusy] = useState(false);
+  const [linkMsg, setLinkMsg] = useState('');
 
   useEffect(() => { api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {}); }, []);
   // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
-  useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); }, [sel]);
+  useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); setLinkTo(''); setLinkMsg(''); }, [sel]);
+
+  const doLink = async (a: string, b: string, connect: boolean) => {
+    if (!b) { setLinkMsg(tt('Bitte einen Ziel-Container wählen.')); return; }
+    setLinkBusy(true); setLinkMsg('');
+    try {
+      if (connect) { await api.networks.link(a, b); setLinkMsg(tt('Verbunden – beide teilen jetzt ein eigenes Netz.')); }
+      else { await api.networks.unlink(a, b); setLinkMsg(tt('Verbindung getrennt.')); }
+      onChanged?.();
+    } catch (e) { setLinkMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setLinkBusy(false); }
+  };
 
   const LAN_RANGES = '192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12';
   const addRule = async (defaultPort: string) => {
@@ -1093,9 +1110,11 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
     return { x: 540 + (k % 2) * 210, y: 20 + Math.floor(k / 2) * 90 };
   };
   let gi = 0;
+  const sane = (p?: { x: number; y: number }) =>
+    p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 4000 && p.y >= 0 && p.y <= 4000 ? p : undefined;
   const posOf = (id: string): { x: number; y: number } => {
-    if (live[id]) return live[id];
-    if (saved[id]) return saved[id];
+    const l = sane(live[id]); if (l) return l;
+    const s = sane(saved[id]); if (s) return s;
     const isGrid = id.startsWith('docker:') || id.startsWith('vm:');
     return defPos(id, isGrid ? gi++ : 0);
   };
@@ -1129,7 +1148,9 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
     const move = (e: MouseEvent) => {
       if (!drag.current) return;
       drag.current.moved = true;
-      setLive((l) => ({ ...l, [drag.current!.id]: { x: Math.max(0, e.clientX - drag.current!.ox), y: Math.max(0, e.clientY - drag.current!.oy) } }));
+      const d = drag.current;
+      // Position relativ zum Canvas, abzüglich Greif-Offset
+      setLive((l) => ({ ...l, [d.id]: { x: Math.max(0, (e.clientX - d.cl) - d.gx), y: Math.max(0, (e.clientY - d.ct) - d.gy) } }));
     };
     const up = () => {
       if (drag.current && drag.current.moved) {
@@ -1149,8 +1170,10 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
 
   const onDown = (e: React.MouseEvent, id: string) => {
     const p = positions[id];
-    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
-    drag.current = { id, ox: e.clientX - (rect.left + p.x), oy: e.clientY - (rect.top + p.y), moved: false };
+    const c = canvasRef.current?.getBoundingClientRect();
+    if (!c) return;
+    // Greif-Offset = wo im Knoten gepackt wurde (Canvas-Koordinaten minus Knoten-Position)
+    drag.current = { id, cl: c.left, ct: c.top, gx: (e.clientX - c.left) - p.x, gy: (e.clientY - c.top) - p.y, moved: false };
   };
   const onClickNode = (id: string) => { if (!drag.current?.moved) setSel((s) => (s === id ? null : id)); };
 
@@ -1177,7 +1200,7 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
           <div style={{ fontSize: 12, color: 'var(--color-muted)', margin: '6px 0 10px' }}>
             {tt('Objekte frei verschieben (gespeichert pro Benutzer). Klick öffnet/schließt die Details. Linien = wer kann wen erreichen.')}
           </div>
-          <div style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
+          <div ref={canvasRef} style={{ position: 'relative', minHeight: maxY, border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)', overflow: 'hidden' }}>
             {/* Kanten */}
             <svg style={{ position: 'absolute', inset: 0, width: '100%', height: maxY, pointerEvents: 'none' }}>
               {edges.map(([a, b], i) => {
@@ -1239,9 +1262,29 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
                           </button>
                           {rMsg && <div style={{ fontSize: 11, color: rMsg.includes('angelegt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{rMsg}</div>}
                         </div>
-                      ) : n.kind === 'docker' ? (
-                        <div style={{ marginTop: 4, color: 'var(--color-faint)' }}>{tt('Kein veröffentlichter Port – Steuerung über Docker-Netz-Isolation (folgt).')}</div>
                       ) : null}
+
+                      {/* Container verbinden (Docker-Netz-Trennung) */}
+                      {n.kind === 'docker' && (
+                        <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}
+                          style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <div style={{ fontWeight: 600, color: 'var(--color-fg)' }}>{tt('Mit Container verbinden')}</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <select className="input input--rect" style={{ height: 26, fontSize: 11, flex: 1, minWidth: 110 }} value={linkTo} onChange={(e) => setLinkTo(e.target.value)}>
+                              <option value="">{tt('— Ziel-Container —')}</option>
+                              {dockerNames.filter((d) => d !== n.label).map((d) => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <button className="btn btn--primary btn--sm" disabled={linkBusy || !linkTo} onClick={() => doLink(n.label, linkTo, true)}>
+                              {linkBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Link2 size={12} />} {tt('verbinden')}
+                            </button>
+                            <button className="btn btn--outline btn--sm" disabled={linkBusy || !linkTo} onClick={() => doLink(n.label, linkTo, false)}>
+                              <Unlink size={12} /> {tt('trennen')}
+                            </button>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Legt ein eigenes Netz nur für dieses Paar an – nichts anderes wird verändert.')}</div>
+                          {linkMsg && <div style={{ fontSize: 11, color: linkMsg.includes('Verbun') || linkMsg.includes('getrennt') ? 'var(--color-success)' : 'var(--color-warning)' }}>{linkMsg}</div>}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1261,7 +1304,7 @@ function FirewallStudio({ networks, containers }: { networks: DockerNetwork[]; c
 }
 
 // Umschalter: Studio (Standard) ⟷ klassische ufw-Tabelle (pro Benutzer gespeichert)
-function FirewallView({ networks, containers }: { networks: DockerNetwork[]; containers: Container[] }) {
+function FirewallView({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
   const mode = (prefs.fwView as 'studio' | 'table') || 'studio';
   return (
@@ -1274,7 +1317,7 @@ function FirewallView({ networks, containers }: { networks: DockerNetwork[]; con
           <Table size={13} /> {tt('ufw-Tabelle')}
         </button>
       </div>
-      {mode === 'studio' ? <FirewallStudio networks={networks} containers={containers} /> : <FirewallPanel />}
+      {mode === 'studio' ? <FirewallStudio networks={networks} containers={containers} onChanged={onChanged} /> : <FirewallPanel />}
     </>
   );
 }
@@ -1332,7 +1375,7 @@ export function Networks() {
         </div>
 
         {view === 'vm' && <VmNetworksView />}
-        {view === 'firewall' && <FirewallView networks={networks} containers={containers} />}
+        {view === 'firewall' && <FirewallView networks={networks} containers={containers} onChanged={load} />}
         {view === 'connections' && <ConnectionsPanel />}
         {view === 'vips' && <VirtualIpsPanel />}
         {view === 'docker' && networks.map((n) => (

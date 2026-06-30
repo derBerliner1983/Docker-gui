@@ -131,6 +131,49 @@ export async function networkRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // ── Studio: zwei Container über ein dediziertes Netz verbinden (additiv, sicher) ──
+  // Legt – falls nötig – ein eigenes Bridge-Netz nur für dieses Paar an und hängt
+  // beide hinein. Bestehende Netze bleiben unangetastet (nichts wird getrennt).
+  const linkNetName = (a: string, b: string) => {
+    const [x, y] = [a, b].map((s) => s.replace(/[^a-zA-Z0-9_.-]/g, '')).sort();
+    return `cl-${x}-${y}`.slice(0, 60);
+  };
+  fastify.post<{ Body: { a: string; b: string } }>('/api/networks/link', { preHandler: requireAdmin }, async (req, reply) => {
+    const { a, b } = req.body ?? {};
+    if (!a || !b || a === b) return reply.status(400).send({ error: 'Zwei verschiedene Container erforderlich' });
+    const name = linkNetName(a, b);
+    try {
+      // Netz sicherstellen
+      let net = (await docker.listNetworks({ filters: { name: [name] } }))[0];
+      if (!net) { await docker.createNetwork({ Name: name, Driver: 'bridge', CheckDuplicate: true, Labels: { 'core-hub.link': 'true' } }); net = (await docker.listNetworks({ filters: { name: [name] } }))[0]; }
+      const netId = net.Id;
+      for (const c of [a, b]) {
+        try { await docker.getNetwork(netId).connect({ Container: c }); }
+        catch (e) { if (!/already exists|endpoint with name/i.test(e instanceof Error ? e.message : '')) throw e; }
+      }
+      auditQueries.log.run(req.user.id, 'network.link', `${a} <> ${b}`);
+      reply.send({ ok: true, network: name });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Verbinden fehlgeschlagen' });
+    }
+  });
+  fastify.post<{ Body: { a: string; b: string } }>('/api/networks/unlink', { preHandler: requireAdmin }, async (req, reply) => {
+    const { a, b } = req.body ?? {};
+    if (!a || !b) return reply.status(400).send({ error: 'Zwei Container erforderlich' });
+    const name = linkNetName(a, b);
+    try {
+      const net = (await docker.listNetworks({ filters: { name: [name] } }))[0];
+      if (net) {
+        for (const c of [a, b]) { try { await docker.getNetwork(net.Id).disconnect({ Container: c, Force: true }); } catch { /* nicht verbunden */ } }
+        try { await docker.getNetwork(net.Id).remove(); } catch { /* */ }
+      }
+      auditQueries.log.run(req.user.id, 'network.unlink', `${a} <> ${b}`);
+      reply.send({ ok: true });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Trennen fehlgeschlagen' });
+    }
+  });
+
   fastify.post<{ Params: { id: string }; Body: { container: string } }>(
     '/api/networks/:id/disconnect',
     { preHandler: requireAdmin },
