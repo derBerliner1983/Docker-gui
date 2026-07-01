@@ -1589,9 +1589,15 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   };
   // EIN Test: „erreicht die Quelle das Ziel – und auf welchen Ports?"
   const runCheck = async () => {
-    const target = nodes.find((n) => n.id === simTarget);
-    if (!target) { setChk({ reachable: false, ports: [], error: tt('Bitte ein Ziel wählen.'), addr: '', src: simSrc, target: '' }); return; }
-    // „Internet" ohne externes Gerät ist vom Server aus nicht messbar
+    const external = simTarget === '__ext__';
+    const target = external ? null : nodes.find((n) => n.id === simTarget);
+    if (!external && !target) { setChk({ reachable: false, ports: [], error: tt('Bitte ein Ziel wählen.'), addr: '', src: simSrc, target: '' }); return; }
+    // Externes Ziel (Internet/andere Adresse): braucht eine Adresse
+    if (external && !simAddr.trim()) {
+      setChk({ reachable: false, ports: [], error: tt('Bitte oben eine Ziel-Adresse (IP oder Hostname) angeben – z. B. 1.1.1.1 oder example.com.'), addr: '', src: simSrc, target: simTarget });
+      return;
+    }
+    // „Internet" als QUELLE ohne externes Gerät ist vom Server aus nicht messbar
     if (simSrc === 'internet' && isLocalVantage()) {
       setChk({ reachable: false, ports: [], error: tt('Aus dem Internet lässt sich das vom Server aus nicht messen – private Adressen (z. B. 172.x) sind von außen ohnehin nicht erreichbar. Wähle ein externes Gerät (VPS) als Quelle und trage als Adresse die öffentliche IP bzw. den Pangolin-/Tunnel-Hostnamen ein.'), addr: '', src: simSrc, target: simTarget });
       return;
@@ -1601,11 +1607,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       setChk({ reachable: false, ports: [], error: tt('Für dieses Gerät ist kein SSH-Zugang hinterlegt – im Objekt-Inspector einrichten, dann kann von dort getestet werden.'), addr: '', src: simSrc, target: simTarget });
       return;
     }
-    const addr = targetAddr(target);
+    const addr = external ? simAddr.trim() : targetAddr(target!);
     const single = simPort.replace(/[^0-9]/g, '');
     const portList = single
       ? [Number(single)]
-      : [...new Set([...(target.ports || []).map(Number), ...DEFAULT_PORTS])].filter((p) => p >= 1 && p <= 65535);
+      : [...new Set([...(target?.ports || []).map(Number), ...DEFAULT_PORTS])].filter((p) => p >= 1 && p <= 65535);
     setChkBusy(true); setChk(null); setChkProg({ done: 0, total: portList.length });
     const open: number[] = [];
     try {
@@ -1618,7 +1624,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       }
       open.sort((a, b) => a - b);
       const reachable = open.length > 0;
-      const h = reachable ? null : heuristicFix(target);
+      const h = (reachable || external || !target) ? null : heuristicFix(target);
       setChk({ reachable, ports: open, local: isLocalVantage(), addr, src: simSrc, target: simTarget, hops: h?.hops, reason: h?.reason, fixable: h?.fixable, fixKind: h?.fixKind, linkPair: h?.linkPair });
     } catch (e) {
       setChk({ reachable: false, ports: [], error: e instanceof Error ? e.message : 'Fehler', addr, src: simSrc, target: simTarget });
@@ -1911,7 +1917,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Nach (Ziel)')}</label>
                 <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setChk(null); }}>
                   <option value="">{tt('— wählen —')}</option>
-                  {nodes.filter((n) => (n.kind === 'host' || n.kind === 'docker' || n.kind === 'ext') && n.id !== simSrc).map((n) => <option key={n.id} value={n.id}>{n.label}{n.reach ? ` (${n.reach})` : ''}</option>)}
+                  <option value="__ext__">🌐 {tt('Internet / externe Adresse')}</option>
+                  <optgroup label={tt('Objekte')}>
+                    {nodes.filter((n) => (n.kind === 'host' || n.kind === 'docker' || n.kind === 'ext') && n.id !== simSrc).map((n) => <option key={n.id} value={n.id}>{n.label}{n.reach ? ` (${n.reach})` : ''}</option>)}
+                  </optgroup>
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1938,8 +1947,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
             {/* EIN klares Ergebnis: erreichbar (+Ports) oder nicht */}
             {chk && !chkBusy && (() => {
               const target = nodes.find((n) => n.id === chk.target);
+              const targetLabel = chk.target === '__ext__' ? tt('externe Adresse') : (target?.label || '?');
               const dst = chk.addr || simAddr.trim() || target?.reach || target?.ip || target?.label || '?';
-              const local = !!chk.local;
+              // Bei externem Ziel ist die lokale Messung (Host → Internet) echt und korrekt,
+              // daher kein „nur lokale Sicht"-Vorbehalt.
+              const local = !!chk.local && chk.target !== '__ext__';
               const okCol = local ? 'var(--color-warning)' : 'var(--color-success)';
               const okRgb = local ? '234,179,8' : '34,197,94';
               if (chk.error) return (
@@ -1953,7 +1965,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                       {chk.reachable ? '✓ ' + tt('Erreichbar') : '✕ ' + tt('Nicht erreichbar')}
                     </span>
                     <span style={{ fontSize: 12, color: 'var(--color-muted)', flex: 1 }}>
-                      {srcLabel()} → {target?.label || '?'} <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-faint)' }}>({dst})</span>
+                      {srcLabel()} → {targetLabel} <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-faint)' }}>({dst})</span>
                     </span>
                     {!chk.reachable && chk.fixable && (
                       <button className="btn btn--primary btn--sm" disabled={simBusy} onClick={simFix}>
