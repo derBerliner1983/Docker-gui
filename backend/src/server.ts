@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyJwt from '@fastify/jwt';
@@ -41,7 +42,10 @@ import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
 import { startFirewallLogIngest } from './lib/firewalllog';
 
-const JWT_SECRET = process.env.JWT_SECRET ?? ('docker-gui-dev-secret-' + Math.random().toString(36));
+// JWT_SECRET kommt im Produktivbetrieb aus der Env-Datei (install.sh erzeugt
+// einen dauerhaften, starken Schlüssel). Fällt der weg, wird ein kryptografisch
+// starker Zufallswert genutzt (statt des früheren schwachen Math.random).
+const JWT_SECRET = process.env.JWT_SECRET ?? crypto.randomBytes(48).toString('hex');
 const PORT = parseInt(process.env.PORT ?? '4200');
 const HOST = process.env.HOST ?? '0.0.0.0';
 const IS_DEV = process.env.NODE_ENV !== 'production';
