@@ -328,6 +328,21 @@ if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "Status: activ
   info "Firewall ist aktiv – es werden keine Regeln automatisch geändert. Freigaben bitte selbst unter „Sicherheit\" setzen."
 fi
 
+# Starken, dauerhaften JWT-Schlüssel erzeugen (nur einmal – bleibt über Updates
+# erhalten, damit Sitzungen nicht bei jedem Neustart ungültig werden und Tokens
+# nicht fälschbar sind). Liegt in einer 0600-Env-Datei, nicht in der (weltlesbaren)
+# Unit-Datei.
+ENV_FILE="$DATA_DIR/core-hub.env"
+if ! grep -q '^JWT_SECRET=' "$ENV_FILE" 2>/dev/null; then
+  info "Erzeuge dauerhaften JWT-Schlüssel..."
+  JWT_VAL="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
+  # bestehende Zeile ersetzen oder anhängen
+  if grep -q '^JWT_SECRET=' "$ENV_FILE"; then sed -i "s|^JWT_SECRET=.*|JWT_SECRET=$JWT_VAL|" "$ENV_FILE"; else echo "JWT_SECRET=$JWT_VAL" >> "$ENV_FILE"; fi
+fi
+chown "$SERVICE_USER:$SERVICE_USER" "$ENV_FILE" 2>/dev/null || true
+chmod 600 "$ENV_FILE"
+
 # Systemd-Service
 info "Installiere systemd-Service..."
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
@@ -345,6 +360,7 @@ Environment=NODE_ENV=production
 Environment=PORT=$PORT
 Environment=HOST=0.0.0.0
 Environment=DATA_DIR=$DATA_DIR
+EnvironmentFile=$ENV_FILE
 ExecStart=/usr/bin/node dist/server.js
 Restart=always
 RestartSec=5
