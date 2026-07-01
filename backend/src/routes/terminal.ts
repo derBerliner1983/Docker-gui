@@ -78,8 +78,8 @@ export async function terminalRoutes(fastify: FastifyInstance) {
     reply.send({ available: true, resize: !!nodePty });
   });
 
-  fastify.get('/api/terminal', { websocket: true }, (connection, req) => {
-    const ws = connection.socket;
+  fastify.get('/api/terminal', { websocket: true }, (ws, req) => {
+    // @fastify/websocket v11 (Fastify 5): der Handler bekommt den WebSocket direkt.
 
     // Authentifizierung über JWT-Cookie (vom Browser automatisch gesendet)
     void (async () => {
