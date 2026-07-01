@@ -824,4 +824,8 @@ export const fr: Record<string, string> = {
   'Docker-intern': 'Interne à Docker',
   'nur intern': 'interne uniquement',
   'Dann unten dieses Gerät als Quelle wählen – die Prüfung läuft echt von hier aus.': 'Sélectionnez ensuite cet appareil comme source ci-dessous – la vérification s\'exécute réellement d\'ici.',
+  'Internet / externe Adresse': 'Internet / adresse externe',
+  'Objekte': 'Objets',
+  'Bitte oben eine Ziel-Adresse (IP oder Hostname) angeben – z. B. 1.1.1.1 oder example.com.': 'Veuillez saisir une adresse cible (IP ou nom d\'hôte) ci-dessus – p. ex. 1.1.1.1 ou example.com.',
+  'externe Adresse': 'adresse externe',
 };
