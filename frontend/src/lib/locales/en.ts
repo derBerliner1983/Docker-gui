@@ -827,4 +827,7 @@ export const en: Record<string, string> = {
   'Objekte': 'Objects',
   'Bitte oben eine Ziel-Adresse (IP oder Hostname) angeben – z. B. 1.1.1.1 oder example.com.': 'Please enter a target address (IP or hostname) above – e.g. 1.1.1.1 or example.com.',
   'externe Adresse': 'external address',
+  'Diese Ports per Firewall sperren (Host-Firewall-Weg).': 'Block these ports via firewall (host firewall path).',
+  'Sperren': 'Block',
+  'Gesperrt – {n} Port(e) per Firewall blockiert. Achtung: das wirkt nur auf den Host-Firewall-Weg. Über den Tunnel oder ein gemeinsames Docker-Netz erreichbare Ports musst du dort trennen (Verbindung lösen bzw. Tunnel-/Pangolin-Regel).': 'Blocked – {n} port(s) blocked via firewall. Note: this only affects the host firewall path. Ports reachable via the tunnel or a shared Docker network must be cut there (disconnect the link or a tunnel/Pangolin rule).',
 };

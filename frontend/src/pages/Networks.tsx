@@ -1248,6 +1248,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [sshEdit, setSshEdit] = useState<{ open: boolean; node: StudioNode | null }>({ open: false, node: null });
   const [sshTargets, setSshTargets] = useState<{ node_id: string; host: string; port: number; username: string; auth_type: 'password' | 'key'; label?: string }[]>([]);
   const [sshMsg, setSshMsg] = useState<Record<string, string>>({});
+  const [hostIp, setHostIp] = useState(''); // echte Host-LAN-IP (für veröffentlichte Ports mit 0.0.0.0-Bind)
   const loadSsh = () => { api.ssh.list().then((r) => setSshTargets(r.targets || [])).catch(() => {}); };
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -1278,6 +1279,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [chk, setChk] = useState<null | { reachable: boolean; ports: number[]; error?: string; local?: boolean; hops?: Hop[]; reason?: string; fixable?: boolean; fixKind?: 'ufw' | 'link'; linkPair?: [string, string]; addr: string; src: string; target: string }>(null);
   const [chkBusy, setChkBusy] = useState(false);
   const [chkProg, setChkProg] = useState<{ done: number; total: number } | null>(null);
+  const [blockBusy, setBlockBusy] = useState(false);
   // Routing-Tabelle (Diagnose)
   const [routeData, setRouteData] = useState<{ routes: string[]; addrs: string[] } | null>(null);
   const [showRoutes, setShowRoutes] = useState(false);
@@ -1287,6 +1289,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {});
     api.firewall.list().then((r) => { setFwRules(r.rules || []); setFwActive(!!r.active); }).catch(() => {});
     api.ssh.list().then((r) => setSshTargets(r.targets || [])).catch(() => {});
+    api.networks.interfaces().then((r) => {
+      const lan = (r.interfaces || []).map((i) => i.ip4).find((ip) => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(ip || ''));
+      if (lan) setHostIp(lan);
+    }).catch(() => {});
   }, [networks]);
   // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
   useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); setLinkTo(''); setLinkMsg(''); }, [sel]);
@@ -1349,6 +1355,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       pubAddrByName.set(c.name, addrs);
     }
   }
+  if (!hostLanIp && hostIp) hostLanIp = hostIp; // Fallback aus den Host-Schnittstellen
   const dockerNames = [...new Set(networks.flatMap((n) => n.name === 'none' ? [] : n.containers.map((c) => c.name)))];
   const tunnel = containers.find((c) => /newt|pangolin|wireguard|tailscale|wg-easy|zerotier/i.test(`${c.name} ${c.image}`));
 
@@ -1651,6 +1658,22 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     }
     catch (e) { if (chk) setChk({ ...chk, reason: e instanceof Error ? e.message : 'Fehler' }); }
     finally { setSimBusy(false); }
+  };
+  // „Sperren": erstellt Firewall-Deny-Regeln für die offenen Ports (Host-Firewall-Weg).
+  const blockCheck = async () => {
+    if (!chk) return;
+    const single = simPort.replace(/[^0-9]/g, '');
+    const ports = single ? [single] : chk.ports.map(String);
+    if (!ports.length) return;
+    const st = sshTarget();
+    const from = simSrc === 'lan' ? LAN_RANGES : simSrc === 'ip' ? simIp.trim() : st ? st.host : (customZones.find((z) => z.id === simSrc)?.cidr || undefined);
+    setBlockBusy(true);
+    try {
+      for (const p of ports) await api.firewall.add({ action: 'deny', port: p, proto: 'tcp', from });
+      setChk({ ...chk, reachable: false, ports: [], reason: tt('Gesperrt – {n} Port(e) per Firewall blockiert. Achtung: das wirkt nur auf den Host-Firewall-Weg. Über den Tunnel oder ein gemeinsames Docker-Netz erreichbare Ports musst du dort trennen (Verbindung lösen bzw. Tunnel-/Pangolin-Regel).', { n: String(ports.length) }) });
+      onChanged?.();
+    } catch (e) { setChk({ ...chk, reason: e instanceof Error ? e.message : 'Fehler' }); }
+    finally { setBlockBusy(false); }
   };
   const loadRoutes = async () => {
     setRouteBusy(true);
@@ -1967,6 +1990,11 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                     <span style={{ fontSize: 12, color: 'var(--color-muted)', flex: 1 }}>
                       {srcLabel()} → {targetLabel} <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-faint)' }}>({dst})</span>
                     </span>
+                    {chk.reachable && (
+                      <button className="btn btn--outline btn--sm" disabled={blockBusy} onClick={blockCheck} title={tt('Diese Ports per Firewall sperren (Host-Firewall-Weg).')}>
+                        {blockBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Lock size={12} />} {tt('Sperren')}
+                      </button>
+                    )}
                     {!chk.reachable && chk.fixable && (
                       <button className="btn btn--primary btn--sm" disabled={simBusy} onClick={simFix}>
                         {simBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : (chk.fixKind === 'link' ? <Link2 size={12} /> : <Shield size={12} />)} {chk.fixKind === 'link' ? tt('Verbinden') : tt('Freischalten')}
