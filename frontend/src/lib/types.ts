@@ -459,7 +459,7 @@ export interface HFSearchResult {
   author: string;
   downloads: number;
   likes: number;
-  lastModified: string;
+  lastModified?: string | null;
   pipeline_tag?: string;
   tags?: string[];
 }

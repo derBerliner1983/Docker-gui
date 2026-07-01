@@ -160,7 +160,8 @@ export async function kiRoutes(fastify: FastifyInstance) {
     const q = (req.query.q ?? '').trim();
     if (q.length < 2) return reply.send({ models: [] });
     try {
-      const url = `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&filter=gguf&sort=downloads&direction=-1&limit=24`;
+      // full=true liefert u. a. lastModified/createdAt (sonst fehlt das Datum → „Invalid Date")
+      const url = `https://huggingface.co/api/models?search=${encodeURIComponent(q)}&filter=gguf&sort=downloads&direction=-1&limit=24&full=true`;
       const r = await fetch(url, {
         signal: AbortSignal.timeout(10000),
         headers: { 'User-Agent': 'Core-Hub/1.0', 'Accept': 'application/json' },
@@ -168,12 +169,12 @@ export async function kiRoutes(fastify: FastifyInstance) {
       if (!r.ok) return reply.send({ models: [] });
       const data = await r.json() as Array<{
         id: string; author: string; downloads: number; likes: number;
-        lastModified: string; pipeline_tag?: string; tags?: string[];
+        lastModified?: string; createdAt?: string; pipeline_tag?: string; tags?: string[];
       }>;
       reply.send({
         models: data.map((m) => ({
           id: m.id, author: m.author, downloads: m.downloads, likes: m.likes,
-          lastModified: m.lastModified, pipeline_tag: m.pipeline_tag, tags: m.tags ?? [],
+          lastModified: m.lastModified ?? m.createdAt ?? null, pipeline_tag: m.pipeline_tag, tags: m.tags ?? [],
         })),
       });
     } catch {

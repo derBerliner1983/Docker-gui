@@ -1572,7 +1572,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     if (c) return (await api.networks.scanExec(c, addr, ports)).open || [];
     return (await api.networks.scan(addr, ports)).open || [];
   };
-  const DEFAULT_PORTS = [22, 21, 25, 53, 80, 81, 143, 443, 445, 587, 993, 1194, 1880, 2049, 3000, 3001, 3306, 5000, 5432, 5900, 6379, 7878, 8000, 8006, 8080, 8081, 8096, 8123, 8443, 8989, 9000, 9090, 9091, 19999, 27017, 32400, 51820, 61208];
+  const DEFAULT_PORTS = [22, 21, 25, 53, 80, 81, 143, 443, 445, 587, 993, 1194, 1880, 2049, 3000, 3001, 3306, 4000, 5000, 5432, 5678, 5900, 6379, 7878, 8000, 8006, 8080, 8081, 8090, 8096, 8123, 8443, 8880, 8989, 9000, 9090, 9091, 9443, 11434, 19999, 27017, 32400, 51820, 61208];
   // Heuristik nur für Fix-Vorschlag + Pfad-Erklärung, wenn nicht erreichbar.
   const heuristicFix = (target: StudioNode): { hops: Hop[]; fixable: boolean; fixKind?: 'ufw' | 'link'; linkPair?: [string, string]; reason?: string } => {
     const tn = targetName(target);
@@ -1616,9 +1616,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     }
     const addr = external ? simAddr.trim() : targetAddr(target!);
     const single = simPort.replace(/[^0-9]/g, '');
+    // Auch die in der Firewall freigegebenen Ports mitscannen (z. B. 11434 Ollama),
+    // damit „ist das offen?" auch selbst definierte Dienste erfasst.
+    const fwPorts = fwRules.map((r) => Number(rulePortOf(r.to))).filter((p) => p >= 1 && p <= 65535);
     const portList = single
       ? [Number(single)]
-      : [...new Set([...(target?.ports || []).map(Number), ...DEFAULT_PORTS])].filter((p) => p >= 1 && p <= 65535);
+      : [...new Set([...(target?.ports || []).map(Number), ...fwPorts, ...DEFAULT_PORTS])].filter((p) => p >= 1 && p <= 65535);
     setChkBusy(true); setChk(null); setChkProg({ done: 0, total: portList.length });
     const open: number[] = [];
     try {
