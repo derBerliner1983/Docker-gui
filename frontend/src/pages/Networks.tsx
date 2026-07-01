@@ -1625,6 +1625,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const runScan = async () => {
     const target = nodes.find((n) => n.id === simTarget);
     if (!target) { setSimScan({ open: [], error: tt('Bitte ein Ziel wählen.') }); return; }
+    // Quelle „Internet" ohne externes Gerät ist vom Server aus nicht messbar –
+    // eine lokale Docker-IP als „erreichbar" zu zeigen wäre irreführend.
+    if (simSrc === 'internet' && isLocalVantage()) {
+      setSimScan({ open: [], error: tt('Aus dem Internet lässt sich das vom Server aus nicht messen – private Adressen (z. B. 172.x) sind von außen ohnehin nicht erreichbar. Wähle ein externes Gerät (VPS) als Quelle und trage als Adresse die öffentliche IP bzw. den Pangolin-/Tunnel-Hostnamen ein.') });
+      return;
+    }
     setSimScanBusy(true); setSimScan(null);
     try {
       const st = sshTarget();
@@ -1951,16 +1957,23 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               </div>
             )}
             {/* Port-Scan-Ergebnis: nur die erreichbaren Ports */}
-            {simScan && (
-              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: `1px solid ${simScan.open.length ? 'var(--color-success)' : 'var(--color-border)'}44`, background: simScan.open.length ? 'rgba(34,197,94,.08)' : 'var(--color-surface-sunken)' }}>
+            {simScan && (() => {
+              const local = isLocalVantage();
+              const col = local ? 'var(--color-warning)' : 'var(--color-success)';
+              const rgb = local ? '234,179,8' : '34,197,94';
+              const dst = simAddr.trim() || nodes.find((n) => n.id === simTarget)?.ip || nodes.find((n) => n.id === simTarget)?.label || '?';
+              return (
+              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: `1px solid ${simScan.open.length ? col : 'var(--color-border)'}44`, background: simScan.open.length ? `rgba(${rgb},.08)` : 'var(--color-surface-sunken)' }}>
                 {simScan.open.length > 0 ? (
                   <>
-                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-success)', marginBottom: 5 }}>
-                      ✓ {tt('Erreichbare Ports von {src} → {dst}:', { src: srcLabel(), dst: (simAddr.trim() || nodes.find((n) => n.id === simTarget)?.ip || nodes.find((n) => n.id === simTarget)?.label || '?') })}
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: col, marginBottom: 5 }}>
+                      {local
+                        ? '● ' + tt('Lokal offen (Server-Sicht) auf {dst} – NICHT bestätigt von {src} aus:', { dst, src: srcLabel() })
+                        : '✓ ' + tt('Erreichbare Ports von {src} → {dst}:', { src: srcLabel(), dst })}
                     </div>
                     <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                       {simScan.open.map((p) => (
-                        <button key={p} className="btn btn--sm" style={{ padding: '2px 10px', fontSize: 12, fontWeight: 700, color: 'var(--color-success)', border: '1px solid var(--color-success)', background: 'rgba(34,197,94,.12)' }}
+                        <button key={p} className="btn btn--sm" style={{ padding: '2px 10px', fontSize: 12, fontWeight: 700, color: col, border: `1px solid ${col}`, background: `rgba(${rgb},.12)` }}
                           title={tt('Port übernehmen')} onClick={() => setSimPort(String(p))}>{p}</button>
                       ))}
                     </div>
@@ -1969,13 +1982,14 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>{simScan.error ? simScan.error : tt('Kein Port aus der Standardliste erreichbar. Ggf. Adresse prüfen (richtiger Tunnel-/Hostname?).')}</div>
                 )}
                 <div style={{ marginTop: 5, fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Gemessen')}: {vantageLabel()}</div>
-                {isLocalVantage() && (
+                {local && (
                   <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--color-warning)' }}>
                     ⚠ {tt('Das ist die lokale Server-Sicht, NICHT der echte Weg aus dem Internet. Für „direkt aus dem Internet" ein Gerät (VPS) als Quelle wählen und als Adresse die öffentliche IP eintragen; für den Tunnel-Weg den Pangolin-/Tunnel-Hostname.')}
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
             <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('„Erreichbare Ports finden" scannt vom gewählten Gerät aus und zeigt nur, was wirklich offen ist. Adresse leer = Ziel-IP; für Tunnel-Wege ggf. den Tunnel-/Pangolin-Hostname eintragen.')}</div>
           </div>
 
