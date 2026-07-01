@@ -109,6 +109,38 @@ if [ "${1:-}" = "--update" ]; then
   fi
 fi
 
+# --audit-force / CORE_HUB_AUDIT_FORCE=1: wendet zusätzlich breaking Sicherheits-
+# Fixes an (npm audit fix --force) – abgesichert mit Build-Test + Rollback.
+AUDIT_FORCE=0
+case " $* " in *" --audit-force "*) AUDIT_FORCE=1;; esac
+[ "${CORE_HUB_AUDIT_FORCE:-}" = "1" ] && AUDIT_FORCE=1
+
+# npm install + Sicherheits-Fixes für das aktuelle Verzeichnis.
+# Sicheres „npm audit fix" immer (nur nicht-breaking, greift nur bei fixbaren
+# Lücken). „--force" nur mit Flag und mit automatischem Rollback, falls der
+# anschließende Build dadurch kaputtgeht.
+dep_install_and_fix() {
+  npm install
+  npm audit fix 2>&1 | tail -2 || true
+  if [ "$AUDIT_FORCE" = "1" ]; then
+    warn "AUDIT-FORCE aktiv: versuche breaking Sicherheits-Fixes (mit Rollback)..."
+    cp -f package-lock.json /tmp/ch-lock-bak.json 2>/dev/null || true
+    set +e
+    npm audit fix --force >/tmp/ch-auditforce.log 2>&1
+    npm run build >/tmp/ch-auditforce-build.log 2>&1
+    local rc=$?
+    set -e
+    if [ "$rc" -ne 0 ]; then
+      warn "Build nach --force fehlgeschlagen – Abhängigkeiten werden zurückgesetzt."
+      [ -f /tmp/ch-lock-bak.json ] && cp -f /tmp/ch-lock-bak.json package-lock.json
+      npm install
+    else
+      info "Breaking Sicherheits-Fixes erfolgreich angewendet."
+    fi
+    rm -f /tmp/ch-lock-bak.json
+  fi
+}
+
 # Bereits installiert? → Update-Modus (Daten bleiben erhalten)
 MODE="install"
 OLD_VERSION=""
@@ -255,13 +287,13 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR" "$DATA_DIR"
 # Abhängigkeiten installieren & bauen
 info "Installiere Backend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/backend"
-npm install
+dep_install_and_fix
 npm run build
 npm prune --omit=dev
 
 info "Installiere Frontend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/frontend"
-npm install
+dep_install_and_fix
 # Vorhandenes dist sichern, damit ein abgebrochener Build (z. B. Out-of-Memory)
 # keinen weißen Bildschirm hinterlässt – Vite leert dist vor dem Schreiben.
 DIST_BAK=""
