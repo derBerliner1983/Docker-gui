@@ -8,7 +8,7 @@ import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { usePrefs } from '../lib/prefs';
 import { portInfo } from '../lib/utils';
-import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry } from '../lib/types';
+import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry, NetscanJob } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
   const [name, setName] = useState('');
@@ -1280,6 +1280,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [chkBusy, setChkBusy] = useState(false);
   const [chkProg, setChkProg] = useState<{ done: number; total: number } | null>(null);
   const [blockBusy, setBlockBusy] = useState(false);
+  // Hintergrund-Scans (Stapelverarbeitung)
+  const [jobs, setJobs] = useState<NetscanJob[]>([]);
+  const [jobsOpen, setJobsOpen] = useState(false);
+  const loadJobs = () => api.netscan.list().then((r) => setJobs(r.jobs || [])).catch(() => {});
   // Routing-Tabelle (Diagnose)
   const [routeData, setRouteData] = useState<{ routes: string[]; addrs: string[] } | null>(null);
   const [showRoutes, setShowRoutes] = useState(false);
@@ -1293,9 +1297,17 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       const lan = (r.interfaces || []).map((i) => i.ip4).find((ip) => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(ip || ''));
       if (lan) setHostIp(lan);
     }).catch(() => {});
+    loadJobs();
   }, [networks]);
   // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
   useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); setLinkTo(''); setLinkMsg(''); }, [sel]);
+  // Hintergrund-Scans pollen, solange welche laufen oder das Panel offen ist
+  useEffect(() => {
+    const active = jobs.some((j) => j.status === 'queued' || j.status === 'running');
+    if (!jobsOpen && !active) return;
+    const iv = setInterval(loadJobs, 2500);
+    return () => clearInterval(iv);
+  }, [jobsOpen, jobs]);
 
   const doLink = async (a: string, b: string, connect: boolean) => {
     if (!b) { setLinkMsg(tt('Bitte einen Ziel-Container wählen.')); return; }
@@ -1642,6 +1654,30 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       setChkBusy(false); setChkProg(null);
     }
   };
+  // Quelle/Ziel für einen (Hintergrund-)Scan auflösen – gleiche Regeln wie runCheck.
+  const resolveScan = (): { via: 'local' | 'exec' | 'ssh'; container?: string; nodeId?: string; host: string; label: string } | { error: string } => {
+    const external = simTarget === '__ext__';
+    const target = external ? null : nodes.find((n) => n.id === simTarget);
+    if (!external && !target) return { error: tt('Bitte ein Ziel wählen.') };
+    if (external && !simAddr.trim()) return { error: tt('Bitte oben eine Ziel-Adresse (IP oder Hostname) angeben – z. B. 1.1.1.1 oder example.com.') };
+    if (simSrc === 'internet' && isLocalVantage()) return { error: tt('Aus dem Internet lässt sich das vom Server aus nicht messen – private Adressen (z. B. 172.x) sind von außen ohnehin nicht erreichbar. Wähle ein externes Gerät (VPS) als Quelle und trage als Adresse die öffentliche IP bzw. den Pangolin-/Tunnel-Hostnamen ein.') };
+    if (simSrc.startsWith('ext:') && !sshTarget()) return { error: tt('Für dieses Gerät ist kein SSH-Zugang hinterlegt – im Objekt-Inspector einrichten, dann kann von dort getestet werden.') };
+    const host = external ? simAddr.trim() : targetAddr(target!);
+    const st = sshTarget();
+    const c = srcContainer();
+    const via: 'local' | 'exec' | 'ssh' = st ? 'ssh' : c ? 'exec' : 'local';
+    const label = `${srcLabel()} → ${external ? tt('externe Adresse') : target!.label} (${host})`;
+    return { via, container: c || undefined, nodeId: st ? simSrc : undefined, host, label };
+  };
+  // Voll-/Hintergrund-Scan als Stapel-Job anlegen.
+  const runBackground = async () => {
+    const r = resolveScan();
+    if ('error' in r) { setChk({ reachable: false, ports: [], error: r.error, addr: '', src: simSrc, target: simTarget }); return; }
+    const single = simPort.replace(/[^0-9]/g, '');
+    const body = single ? { ...r, ports: [Number(single)] } : { ...r, from: 1, to: 65535 };
+    try { await api.netscan.create(body); setJobsOpen(true); loadJobs(); }
+    catch (e) { setChk({ reachable: false, ports: [], error: e instanceof Error ? e.message : 'Fehler', addr: '', src: simSrc, target: simTarget }); }
+  };
   const simFix = async () => {
     setSimBusy(true);
     try {
@@ -1960,6 +1996,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               <button className="btn btn--primary btn--sm" disabled={chkBusy || !simTarget} onClick={runCheck}>
                 {chkBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Activity size={13} />} {tt('Erreichbarkeit prüfen')}
               </button>
+              <button className="btn btn--outline btn--sm" disabled={!simTarget} onClick={runBackground} title={tt('Langer/vollständiger Scan im Hintergrund (Stapel) – Ergebnis erscheint unten als Bericht.')}>
+                <Download size={13} /> {tt('Voll-Scan (Hintergrund)')}
+              </button>
             </div>
             {/* Fortschritt beim Scannen aller Ports */}
             {chkProg && (
@@ -2048,6 +2087,52 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   <pre style={{ margin: 0, fontSize: 11, fontFamily: 'var(--font-mono)', overflowX: 'auto', color: 'var(--color-muted)', background: 'var(--color-surface-sunken)', padding: 8, borderRadius: 6 }}>{routeData.routes.join('\n') || '—'}</pre>
                 </div>
                 <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Zeigt die Host-Routen & Schnittstellen. docker0/br-* sind die Docker-Bridges – getrennte br-* bedeuten isolierte Container-Netze.')}</div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Hintergrund-Scans (Stapelverarbeitung) ── */}
+          <div style={{ marginTop: 12, padding: 12, border: '1px solid var(--color-border)', borderRadius: 10, background: 'var(--color-surface)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>
+                {tt('Hintergrund-Scans')}{jobs.length > 0 && <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--color-faint)' }}>({jobs.filter((j) => j.status === 'queued' || j.status === 'running').length} {tt('aktiv')} / {jobs.length})</span>}
+              </div>
+              <button className="btn btn--outline btn--sm" onClick={() => { setJobsOpen(!jobsOpen); if (!jobsOpen) loadJobs(); }}>
+                <RefreshCw size={13} /> {jobsOpen ? tt('Ausblenden') : tt('Anzeigen')}
+              </button>
+            </div>
+            {jobsOpen && (
+              <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                {jobs.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{tt('Keine Hintergrund-Scans. Starte einen mit „Voll-Scan (Hintergrund)".')}</div>}
+                {jobs.map((j) => {
+                  const pct = j.total ? Math.round((j.done / j.total) * 100) : 0;
+                  const stCol = j.status === 'done' ? 'var(--color-success)' : j.status === 'error' ? 'var(--color-danger)' : j.status === 'canceled' ? 'var(--color-faint)' : 'var(--color-accent)';
+                  const stTxt = j.status === 'queued' ? tt('wartet') : j.status === 'running' ? tt('läuft') : j.status === 'done' ? tt('fertig') : j.status === 'error' ? tt('Fehler') : tt('abgebrochen');
+                  return (
+                    <div key={j.id} style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--color-border)', background: 'var(--color-surface-sunken)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.label}</span>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: stCol }}>{stTxt}</span>
+                        <span style={{ fontSize: 10.5, color: 'var(--color-faint)', fontFamily: 'var(--font-mono)' }}>{j.done}/{j.total}</span>
+                        <button className="btn btn--ghost btn--icon btn--sm" title={tt('Entfernen/Abbrechen')} onClick={async () => { await api.netscan.remove(j.id); loadJobs(); }}><Trash2 size={12} /></button>
+                      </div>
+                      {(j.status === 'queued' || j.status === 'running') && (
+                        <div style={{ height: 5, borderRadius: 3, background: 'var(--color-surface)', overflow: 'hidden', marginTop: 5 }}>
+                          <div style={{ height: '100%', width: `${pct}%`, background: 'var(--color-accent)', transition: 'width .3s' }} />
+                        </div>
+                      )}
+                      {j.open.length > 0 && (
+                        <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <span style={{ fontSize: 10.5, color: 'var(--color-success)', fontWeight: 700 }}>{tt('Offen')}:</span>
+                          {j.open.map((p) => <span key={p} style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-success)', border: '1px solid var(--color-success)', borderRadius: 5, padding: '1px 7px' }}>{p}</span>)}
+                        </div>
+                      )}
+                      {j.status === 'done' && j.open.length === 0 && <div style={{ marginTop: 5, fontSize: 11, color: 'var(--color-muted)' }}>{tt('Kein offener Port gefunden.')}</div>}
+                      {j.error && <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--color-danger)' }}>{j.error}</div>}
+                    </div>
+                  );
+                })}
+                <div style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Jobs laufen nacheinander (Stapel). Ergebnisse bleiben bis zum Neustart erhalten.')}</div>
               </div>
             )}
           </div>

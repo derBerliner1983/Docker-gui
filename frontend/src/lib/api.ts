@@ -6,7 +6,7 @@ import type {
   OptimizeSuggestion, SmtpConfig, AlertRule, PredefinedAlert, AlertMetric,
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
-  OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel,
+  OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel, NetscanJob,
 } from './types';
 
 import { tt } from './i18n';
@@ -251,6 +251,13 @@ export const api = {
     test: (nodeId: string) => req<{ ok: boolean; ms: number; error?: string }>('/api/ssh/test', { method: 'POST', body: JSON.stringify({ nodeId }) }),
     probe: (nodeId: string, host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/ssh/probe', { method: 'POST', body: JSON.stringify({ nodeId, host, port }) }),
     scan: (nodeId: string, host: string, ports?: number[]) => req<{ open: number[]; ms: number; error?: string }>('/api/ssh/scan', { method: 'POST', body: JSON.stringify({ nodeId, host, ports }) }),
+  },
+
+  netscan: {
+    create: (data: { via: 'local' | 'exec' | 'ssh'; container?: string; nodeId?: string; host: string; label?: string; ports?: number[]; from?: number; to?: number }) =>
+      req<{ id: string }>('/api/netscan/jobs', { method: 'POST', body: JSON.stringify(data) }),
+    list: () => req<{ jobs: NetscanJob[]; running: boolean }>('/api/netscan/jobs'),
+    remove: (id: string) => req(`/api/netscan/jobs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   },
 
   security: {
