@@ -1014,8 +1014,67 @@ function ConnectivityPanel({ networks, containers }: { networks: DockerNetwork[]
 }
 
 // ── Firewall-/Netzwerk-Studio: frei anordbare Karte (Phase A) ────────────────
-interface StudioNode { id: string; kind: 'host' | 'zone' | 'docker' | 'vm'; label: string; sub?: string; ip?: string; ports?: string[]; nets?: { net: string; driver: string }[]; }
+interface StudioNode { id: string; kind: 'host' | 'zone' | 'docker' | 'vm' | 'ext'; label: string; sub?: string; ip?: string; ports?: string[]; nets?: { net: string; driver: string }[]; zone?: string; }
 type CZone = { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string };
+// Fremdes Objekt (VPS im Internet, PC/Server im LAN) – vom Benutzer angelegt
+type CHost = { id: string; name: string; type: 'vps' | 'pc' | 'server'; zone: string; ip?: string; note?: string };
+
+// Formular-Fenster für fremde Server/PCs (Internet-VPS, LAN-Rechner)
+function HostModal({ open, host, zones, onClose, onSave }: { open: boolean; host?: CHost; zones: { key: string; label: string }[]; onClose: () => void; onSave: (h: CHost, existing?: CHost) => void }) {
+  const [name, setName] = useState('');
+  const [type, setType] = useState<CHost['type']>('vps');
+  const [zone, setZone] = useState('internet');
+  const [ip, setIp] = useState('');
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setName(host?.name || ''); setType(host?.type || 'vps');
+    setZone(host?.zone || 'internet'); setIp(host?.ip || ''); setNote(host?.note || '');
+  }, [open, host]);
+  if (!open) return null;
+  const save = () => {
+    if (!name.trim()) return;
+    onSave({ id: host?.id || `ext:${Date.now()}`, name: name.trim(), type, zone, ip: ip.trim() || undefined, note: note.trim() || undefined }, host);
+    onClose();
+  };
+  return (
+    <Modal open={open} title={host ? tt('Objekt bearbeiten') : tt('Server/PC hinzufügen')} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={!name.trim()}>{tt('Speichern')}</button>
+      </>}>
+      <div className="form-group">
+        <label className="form-label">{tt('Name')}</label>
+        <input className="input input--rect" autoFocus placeholder={tt('z. B. Pangolin-VPS, Büro-PC, NAS')} value={name} onChange={(e) => setName(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Art')}</label>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([['vps', tt('VPS (Internet)')], ['server', tt('Server')], ['pc', tt('PC/Gerät')]] as const).map(([v, l]) => (
+            <button key={v} type="button" className={`btn btn--sm ${type === v ? 'btn--primary' : 'btn--outline'}`} onClick={() => setType(v)}>{l}</button>
+          ))}
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-group">
+          <label className="form-label">{tt('Bereich')}</label>
+          <select className="input input--rect" value={zone} onChange={(e) => setZone(e.target.value)}>
+            {zones.map((z) => <option key={z.key} value={z.key}>{z.label}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">IP/Host</label>
+          <input className="input input--rect" placeholder="203.0.113.5" value={ip} onChange={(e) => setIp(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Notiz')} {tt('(optional)')}</label>
+        <input className="input input--rect" placeholder={tt('z. B. Standort, Zweck')} value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+      <div className="form-hint">{tt('SSH-Zugang für echte Tests von diesem Gerät aus folgt im nächsten Schritt.')}</div>
+    </Modal>
+  );
+}
 
 // Formular-Fenster für eigene Zonen (Tunnel-Einstieg, Gerät/Router, LAN/Internet)
 function ZoneModal({ open, zone, dockerNames, onClose, onSave }: { open: boolean; zone?: CZone; dockerNames: string[]; onClose: () => void; onSave: (z: CZone, existing?: CZone) => void }) {
@@ -1090,13 +1149,22 @@ const NODE_W = 190, NODE_H = 58;
 
 function FirewallStudio({ networks, containers, onChanged }: { networks: DockerNetwork[]; containers: Container[]; onChanged?: () => void }) {
   const { prefs, setPref } = usePrefs();
-  const layout = (prefs.fwStudio as { nodes?: Record<string, { x: number; y: number }>; sub?: string; zones?: { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string }[] }) || {};
+  const layout = (prefs.fwStudio as {
+    nodes?: Record<string, { x: number; y: number }>;
+    sub?: string;
+    zones?: { id: string; label: string; sub?: string; cidr?: string; type?: 'lan' | 'internet' | 'tunnel' | 'device'; container?: string }[];
+    hosts?: CHost[];
+    assign?: Record<string, string>;
+  }) || {};
   const saved = layout.nodes || {};
   const customZones = layout.zones || [];
+  const extHosts = layout.hosts || [];
+  const assign = layout.assign || {};
   const [sub, setSub] = useState<'map' | 'matrix'>(layout.sub === 'matrix' ? 'matrix' : 'map');
   const [vms, setVms] = useState<VM[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [zoneEdit, setZoneEdit] = useState<{ open: boolean; zone?: CZone }>({ open: false });
+  const [hostEdit, setHostEdit] = useState<{ open: boolean; host?: CHost }>({ open: false });
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement>(null);
   // gx/gy = Greif-Offset innerhalb des Knotens; cl/ct = Canvas-Ursprung beim Greifen
@@ -1179,19 +1247,38 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const dockerNames = [...new Set(networks.flatMap((n) => n.name === 'none' ? [] : n.containers.map((c) => c.name)))];
   const tunnel = containers.find((c) => /newt|pangolin|wireguard|tailscale|wg-easy|zerotier/i.test(`${c.name} ${c.image}`));
 
+  // Standard-Bereich (Wolke) je Objekt – lokal = LAN, fremde Objekte laut Definition
+  const defZone = (id: string): string => {
+    if (id.startsWith('ext:')) return extHosts.find((h) => h.id === id)?.zone || 'internet';
+    return 'lan';
+  };
+  const zoneOf = (id: string): string => assign[id] || defZone(id);
+
   const nodes: StudioNode[] = [
-    { id: 'zone:wan', kind: 'zone', label: 'Internet', sub: 'WAN' },
-    { id: 'zone:lan', kind: 'zone', label: 'LAN', sub: tt('Lokales Netz') },
-    ...(tunnel ? [{ id: 'zone:tunnel', kind: 'zone' as const, label: 'Tunnel', sub: tunnel.name }] : []),
-    { id: 'host', kind: 'host', label: 'Host', sub: tt('Server') },
+    { id: 'host', kind: 'host' as const, label: 'Host', sub: tt('Server') },
     ...dockerNames.map((name) => {
       const m = membership.get(name) || [];
       const ip = m.find((x) => x.driver === 'macvlan' || x.driver === 'ipvlan')?.ip || m[0]?.ip;
       return { id: `docker:${name}`, kind: 'docker' as const, label: name, ip, ports: pubByName.get(name), nets: m.map((x) => ({ net: x.net, driver: x.driver })) };
     }),
     ...vms.map((v) => ({ id: `vm:${v.id}`, kind: 'vm' as const, label: v.name, sub: v.state })),
-    ...customZones.map((z) => ({ id: z.id, kind: 'zone' as const, label: z.label, sub: z.sub })),
+    ...extHosts.map((h) => ({ id: h.id, kind: 'ext' as const, label: h.name, ip: h.ip, sub: h.note || (h.type === 'vps' ? 'VPS' : h.type === 'pc' ? tt('PC/Gerät') : tt('Server')) })),
+  ].map((n) => ({ ...n, zone: zoneOf(n.id) }));
+
+  // Wolken (Bereiche): Internet, LAN + eigene Zonen – Objekte liegen darin
+  const cloudDefs: { key: string; label: string; color: string }[] = [
+    { key: 'internet', label: tt('Internet'), color: 'var(--color-warning)' },
+    { key: 'lan', label: 'LAN', color: 'var(--color-success)' },
+    ...customZones.map((z) => ({ key: z.id, label: z.label, color: 'var(--color-info, #3b82f6)' })),
   ];
+  const saveHost = (h: CHost, existing?: CHost) => {
+    setPref('fwStudio', { ...layout, hosts: existing ? extHosts.map((x) => x.id === existing.id ? h : x) : [...extHosts, h] });
+  };
+  const removeHost = (id: string) => {
+    setPref('fwStudio', { ...layout, hosts: extHosts.filter((x) => x.id !== id) });
+    setSel((s) => (s === id ? null : s));
+  };
+  const setNodeZone = (id: string, zone: string) => setPref('fwStudio', { ...layout, assign: { ...assign, [id]: zone } });
   const saveZone = (z: CZone, existing?: CZone) => {
     setPref('fwStudio', { ...layout, zones: existing ? customZones.map((x) => x.id === existing.id ? z : x) : [...customZones, z] });
   };
@@ -1202,29 +1289,44 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     setSel((s) => (s === id ? null : s));
   };
 
-  // Standard-Layout, falls keine gespeicherte Position
+  // Standard-Layout, falls keine gespeicherte Position:
+  // fremde Objekte oben (Internet-Reihe), lokale unten (LAN-Reihe)
+  const CLOUD_PAD = 26, CLOUD_TOP = 30;
   const defPos = (id: string, i: number): { x: number; y: number } => {
-    if (id === 'zone:wan') return { x: 20, y: 20 };
-    if (id === 'zone:lan') return { x: 20, y: 110 };
-    if (id === 'zone:tunnel') return { x: 20, y: 200 };
-    if (id === 'host') return { x: 280, y: 110 };
-    if (id.startsWith('czone:')) return { x: 20, y: 290 + (i % 4) * 80 }; // eigene Zonen linke Spalte
-    const k = i; // dockers/vms rechts im Raster
-    return { x: 540 + (k % 2) * 210, y: 20 + Math.floor(k / 2) * 90 };
+    if (id.startsWith('ext:')) return { x: 60 + (i % 4) * 210, y: CLOUD_TOP + 20 };
+    if (id === 'host') return { x: 60, y: 260 };
+    const k = i; // dockers/vms in der LAN-Reihe
+    return { x: 60 + (k % 4) * 210, y: 260 + Math.floor(k / 4) * 90 };
   };
-  let gi = 0;
+  let gi = 0, ei = 0;
   const sane = (p?: { x: number; y: number }) =>
     p && Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.x <= 4000 && p.y >= 0 && p.y <= 4000 ? p : undefined;
   const posOf = (id: string): { x: number; y: number } => {
     const l = sane(live[id]); if (l) return l;
     const s = sane(saved[id]); if (s) return s;
-    const isGrid = id.startsWith('docker:') || id.startsWith('vm:') || id.startsWith('czone:');
+    if (id.startsWith('ext:')) return defPos(id, ei++);
+    const isGrid = id.startsWith('docker:') || id.startsWith('vm:');
     return defPos(id, isGrid ? gi++ : 0);
   };
-  // gi muss deterministisch sein → Positionen vorab berechnen
+  // gi/ei müssen deterministisch sein → Positionen vorab berechnen
   const positions: Record<string, { x: number; y: number }> = {};
-  gi = 0;
+  gi = 0; ei = 0;
   for (const n of nodes) positions[n.id] = posOf(n.id);
+
+  // Wolken-Rechtecke aus den Positionen der Mitglieder (auto-umschließend)
+  const cloudRects = cloudDefs.map((c) => {
+    const members = nodes.filter((n) => n.zone === c.key);
+    if (members.length === 0) {
+      // leere Wolke an Standardstelle, damit man Objekte zuweisen kann
+      const idx = cloudDefs.findIndex((d) => d.key === c.key);
+      return { ...c, x: 20, y: 10 + idx * 130, w: 320, h: 110, empty: true };
+    }
+    const xs = members.map((n) => positions[n.id].x), ys = members.map((n) => positions[n.id].y);
+    const x = Math.min(...xs) - CLOUD_PAD, y = Math.min(...ys) - CLOUD_PAD - CLOUD_TOP;
+    const w = Math.max(...xs) + NODE_W + CLOUD_PAD - x, h = Math.max(...ys) + NODE_H + CLOUD_PAD - y;
+    return { ...c, x: Math.max(0, x), y: Math.max(0, y), w, h, empty: false };
+  });
+  const cloudRectOf = (key: string) => cloudRects.find((c) => c.key === key);
 
   // ── Erreichbarkeits-Kanten (mit Label & optionalem Link-Paar zum Trennen) ──
   type Edge = { a: string; b: string; label?: string; link?: [string, string] };
@@ -1239,15 +1341,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     return ma.some((x) => x.net.startsWith('cl-') && mb.some((y) => y.net === x.net));
   };
   const portLabel = (name: string) => { const p = pubByName.get(name) || []; return p.length ? p.slice(0, 3).join(', ') + (p.length > 3 ? '…' : '') : undefined; };
-  edges.push({ a: 'zone:wan', b: 'host' });
-  edges.push({ a: 'zone:lan', b: 'host' });
-  if (tunnel) edges.push({ a: 'zone:tunnel', b: `docker:${tunnel.name}` });
   for (const name of dockerNames) {
-    const m = membership.get(name) || [];
-    const hostReach = m.some((x) => x.driver === 'host' || (x.driver === 'bridge' && !x.internal)) || (pubByName.get(name)?.length ?? 0) > 0;
-    const lanReach = m.some((x) => x.driver === 'macvlan' || x.driver === 'ipvlan') || (pubByName.get(name)?.length ?? 0) > 0;
+    const hostReach = (membership.get(name) || []).some((x) => x.driver === 'host' || (x.driver === 'bridge' && !x.internal)) || (pubByName.get(name)?.length ?? 0) > 0;
     if (hostReach) edges.push({ a: 'host', b: `docker:${name}`, label: portLabel(name) });
-    if (lanReach) edges.push({ a: 'zone:lan', b: `docker:${name}`, label: portLabel(name) });
   }
   for (let i = 0; i < dockerNames.length; i++)
     for (let j = i + 1; j < dockerNames.length; j++)
@@ -1291,12 +1387,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const onClickNode = (id: string) => { if (!drag.current?.moved) setSel((s) => (s === id ? null : id)); };
 
   const NODE_COLOR: Record<StudioNode['kind'], string> = {
-    host: 'var(--color-accent)', zone: 'var(--color-warning)', docker: 'var(--color-info, #3b82f6)', vm: '#a855f7',
+    host: 'var(--color-accent)', zone: 'var(--color-warning)', docker: 'var(--color-info, #3b82f6)', vm: '#a855f7', ext: '#f97316',
   };
-  const NODE_ICON: Record<StudioNode['kind'], React.ElementType> = { host: Server, zone: Globe, docker: Box, vm: MonitorPlay };
+  const NODE_ICON: Record<StudioNode['kind'], React.ElementType> = { host: Server, zone: Globe, docker: Box, vm: MonitorPlay, ext: Globe };
 
-  const maxY = Math.max(320, ...nodes.map((n) => positions[n.id].y + NODE_H + 40));
-  const maxX = Math.max(760, ...nodes.map((n) => positions[n.id].x + NODE_W + 40));
+  const maxY = Math.max(360, ...cloudRects.map((c) => c.y + c.h + 30), ...nodes.map((n) => positions[n.id].y + NODE_H + 40));
+  const maxX = Math.max(760, ...cloudRects.map((c) => c.x + c.w + 30), ...nodes.map((n) => positions[n.id].x + NODE_W + 40));
   const selNode = nodes.find((n) => n.id === sel) || null;
 
   // Aktive Studio-Verbindungen (cl-* Paar-Netze) eines Containers
@@ -1413,6 +1509,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: 4 }}>
           <button className={`btn btn--sm ${sub === 'map' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('map'); setPref('fwStudio', { ...layout, sub: 'map' }); }}><LayoutGrid size={12} /> {tt('Karte')}</button>
           <button className={`btn btn--sm ${sub === 'matrix' ? 'btn--primary' : 'btn--outline'}`} onClick={() => { setSub('matrix'); setPref('fwStudio', { ...layout, sub: 'matrix' }); }}><Table size={12} /> {tt('Matrix')}</button>
+          {sub === 'map' && <button className="btn btn--sm btn--outline" onClick={() => setHostEdit({ open: true })} title={tt('Fremden Server/PC (VPS im Internet, LAN-Rechner) hinzufügen')}><Plus size={12} /> {tt('Server/PC')}</button>}
           {sub === 'map' && <button className="btn btn--sm btn--outline" onClick={addZone} title={tt('Eigene Zone (Tunnel/LAN/Internet) hinzufügen')}><Plus size={12} /> {tt('Zone')}</button>}
         </div>
       }
@@ -1427,8 +1524,27 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
           <div style={{ position: 'relative' }}>
           <div style={{ overflow: 'auto', maxHeight: '72vh', border: '1px solid var(--color-border)', borderRadius: 8, background: 'var(--color-surface-sunken)' }}>
           <div ref={canvasRef} style={{ position: 'relative', width: maxX, height: maxY }}>
+            {/* Wolken (Bereiche) – hinter den Objekten */}
+            {cloudRects.map((c) => (
+              <div key={c.key} style={{ position: 'absolute', left: c.x, top: c.y, width: c.w, height: c.h, zIndex: 0,
+                border: `1.5px dashed ${c.color}`, borderRadius: 14, background: `color-mix(in srgb, ${c.color} 7%, transparent)`, pointerEvents: 'none' }}>
+                <div style={{ position: 'absolute', top: -11, left: 12, padding: '1px 8px', fontSize: 11, fontWeight: 700, color: c.color,
+                  background: 'var(--color-surface-sunken)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Globe size={11} /> {c.label}{c.empty ? ` · ${tt('leer')}` : ''}
+                </div>
+              </div>
+            ))}
             {/* Kanten */}
-            <svg style={{ position: 'absolute', inset: 0, width: maxX, height: maxY, pointerEvents: 'none' }}>
+            <svg style={{ position: 'absolute', inset: 0, width: maxX, height: maxY, zIndex: 1, pointerEvents: 'none' }}>
+              {/* Tunnel: Internet-Wolke ↔ Tunnel-Container */}
+              {tunnel && positions[`docker:${tunnel.name}`] && cloudRectOf('internet') && (() => {
+                const ic = cloudRectOf('internet')!; const tp = positions[`docker:${tunnel.name}`];
+                const x1 = ic.x + ic.w / 2, y1 = ic.y + ic.h, x2 = tp.x + NODE_W / 2, y2 = tp.y + NODE_H / 2;
+                return (<g>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-warning)" strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.6} />
+                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--color-warning)">{tt('Tunnel')}</text>
+                </g>);
+              })()}
               {edges.map((ed, i) => {
                 const { a, b, label, link } = ed;
                 const pa = positions[a], pb = positions[b];
@@ -1462,7 +1578,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               const Icon = NODE_ICON[n.kind];
               const isSel = sel === n.id;
               return (
-                <div key={n.id} style={{ position: 'absolute', left: p.x, top: p.y, width: NODE_W }}>
+                <div key={n.id} style={{ position: 'absolute', left: p.x, top: p.y, width: NODE_W, zIndex: 2 }}>
                   <div onMouseDown={(e) => onDown(e, n.id)} onClick={() => onClickNode(n.id)}
                     style={{ cursor: 'grab', userSelect: 'none', display: 'flex', alignItems: 'center', gap: 8, height: NODE_H, padding: '0 10px',
                       background: 'var(--color-surface)', border: `1px solid ${isSel ? NODE_COLOR[n.kind] : 'var(--color-border)'}`,
@@ -1488,9 +1604,21 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                     <button className="btn btn--ghost btn--icon btn--sm" title={tt('Zone umbenennen')} onClick={() => renameZone(selNode.id)}><Pencil size={13} /></button>
                     <button className="btn btn--ghost btn--icon btn--sm" title={tt('Zone entfernen')} onClick={() => removeZone(selNode.id)}><Trash2 size={13} /></button>
                   </>}
+                  {selNode.id.startsWith('ext:') && <>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Objekt bearbeiten')} onClick={() => setHostEdit({ open: true, host: extHosts.find((h) => h.id === selNode.id) })}><Pencil size={13} /></button>
+                    <button className="btn btn--ghost btn--icon btn--sm" title={tt('Objekt entfernen')} onClick={() => removeHost(selNode.id)}><Trash2 size={13} /></button>
+                  </>}
                   <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setSel(null)}><X size={13} /></button>
                 </div>
                 <div><span style={{ color: 'var(--color-faint)' }}>{tt('Typ')}: </span>{selNode.kind}</div>
+                {!selNode.id.startsWith('czone:') && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                    <span style={{ color: 'var(--color-faint)' }}>{tt('Bereich')}: </span>
+                    <select className="input input--rect" style={{ height: 24, fontSize: 11, flex: 1 }} value={selNode.zone || 'lan'} onChange={(e) => setNodeZone(selNode.id, e.target.value)}>
+                      {cloudDefs.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    </select>
+                  </div>
+                )}
                 {(() => { const z = czoneOf(selNode.id); if (!z) return null; return (<>
                   {z.type && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Art')}: </span>{z.type === 'lan' ? 'LAN' : z.type === 'internet' ? tt('Internet') : z.type === 'device' ? tt('Gerät') : tt('Tunnel')}</div>}
                   {z.container && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Tunnel-Container')}: </span><span style={{ fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{z.container}</span></div>}
@@ -1559,9 +1687,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
           </div>
           <div style={{ marginTop: 10, fontSize: 11, color: 'var(--color-faint)', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <span style={{ color: 'var(--color-accent)' }}>● Host</span>
-            <span style={{ color: 'var(--color-warning)' }}>● {tt('Zone (LAN/Internet/Tunnel)')}</span>
             <span style={{ color: 'var(--color-info, #3b82f6)' }}>● Docker</span>
             <span style={{ color: '#a855f7' }}>● VM</span>
+            <span style={{ color: '#f97316' }}>● {tt('Fremder Server/PC')}</span>
+            <span style={{ color: 'var(--color-warning)' }}>▢ {tt('Bereich/Wolke (Internet/LAN/Zone)')}</span>
           </div>
 
           {/* ── Simulation ── */}
@@ -1663,6 +1792,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       )}
       <ZoneModal open={zoneEdit.open} zone={zoneEdit.zone} dockerNames={dockerNames}
         onClose={() => setZoneEdit({ open: false })} onSave={saveZone} />
+      <HostModal open={hostEdit.open} host={hostEdit.host} zones={cloudDefs.map((c) => ({ key: c.key, label: c.label }))}
+        onClose={() => setHostEdit({ open: false })} onSave={saveHost} />
     </Panel>
   );
 }
