@@ -454,6 +454,20 @@ export interface OllamaModelShow {
   template?: string;
 }
 
+export interface NetscanJob {
+  id: string;
+  label: string;
+  via: 'local' | 'exec' | 'ssh';
+  host: string;
+  status: 'queued' | 'running' | 'done' | 'error' | 'canceled';
+  done: number;
+  total: number;
+  open: number[];
+  error?: string;
+  createdAt: number;
+  finishedAt?: number;
+}
+
 export interface HFSearchResult {
   id: string;
   author: string;
