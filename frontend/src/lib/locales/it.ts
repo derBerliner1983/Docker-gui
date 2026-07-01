@@ -790,4 +790,10 @@ export const it: Record<string, string> = {
   'Ziel hat keine feste IP – bitte oben „Adresse" setzen (z. B. Tunnel-/Pangolin-Hostname).': 'La destinazione non ha un IP fisso: imposta «Indirizzo» sopra (es. nome host tunnel/Pangolin).',
   '„Erreichbare Ports finden" zeigt gleich, was wirklich offen ist.': '«Trova porte raggiungibili» mostrerà ciò che è realmente aperto.',
   'SSH-Quelle bereit – „Erreichbare Ports finden" scannt vom Gerät aus und zeigt nur die offenen Ports. (Einzelport per „Live-Test".)': 'Origine SSH pronta: «Trova porte raggiungibili» esegue la scansione dal dispositivo e mostra solo le porte aperte. (Porta singola con «Test dal vivo».)',
+  'Gemessen': 'Misurato',
+  'echt vom Gerät {x} aus (Sicht aus dem Internet)': 'realmente dal dispositivo {x} (vista da Internet)',
+  'aus dem Tunnel-Container {x}': 'dal contenitore tunnel {x}',
+  'vom Server selbst (lokale Sicht – Router/Firewall von außen NICHT berücksichtigt)': 'dal server stesso (vista locale: router/firewall dall\'esterno NON considerati)',
+  'Das ist die lokale Server-Sicht, NICHT der echte Weg aus dem Internet. Für „direkt aus dem Internet" ein Gerät (VPS) als Quelle wählen und als Adresse die öffentliche IP eintragen; für den Tunnel-Weg den Pangolin-/Tunnel-Hostname.': 'Questa è la vista locale del server, NON il percorso reale da Internet. Per «direttamente da Internet» scegli un dispositivo (VPS) come origine e inserisci l\'IP pubblico come indirizzo; per il percorso tunnel il nome host Pangolin/tunnel.',
+  'direkt (nur mit Portfreigabe)': 'diretto (solo con inoltro porta)',
 };
