@@ -106,8 +106,19 @@ async function main() {
       prefix: '/',
       wildcard: false,
     });
-    fastify.setNotFoundHandler((_req, reply) => {
-      reply.sendFile('index.html');
+    // SPA-Fallback NUR für echte Navigationsanfragen (HTML). Fehlende Assets
+    // (/assets/*, *.js, *.css, /api/*) dürfen NICHT index.html zurückgeben –
+    // sonst bekommt der Browser HTML als JS-Modul ("MIME type text/html") und
+    // die Seite bleibt weiß. Stattdessen ein ehrlicher 404.
+    fastify.setNotFoundHandler((req, reply) => {
+      const url = req.url.split('?')[0];
+      const accepts = (req.headers['accept'] || '').includes('text/html');
+      const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(url);
+      if (req.method !== 'GET' || url.startsWith('/api/') || url.startsWith('/assets/') || looksLikeFile || !accepts) {
+        reply.status(404).send({ error: 'Not found', path: url });
+        return;
+      }
+      reply.type('text/html').sendFile('index.html');
     });
   }
 

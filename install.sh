@@ -262,7 +262,26 @@ npm prune --omit=dev
 info "Installiere Frontend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/frontend"
 npm install
-npm run build
+# Vorhandenes dist sichern, damit ein abgebrochener Build (z. B. Out-of-Memory)
+# keinen weißen Bildschirm hinterlässt – Vite leert dist vor dem Schreiben.
+DIST_BAK=""
+if [ -d dist ] && [ -f dist/index.html ]; then
+  DIST_BAK="$(mktemp -d)"
+  cp -a dist/. "$DIST_BAK/" 2>/dev/null || true
+fi
+# Mehr Heap für den Build (kleine VPS neigen sonst zum OOM-Kill).
+if NODE_OPTIONS="--max-old-space-size=1536" npm run build; then
+  # Konsistenz prüfen: referenziert index.html ein Asset, das auch existiert?
+  REF_JS="$(grep -oE 'assets/[^\"]+\.js' dist/index.html 2>/dev/null | head -1)"
+  if [ -z "$REF_JS" ] || [ ! -f "dist/$REF_JS" ]; then
+    warn "Frontend-Build wirkt unvollständig ($REF_JS fehlt)."
+    if [ -n "$DIST_BAK" ]; then warn "Stelle vorheriges Frontend wieder her."; rm -rf dist && mkdir dist && cp -a "$DIST_BAK/." dist/; fi
+  fi
+else
+  warn "Frontend-Build fehlgeschlagen (evtl. zu wenig Speicher – ggf. Swap einrichten)."
+  if [ -n "$DIST_BAK" ]; then warn "Stelle vorheriges Frontend wieder her."; rm -rf dist && mkdir dist && cp -a "$DIST_BAK/." dist/; fi
+fi
+[ -n "$DIST_BAK" ] && rm -rf "$DIST_BAK"
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
