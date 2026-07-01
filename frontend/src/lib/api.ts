@@ -239,6 +239,8 @@ export const api = {
     probe: (host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/networks/probe', { method: 'POST', body: JSON.stringify({ host, port }) }),
     probeExec: (container: string, host: string, port: number) => req<{ open: boolean; ms: number; error?: string; method?: string }>('/api/networks/probe-exec', { method: 'POST', body: JSON.stringify({ container, host, port }) }),
     routes: () => req<{ routes: string[]; addrs: string[] }>('/api/networks/routes'),
+    scan: (host: string, ports?: number[]) => req<{ open: number[] }>('/api/networks/scan', { method: 'POST', body: JSON.stringify({ host, ports }) }),
+    scanExec: (container: string, host: string, ports?: number[]) => req<{ open: number[] }>('/api/networks/scan-exec', { method: 'POST', body: JSON.stringify({ container, host, ports }) }),
   },
 
   ssh: {
@@ -248,6 +250,7 @@ export const api = {
     remove: (nodeId: string) => req(`/api/ssh/targets/${encodeURIComponent(nodeId)}`, { method: 'DELETE' }),
     test: (nodeId: string) => req<{ ok: boolean; ms: number; error?: string }>('/api/ssh/test', { method: 'POST', body: JSON.stringify({ nodeId }) }),
     probe: (nodeId: string, host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/ssh/probe', { method: 'POST', body: JSON.stringify({ nodeId, host, port }) }),
+    scan: (nodeId: string, host: string, ports?: number[]) => req<{ open: number[]; ms: number; error?: string }>('/api/ssh/scan', { method: 'POST', body: JSON.stringify({ nodeId, host, ports }) }),
   },
 
   security: {

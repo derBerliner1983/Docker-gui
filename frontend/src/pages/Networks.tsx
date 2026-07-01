@@ -1276,6 +1276,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [simBusy, setSimBusy] = useState(false);
   const [simLive, setSimLive] = useState<{ open: boolean; ms: number; error?: string } | null>(null);
   const [simLiveBusy, setSimLiveBusy] = useState(false);
+  const [simAddr, setSimAddr] = useState(''); // optionale Ziel-Adresse (überschreibt Ziel-IP)
+  const [simScan, setSimScan] = useState<{ open: number[]; error?: string } | null>(null);
+  const [simScanBusy, setSimScanBusy] = useState(false);
   // Routing-Tabelle (Diagnose)
   const [routeData, setRouteData] = useState<{ routes: string[]; addrs: string[] } | null>(null);
   const [showRoutes, setShowRoutes] = useState(false);
@@ -1507,12 +1510,13 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     // ── SSH-Quelle: echter Test vom entfernten Gerät aus (z. B. VPS über Tunnel ins Netz) ──
     const st = sshTarget();
     if (st) {
-      const dst = target.kind === 'host' ? (target.ip || 'Host') : (target.ip || target.label);
+      const dst = simAddr.trim() || (target.kind === 'host' ? (target.ip || 'Host') : (target.ip || target.label));
+      const needsAddr = target.kind === 'host' && !target.ip && !simAddr.trim();
       const hops: { label: string; ok: boolean | null; note?: string }[] = [
         { label: tt('Gerät: {x}', { x: `${st.username}@${st.host}` }), ok: true, note: tt('Verbindung per SSH – Test läuft echt von hier aus.') },
-        { label: `${target.label}${dst ? ` (${dst})` : ''}`, ok: null, note: tt('Erreichbarkeit hängt von Tunnel/Routing/Firewall dazwischen ab.') },
+        { label: `${target.label}${dst ? ` (${dst})` : ''}`, ok: null, note: needsAddr ? tt('Ziel hat keine feste IP – bitte oben „Adresse" setzen (z. B. Tunnel-/Pangolin-Hostname).') : tt('„Erreichbare Ports finden" zeigt gleich, was wirklich offen ist.') },
       ];
-      setSimRes({ ok: true, reason: port ? tt('SSH-Quelle bereit – „Live-Test" verbindet sich auf das Gerät und prüft {x}:{p} echt.', { x: dst || target.label, p: port }) : tt('SSH-Quelle bereit – Port angeben und „Live-Test" starten, dann wird vom Gerät aus geprüft.'), fixable: false, hops });
+      setSimRes({ ok: true, reason: tt('SSH-Quelle bereit – „Erreichbare Ports finden" scannt vom Gerät aus und zeigt nur die offenen Ports. (Einzelport per „Live-Test".)'), fixable: false, hops });
       return;
     }
 
@@ -1590,24 +1594,47 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
       // SSH-Quelle: echt AUS dem entfernten Gerät heraus testen (VPS/PC → Ziel)
       const st = sshTarget();
       if (st) {
-        const host = target.kind === 'host' ? (target.ip || st.host) : (target.ip || target.label);
-        const r = await api.ssh.probe(simSrc, host, Number(port));
+        const r = await api.ssh.probe(simSrc, resolveAddr(target, st.host), Number(port));
         setSimLive(r.error === 'no-tool' ? { open: false, ms: r.ms, error: tt('Auf dem Gerät fehlt nc/bash/python3 – konnte von dort nicht testen.') } : r);
         return;
       }
       // Tunnel-Quelle mit lokalem Container: echt AUS dem Tunnel-Container heraus testen
       const tc = isTunnelSrc() ? tunnelEntry() : null;
       if (tc) {
-        const host = target.kind === 'host' ? '172.17.0.1' : (target.ip || '127.0.0.1');
-        const r = await api.networks.probeExec(tc, host, Number(port));
+        const r = await api.networks.probeExec(tc, resolveAddr(target, target.kind === 'host' ? '172.17.0.1' : '127.0.0.1'), Number(port));
         setSimLive(r.error === 'no-tool' ? { open: false, ms: r.ms, error: tt('Im Tunnel-Container fehlt nc/bash/wget – konnte nicht aus ihm heraus testen.') } : r);
       } else {
-        const host = target.kind === 'host' ? '127.0.0.1' : (target.ip || '127.0.0.1');
-        setSimLive(await api.networks.probe(host, Number(port)));
+        setSimLive(await api.networks.probe(resolveAddr(target, '127.0.0.1'), Number(port)));
       }
     }
     catch (e) { setSimLive({ open: false, ms: 0, error: e instanceof Error ? e.message : 'Fehler' }); }
     finally { setSimLiveBusy(false); }
+  };
+  // Ziel-Adresse für Tests: manuelle Überschreibung > Ziel-IP > Standard je Quelle
+  const resolveAddr = (target: StudioNode, fallback: string) => (simAddr.trim() || target.ip || fallback);
+  // Port-Scan: „was ist erreichbar?" – zeigt nur die offenen Ports.
+  const runScan = async () => {
+    const target = nodes.find((n) => n.id === simTarget);
+    if (!target) { setSimScan({ open: [], error: tt('Bitte ein Ziel wählen.') }); return; }
+    setSimScanBusy(true); setSimScan(null);
+    try {
+      const st = sshTarget();
+      if (st) {
+        const r = await api.ssh.scan(simSrc, resolveAddr(target, st.host));
+        setSimScan({ open: r.open || [], error: r.error });
+        return;
+      }
+      const tc = isTunnelSrc() ? tunnelEntry() : null;
+      if (tc) {
+        const r = await api.networks.scanExec(tc, resolveAddr(target, target.kind === 'host' ? '172.17.0.1' : '127.0.0.1'));
+        setSimScan({ open: r.open || [] });
+        return;
+      }
+      const r = await api.networks.scan(resolveAddr(target, target.kind === 'host' ? '127.0.0.1' : '127.0.0.1'));
+      setSimScan({ open: r.open || [] });
+    }
+    catch (e) { setSimScan({ open: [], error: e instanceof Error ? e.message : 'Fehler' }); }
+    finally { setSimScanBusy(false); }
   };
 
   return (
@@ -1833,7 +1860,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Quelle')}</label>
-                <select className="input input--rect" style={{ height: 30, fontSize: 12 }} value={simSrc} onChange={(e) => { setSimSrc(e.target.value); setSimRes(null); setSimLive(null); }}>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12 }} value={simSrc} onChange={(e) => { setSimSrc(e.target.value); setSimRes(null); setSimLive(null); setSimScan(null); }}>
                   <option value="internet">{tt('Internet')}</option>
                   <option value="lan">LAN</option>
                   {tunnel && <option value="tunnel">{tt('Tunnel')} ({tunnel.name})</option>}
@@ -1848,10 +1875,14 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               </div>}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Ziel')}</label>
-                <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); setSimLive(null); }}>
+                <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); setSimLive(null); setSimScan(null); }}>
                   <option value="">{tt('— wählen —')}</option>
                   {nodes.filter((n) => n.kind === 'host' || n.kind === 'docker' || (n.kind === 'ext' && n.ip)).map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
                 </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>{tt('Adresse')} {tt('(optional)')}</label>
+                <input className="input input--rect" style={{ height: 30, fontSize: 12, width: 150, fontFamily: 'var(--font-mono)' }} placeholder={tt('Ziel-IP/Host')} value={simAddr} onChange={(e) => { setSimAddr(e.target.value); setSimScan(null); setSimLive(null); }} title={tt('Überschreibt die Ziel-IP – z. B. der Tunnel-/Pangolin-Hostname, über den das Gerät das Ziel erreicht.')} />
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Port')}</label>
@@ -1860,6 +1891,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
               <button className="btn btn--outline btn--sm" onClick={runSim}><Activity size={13} /> {tt('Simulieren')}</button>
               <button className="btn btn--outline btn--sm" disabled={simLiveBusy} onClick={runLive} title={tt('Echter TCP-Verbindungstest vom Server aus.')}>
                 {simLiveBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Activity size={13} />} {tt('Live-Test')}
+              </button>
+              <button className="btn btn--primary btn--sm" disabled={simScanBusy} onClick={runScan} title={tt('Findet die tatsächlich erreichbaren Ports (nur offene werden gezeigt).')}>
+                {simScanBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Activity size={13} />} {tt('Erreichbare Ports finden')}
               </button>
             </div>
             {simRes && (
@@ -1898,7 +1932,27 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 </span>
               </div>
             )}
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('Einschätzung anhand Docker-Netze, veröffentlichter Ports & Firewall-Regeln. Tunnel = Zugriff aus dem Internet über Pangolin/Newt. Live-Test prüft die TCP-Verbindung tatsächlich – vom Server aus gesehen.')}</div>
+            {/* Port-Scan-Ergebnis: nur die erreichbaren Ports */}
+            {simScan && (
+              <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, border: `1px solid ${simScan.open.length ? 'var(--color-success)' : 'var(--color-border)'}44`, background: simScan.open.length ? 'rgba(34,197,94,.08)' : 'var(--color-surface-sunken)' }}>
+                {simScan.open.length > 0 ? (
+                  <>
+                    <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--color-success)', marginBottom: 5 }}>
+                      ✓ {tt('Erreichbare Ports von {src} → {dst}:', { src: srcLabel(), dst: (simAddr.trim() || nodes.find((n) => n.id === simTarget)?.ip || nodes.find((n) => n.id === simTarget)?.label || '?') })}
+                    </div>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                      {simScan.open.map((p) => (
+                        <button key={p} className="btn btn--sm" style={{ padding: '2px 10px', fontSize: 12, fontWeight: 700, color: 'var(--color-success)', border: '1px solid var(--color-success)', background: 'rgba(34,197,94,.12)' }}
+                          title={tt('Port übernehmen')} onClick={() => setSimPort(String(p))}>{p}</button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>{simScan.error ? simScan.error : tt('Kein Port aus der Standardliste erreichbar. Ggf. Adresse prüfen (richtiger Tunnel-/Hostname?).')}</div>
+                )}
+              </div>
+            )}
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>{tt('„Erreichbare Ports finden" scannt vom gewählten Gerät aus und zeigt nur, was wirklich offen ist. Adresse leer = Ziel-IP; für Tunnel-Wege ggf. den Tunnel-/Pangolin-Hostname eintragen.')}</div>
           </div>
 
           {/* ── Routing-Tabelle (Diagnose: wo hängt es?) ── */}

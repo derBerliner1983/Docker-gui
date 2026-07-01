@@ -6,6 +6,26 @@ import Dockerode from 'dockerode';
 import si from 'systeminformation';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { auditQueries } from '../db/index';
+import { sanitizePorts, scanScript, parseOpenPorts } from '../lib/scan';
+
+// Nebenläufiger TCP-Scan vom Server aus – liefert die offenen Ports.
+async function scanFromHost(host: string, ports: number[]): Promise<number[]> {
+  const open: number[] = [];
+  let idx = 0;
+  const probeOne = (port: number) => new Promise<boolean>((resolve) => {
+    const sock = new net.Socket();
+    let done = false;
+    const fin = (ok: boolean) => { if (done) return; done = true; try { sock.destroy(); } catch { /* */ } resolve(ok); };
+    sock.setTimeout(1000);
+    sock.once('connect', () => fin(true));
+    sock.once('timeout', () => fin(false));
+    sock.once('error', () => fin(false));
+    sock.connect(port, host);
+  });
+  const worker = async () => { while (idx < ports.length) { const p = ports[idx++]; if (await probeOne(p)) open.push(p); } };
+  await Promise.all(Array.from({ length: Math.min(30, ports.length) }, () => worker()));
+  return open.sort((a, b) => a - b);
+}
 
 const execFileP = promisify(execFile);
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
@@ -240,6 +260,27 @@ export async function networkRoutes(fastify: FastifyInstance) {
       if (out.includes('CH_OPEN')) return reply.send({ open: true, ms, method: 'exec' });
       if (out.includes('CH_NOTOOL')) return reply.send({ open: false, ms, error: 'no-tool', method: 'exec' });
       return reply.send({ open: false, ms, error: 'closed', method: 'exec' });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Exec fehlgeschlagen' });
+    }
+  });
+
+  // ── Port-Scan vom Server aus: welche Ports von host sind offen? ──
+  fastify.post<{ Body: { host: string; ports?: number[] } }>('/api/networks/scan', { preHandler: requireAdmin }, async (req, reply) => {
+    const host = (req.body?.host ?? '').trim();
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(host)) return reply.status(400).send({ error: 'Host erforderlich' });
+    const open = await scanFromHost(host, sanitizePorts(req.body?.ports));
+    reply.send({ open });
+  });
+
+  // ── Port-Scan AUS einem Container heraus (Tunnel-Container → Ziel) ──
+  fastify.post<{ Body: { container: string; host: string; ports?: number[] } }>('/api/networks/scan-exec', { preHandler: requireAdmin }, async (req, reply) => {
+    const container = (req.body?.container ?? '').trim();
+    const host = (req.body?.host ?? '').trim();
+    if (!container || !/^[a-zA-Z0-9_.:-]+$/.test(host)) return reply.status(400).send({ error: 'Container und Host erforderlich' });
+    try {
+      const { out } = await dockerExec(container, ['sh', '-c', scanScript(host, sanitizePorts(req.body?.ports))]);
+      reply.send({ open: parseOpenPorts(out) });
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'Exec fehlgeschlagen' });
     }
