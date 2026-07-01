@@ -377,8 +377,8 @@ export async function containerRoutes(fastify: FastifyInstance) {
   );
 
   // Interaktive Shell IN einem Container (docker exec) über WebSocket
-  fastify.get<{ Params: { id: string } }>('/api/containers/:id/exec', { websocket: true }, (connection, req) => {
-    const ws = connection.socket;
+  fastify.get<{ Params: { id: string } }>('/api/containers/:id/exec', { websocket: true }, (ws, req) => {
+    // @fastify/websocket v11 (Fastify 5): der Handler bekommt den WebSocket direkt.
     void (async () => {
       try { await req.jwtVerify(); } catch { ws.close(1008, 'Unauthorized'); return; }
       if (req.user.role !== 'admin') { ws.close(1008, 'Admin erforderlich'); return; }
