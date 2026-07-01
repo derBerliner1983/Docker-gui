@@ -115,8 +115,11 @@ function fmtCtx(n: number): string {
   if (n >= 1000) return (n / 1000).toFixed(0) + 'K Token';
   return n + ' Token';
 }
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' });
+function fmtDate(iso?: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 // Nur den letzten Pfadteil anzeigen (hf.co/user/Modell:Q8_0 → Modell:Q8_0)
