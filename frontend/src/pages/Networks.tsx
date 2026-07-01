@@ -1498,6 +1498,15 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const tunnelEntry = () => simSrc === 'tunnel' ? (tunnel?.name || null) : (czoneOf(simSrc)?.container || (czoneOf(simSrc)?.type === 'tunnel' ? (tunnel?.name || null) : null));
   // SSH-Quelle: ist simSrc ein fremdes Objekt mit hinterlegtem SSH-Zugang?
   const sshTarget = () => sshTargets.find((s) => s.node_id === simSrc) || null;
+  // Aus welcher Perspektive wird wirklich gemessen? (ehrliche Angabe)
+  const isLocalVantage = () => !sshTarget() && !(isTunnelSrc() && tunnelEntry());
+  const vantageLabel = () => {
+    const st = sshTarget();
+    if (st) return tt('echt vom Gerät {x} aus (Sicht aus dem Internet)', { x: `${st.username}@${st.host}` });
+    const tc = isTunnelSrc() ? tunnelEntry() : null;
+    if (tc) return tt('aus dem Tunnel-Container {x}', { x: tc });
+    return tt('vom Server selbst (lokale Sicht – Router/Firewall von außen NICHT berücksichtigt)');
+  };
   const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (extHosts.find((h) => h.id === simSrc)?.name || czoneOf(simSrc)?.label || tt('Zone'));
   const runSim = () => {
     const target = nodes.find((n) => n.id === simTarget);
@@ -1677,6 +1686,15 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 return (<g>
                   <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-warning)" strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.6} />
                   <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--color-warning)">{tt('Tunnel')}</text>
+                </g>);
+              })()}
+              {/* Direkter Weg: Internet-Wolke ↔ Host (nur mit Router-Portfreigabe erreichbar) */}
+              {positions['host'] && cloudRectOf('internet') && (() => {
+                const ic = cloudRectOf('internet')!; const hp = positions['host'];
+                const x1 = ic.x + ic.w / 2, y1 = ic.y + ic.h, x2 = hp.x + NODE_W / 2, y2 = hp.y + NODE_H / 2;
+                return (<g>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-danger)" strokeWidth={1.5} strokeDasharray="2 5" strokeOpacity={0.45} />
+                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="var(--color-danger)" opacity={0.8}>{tt('direkt (nur mit Portfreigabe)')}</text>
                 </g>);
               })()}
               {edges.map((ed, i) => {
@@ -1949,6 +1967,12 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   </>
                 ) : (
                   <div style={{ fontSize: 11.5, color: 'var(--color-muted)' }}>{simScan.error ? simScan.error : tt('Kein Port aus der Standardliste erreichbar. Ggf. Adresse prüfen (richtiger Tunnel-/Hostname?).')}</div>
+                )}
+                <div style={{ marginTop: 5, fontSize: 10.5, color: 'var(--color-faint)' }}>{tt('Gemessen')}: {vantageLabel()}</div>
+                {isLocalVantage() && (
+                  <div style={{ marginTop: 4, fontSize: 10.5, color: 'var(--color-warning)' }}>
+                    ⚠ {tt('Das ist die lokale Server-Sicht, NICHT der echte Weg aus dem Internet. Für „direkt aus dem Internet" ein Gerät (VPS) als Quelle wählen und als Adresse die öffentliche IP eintragen; für den Tunnel-Weg den Pangolin-/Tunnel-Hostname.')}
+                  </div>
                 )}
               </div>
             )}
