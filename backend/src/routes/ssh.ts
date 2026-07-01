@@ -4,6 +4,7 @@ import { db } from '../db/index';
 import { auditQueries } from '../db/index';
 import { requireAdmin } from '../middleware/auth';
 import { encryptSecret, decryptSecret } from '../lib/secrets';
+import { sanitizePorts, scanScript, parseOpenPorts } from '../lib/scan';
 
 // Verschlüsselt hinterlegte SSH-Zugänge zu fremden Objekten (VPS/PC/Server).
 // Erlaubt echte Tests „von diesem Gerät aus" – das System verbindet sich per
@@ -137,5 +138,16 @@ export async function sshRoutes(fastify: FastifyInstance) {
     if (r.out.includes('CH_OPEN')) return reply.send({ open: true, ms: r.ms });
     if (r.out.includes('CH_NOTOOL')) return reply.send({ open: false, ms: r.ms, error: 'no-tool' });
     return reply.send({ open: false, ms: r.ms, error: 'closed' });
+  });
+
+  // Port-Scan AUS dem entfernten Gerät heraus: welche Ports von host sind offen?
+  fastify.post<{ Body: { nodeId: string; host: string; ports?: number[] } }>('/api/ssh/scan', { preHandler: requireAdmin }, async (req, reply) => {
+    const row = q.get.get((req.body?.nodeId || '').trim()) as SshRow | undefined;
+    if (!row) return reply.status(404).send({ error: 'Kein Zugang hinterlegt' });
+    const host = (req.body?.host || '').trim();
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(host)) return reply.status(400).send({ error: 'Host erforderlich' });
+    const r = await sshRun(row, scanScript(host, sanitizePorts(req.body?.ports)));
+    if (!r.ok) return reply.status(200).send({ open: [], ms: r.ms, error: r.error || 'ssh-fehler' });
+    reply.send({ open: parseOpenPorts(r.out), ms: r.ms });
   });
 }
