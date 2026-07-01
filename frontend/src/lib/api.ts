@@ -241,6 +241,15 @@ export const api = {
     routes: () => req<{ routes: string[]; addrs: string[] }>('/api/networks/routes'),
   },
 
+  ssh: {
+    list: () => req<{ targets: { node_id: string; host: string; port: number; username: string; auth_type: 'password' | 'key'; label?: string }[] }>('/api/ssh/targets'),
+    save: (data: { nodeId: string; host: string; port?: number; username: string; authType: 'password' | 'key'; password?: string; privateKey?: string; passphrase?: string; label?: string }) =>
+      req('/api/ssh/targets', { method: 'POST', body: JSON.stringify(data) }),
+    remove: (nodeId: string) => req(`/api/ssh/targets/${encodeURIComponent(nodeId)}`, { method: 'DELETE' }),
+    test: (nodeId: string) => req<{ ok: boolean; ms: number; error?: string }>('/api/ssh/test', { method: 'POST', body: JSON.stringify({ nodeId }) }),
+    probe: (nodeId: string, host: string, port: number) => req<{ open: boolean; ms: number; error?: string }>('/api/ssh/probe', { method: 'POST', body: JSON.stringify({ nodeId, host, port }) }),
+  },
+
   security: {
     scan: () => req<SecurityScan>('/api/security/scan'),
     ssh: () => req<SshStatus>('/api/security/ssh'),

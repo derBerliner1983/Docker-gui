@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Server, Globe, Box, LayoutGrid, Table } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Server, Globe, Box, LayoutGrid, Table, Terminal } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
@@ -1071,7 +1071,87 @@ function HostModal({ open, host, zones, onClose, onSave }: { open: boolean; host
         <label className="form-label">{tt('Notiz')} {tt('(optional)')}</label>
         <input className="input input--rect" placeholder={tt('z. B. Standort, Zweck')} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
-      <div className="form-hint">{tt('SSH-Zugang für echte Tests von diesem Gerät aus folgt im nächsten Schritt.')}</div>
+      <div className="form-hint">{tt('SSH-Zugang für echte Tests von diesem Gerät aus richtest du danach im Inspector ein.')}</div>
+    </Modal>
+  );
+}
+
+// SSH-Zugang zu einem fremden Objekt (verschlüsselt gespeichert)
+function SshModal({ open, node, existing, onClose, onSaved }: { open: boolean; node: StudioNode | null; existing?: { host: string; port: number; username: string; auth_type: 'password' | 'key' }; onClose: () => void; onSaved: () => void }) {
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState('22');
+  const [username, setUsername] = useState('root');
+  const [authType, setAuthType] = useState<'password' | 'key'>('password');
+  const [secret, setSecret] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    setHost(existing?.host || node?.ip || ''); setPort(String(existing?.port || 22));
+    setUsername(existing?.username || 'root'); setAuthType(existing?.auth_type || 'password');
+    setSecret(''); setPassphrase(''); setMsg('');
+  }, [open, node, existing]);
+  if (!open || !node) return null;
+  const save = async () => {
+    if (!host.trim() || !username.trim()) { setMsg(tt('Host und Benutzer erforderlich.')); return; }
+    if (!existing && !secret.trim()) { setMsg(authType === 'key' ? tt('Privaten Schlüssel einfügen.') : tt('Passwort eingeben.')); return; }
+    setBusy(true); setMsg('');
+    try {
+      await api.ssh.save({ nodeId: node.id, host: host.trim(), port: Number(port) || 22, username: username.trim(), authType,
+        password: authType === 'password' ? (secret || undefined) : undefined,
+        privateKey: authType === 'key' ? (secret || undefined) : undefined,
+        passphrase: passphrase || undefined, label: node.label });
+      onSaved(); onClose();
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <Modal open={open} title={tt('SSH-Zugang: {x}', { x: node.label })} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={busy}>{busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : null} {tt('Speichern')}</button>
+      </>}>
+      {msg && <div className="login-error">{msg}</div>}
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 2 }}>
+          <label className="form-label">Host/IP</label>
+          <input className="input input--rect" value={host} onChange={(e) => setHost(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label className="form-label">Port</label>
+          <input className="input input--rect" value={port} onChange={(e) => setPort(e.target.value)} />
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Benutzer')}</label>
+        <input className="input input--rect" value={username} onChange={(e) => setUsername(e.target.value)} style={{ fontFamily: 'var(--font-mono)' }} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tt('Anmeldung')}</label>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button type="button" className={`btn btn--sm ${authType === 'password' ? 'btn--primary' : 'btn--outline'}`} onClick={() => setAuthType('password')}>{tt('Passwort')}</button>
+          <button type="button" className={`btn btn--sm ${authType === 'key' ? 'btn--primary' : 'btn--outline'}`} onClick={() => setAuthType('key')}>{tt('SSH-Schlüssel')}</button>
+        </div>
+      </div>
+      {authType === 'password' ? (
+        <div className="form-group">
+          <label className="form-label">{tt('Passwort')} {existing ? tt('(leer = unverändert)') : ''}</label>
+          <input className="input input--rect" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} autoComplete="new-password" />
+        </div>
+      ) : (
+        <>
+          <div className="form-group">
+            <label className="form-label">{tt('Privater Schlüssel')} {existing ? tt('(leer = unverändert)') : ''}</label>
+            <textarea className="input input--rect" rows={4} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">{tt('Passphrase')} {tt('(optional)')}</label>
+            <input className="input input--rect" type="password" value={passphrase} onChange={(e) => setPassphrase(e.target.value)} autoComplete="new-password" />
+          </div>
+        </>
+      )}
+      <div className="form-hint">{tt('Zugangsdaten werden verschlüsselt (AES-256-GCM) gespeichert. Beim Test verbindet sich das System per SSH und prüft von diesem Gerät aus.')}</div>
     </Modal>
   );
 }
@@ -1165,6 +1245,10 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const [sel, setSel] = useState<string | null>(null);
   const [zoneEdit, setZoneEdit] = useState<{ open: boolean; zone?: CZone }>({ open: false });
   const [hostEdit, setHostEdit] = useState<{ open: boolean; host?: CHost }>({ open: false });
+  const [sshEdit, setSshEdit] = useState<{ open: boolean; node: StudioNode | null }>({ open: false, node: null });
+  const [sshTargets, setSshTargets] = useState<{ node_id: string; host: string; port: number; username: string; auth_type: 'password' | 'key'; label?: string }[]>([]);
+  const [sshMsg, setSshMsg] = useState<Record<string, string>>({});
+  const loadSsh = () => { api.ssh.list().then((r) => setSshTargets(r.targets || [])).catch(() => {}); };
   const [live, setLive] = useState<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement>(null);
   // gx/gy = Greif-Offset innerhalb des Knotens; cl/ct = Canvas-Ursprung beim Greifen
@@ -1200,6 +1284,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   useEffect(() => {
     api.vms.list().then((r) => setVms(r.vms || [])).catch(() => {});
     api.firewall.list().then((r) => { setFwRules(r.rules || []); setFwActive(!!r.active); }).catch(() => {});
+    api.ssh.list().then((r) => setSshTargets(r.targets || [])).catch(() => {});
   }, [networks]);
   // Beim Wechsel des ausgewählten Knotens das Formular zurücksetzen
   useEffect(() => { setRPort(''); setRSrc('lan'); setRIp(''); setRAct('allow'); setRMsg(''); setLinkTo(''); setLinkMsg(''); }, [sel]);
@@ -1408,7 +1493,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   const isTunnelSrc = () => simSrc === 'tunnel' || czoneOf(simSrc)?.type === 'tunnel';
   // Welcher lokale Container ist der Tunnel-Einstieg? (null = externer/unbekannter Einstieg)
   const tunnelEntry = () => simSrc === 'tunnel' ? (tunnel?.name || null) : (czoneOf(simSrc)?.container || (czoneOf(simSrc)?.type === 'tunnel' ? (tunnel?.name || null) : null));
-  const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (czoneOf(simSrc)?.label || tt('Zone'));
+  // SSH-Quelle: ist simSrc ein fremdes Objekt mit hinterlegtem SSH-Zugang?
+  const sshTarget = () => sshTargets.find((s) => s.node_id === simSrc) || null;
+  const srcLabel = () => simSrc === 'internet' ? tt('Internet') : simSrc === 'lan' ? 'LAN' : simSrc === 'tunnel' ? `${tt('Tunnel')} (${tunnel?.name || '?'})` : simSrc === 'ip' ? (simIp.trim() || 'IP') : (extHosts.find((h) => h.id === simSrc)?.name || czoneOf(simSrc)?.label || tt('Zone'));
   const runSim = () => {
     const target = nodes.find((n) => n.id === simTarget);
     if (!target) { setSimRes({ ok: false, reason: tt('Bitte ein Ziel wählen.'), fixable: false }); return; }
@@ -1416,6 +1503,18 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     const published = target.ports || [];
     const isHostOrPublished = target.kind === 'host' || published.length > 0;
     const tname = targetName(target);
+
+    // ── SSH-Quelle: echter Test vom entfernten Gerät aus (z. B. VPS über Tunnel ins Netz) ──
+    const st = sshTarget();
+    if (st) {
+      const dst = target.kind === 'host' ? (target.ip || 'Host') : (target.ip || target.label);
+      const hops: { label: string; ok: boolean | null; note?: string }[] = [
+        { label: tt('Gerät: {x}', { x: `${st.username}@${st.host}` }), ok: true, note: tt('Verbindung per SSH – Test läuft echt von hier aus.') },
+        { label: `${target.label}${dst ? ` (${dst})` : ''}`, ok: null, note: tt('Erreichbarkeit hängt von Tunnel/Routing/Firewall dazwischen ab.') },
+      ];
+      setSimRes({ ok: true, reason: port ? tt('SSH-Quelle bereit – „Live-Test" verbindet sich auf das Gerät und prüft {x}:{p} echt.', { x: dst || target.label, p: port }) : tt('SSH-Quelle bereit – Port angeben und „Live-Test" starten, dann wird vom Gerät aus geprüft.'), fixable: false, hops });
+      return;
+    }
 
     // ── Tunnel-Pfad: Einstieg → (lokaler Tunnel-Container) → Docker-Netz → Ziel ──
     if (isTunnelSrc()) {
@@ -1488,6 +1587,14 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     if (!target || !port) { setSimLive({ open: false, ms: 0, error: tt('Bitte Ziel und Port angeben.') }); return; }
     setSimLiveBusy(true); setSimLive(null);
     try {
+      // SSH-Quelle: echt AUS dem entfernten Gerät heraus testen (VPS/PC → Ziel)
+      const st = sshTarget();
+      if (st) {
+        const host = target.kind === 'host' ? (target.ip || st.host) : (target.ip || target.label);
+        const r = await api.ssh.probe(simSrc, host, Number(port));
+        setSimLive(r.error === 'no-tool' ? { open: false, ms: r.ms, error: tt('Auf dem Gerät fehlt nc/bash/python3 – konnte von dort nicht testen.') } : r);
+        return;
+      }
       // Tunnel-Quelle mit lokalem Container: echt AUS dem Tunnel-Container heraus testen
       const tc = isTunnelSrc() ? tunnelEntry() : null;
       if (tc) {
@@ -1628,6 +1735,33 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 {selNode.nets && selNode.nets.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Netzwerk')}: </span>{selNode.nets.map((x) => `${x.net} (${x.driver})`).join(', ')}</div>}
                 {selNode.ports && selNode.ports.length > 0 && <div><span style={{ color: 'var(--color-faint)' }}>{tt('Ports')}: </span>{selNode.ports.join(', ')}</div>}
 
+                {/* SSH-Zugang für echte Tests von diesem Gerät aus (nur fremde Objekte) */}
+                {selNode.kind === 'ext' && (() => {
+                  const t = sshTargets.find((s) => s.node_id === selNode.id);
+                  return (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Terminal size={12} style={{ color: 'var(--color-accent)' }} />
+                        <span style={{ fontWeight: 600, flex: 1 }}>{tt('SSH-Zugang')}</span>
+                        {t && <span style={{ fontSize: 10, color: 'var(--color-success)' }}>✓ {t.username}@{t.host}</span>}
+                      </div>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        <button className="btn btn--outline btn--sm" onClick={() => setSshEdit({ open: true, node: selNode })}>
+                          {t ? <Pencil size={12} /> : <Plus size={12} />} {t ? tt('Ändern') : tt('Einrichten')}
+                        </button>
+                        {t && <button className="btn btn--outline btn--sm" onClick={async () => {
+                          setSshMsg((m) => ({ ...m, [selNode.id]: tt('teste…') }));
+                          try { const r = await api.ssh.test(selNode.id); setSshMsg((m) => ({ ...m, [selNode.id]: r.ok ? tt('Login OK ({ms} ms)', { ms: String(r.ms) }) : (r.error || tt('Login fehlgeschlagen')) })); }
+                          catch (e) { setSshMsg((m) => ({ ...m, [selNode.id]: e instanceof Error ? e.message : 'Fehler' })); }
+                        }}><Activity size={12} /> {tt('Login testen')}</button>}
+                        {t && <button className="btn btn--ghost btn--icon btn--sm" title={tt('Zugang löschen')} onClick={async () => { if (window.confirm(tt('SSH-Zugang wirklich löschen?'))) { await api.ssh.remove(selNode.id); loadSsh(); setSshMsg((m) => ({ ...m, [selNode.id]: '' })); } }}><Trash2 size={12} /></button>}
+                      </div>
+                      {sshMsg[selNode.id] && <div style={{ fontSize: 10.5, color: 'var(--color-muted)' }}>{sshMsg[selNode.id]}</div>}
+                      <div style={{ fontSize: 10, color: 'var(--color-faint)' }}>{tt('Dann in der Simulation dieses Gerät als Quelle wählen – der Live-Test läuft echt von hier aus.')}</div>
+                    </div>
+                  );
+                })()}
+
                 {(selNode.kind === 'host' || (selNode.ports && selNode.ports.length > 0)) && (
                   <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--color-border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
                     <div style={{ fontWeight: 600 }}>{tt('Zugriff regeln')}</div>
@@ -1705,6 +1839,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                   {tunnel && <option value="tunnel">{tt('Tunnel')} ({tunnel.name})</option>}
                   <option value="ip">{tt('bestimmte IP')}</option>
                   {customZones.map((z) => <option key={z.id} value={z.id}>{z.label}{z.cidr ? ` (${z.cidr})` : ''}</option>)}
+                  {sshTargets.map((s) => <option key={s.node_id} value={s.node_id}>{tt('SSH')}: {extHosts.find((h) => h.id === s.node_id)?.name || s.host}</option>)}
                 </select>
               </div>
               {simSrc === 'ip' && <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1715,7 +1850,7 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 <label className="form-label" style={{ marginBottom: 0 }}>{tt('Ziel')}</label>
                 <select className="input input--rect" style={{ height: 30, fontSize: 12, minWidth: 150 }} value={simTarget} onChange={(e) => { setSimTarget(e.target.value); setSimRes(null); setSimLive(null); }}>
                   <option value="">{tt('— wählen —')}</option>
-                  {nodes.filter((n) => n.kind === 'host' || n.kind === 'docker').map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
+                  {nodes.filter((n) => n.kind === 'host' || n.kind === 'docker' || (n.kind === 'ext' && n.ip)).map((n) => <option key={n.id} value={n.id}>{n.label}</option>)}
                 </select>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1794,6 +1929,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
         onClose={() => setZoneEdit({ open: false })} onSave={saveZone} />
       <HostModal open={hostEdit.open} host={hostEdit.host} zones={cloudDefs.map((c) => ({ key: c.key, label: c.label }))}
         onClose={() => setHostEdit({ open: false })} onSave={saveHost} />
+      <SshModal open={sshEdit.open} node={sshEdit.node} existing={sshEdit.node ? sshTargets.find((s) => s.node_id === sshEdit.node!.id) : undefined}
+        onClose={() => setSshEdit({ open: false, node: null })} onSaved={loadSsh} />
     </Panel>
   );
 }
