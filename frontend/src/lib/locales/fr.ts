@@ -844,4 +844,5 @@ export const fr: Record<string, string> = {
   'Offen': 'Ouvert',
   'Kein offener Port gefunden.': 'Aucun port ouvert trouvé.',
   'Jobs laufen nacheinander (Stapel). Ergebnisse bleiben bis zum Neustart erhalten.': 'Les tâches s\'exécutent l\'une après l\'autre (lot). Les résultats sont conservés jusqu\'au redémarrage.',
+  'Docker-Host (Container laufen hier)': 'Hôte Docker (les conteneurs s\'exécutent ici)',
 };
