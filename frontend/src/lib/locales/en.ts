@@ -844,4 +844,8 @@ export const en: Record<string, string> = {
   'Kein offener Port gefunden.': 'No open port found.',
   'Jobs laufen nacheinander (Stapel). Ergebnisse bleiben bis zum Neustart erhalten.': 'Jobs run one after another (batch). Results are kept until restart.',
   'Docker-Host (Container laufen hier)': 'Docker host (containers run here)',
+  'Nur kritische Ports (22 SSH, 80/443 Web) gefunden – die werden zum Schutz NICHT gesperrt, sonst sperrst du dich aus.': 'Only critical ports (22 SSH, 80/443 web) found – these are NOT blocked for safety, otherwise you would lock yourself out.',
+  ' (22/80/443 wurden zum Schutz übersprungen)': ' (22/80/443 were skipped for safety)',
+  'Diese Ports per Firewall sperren: {ports}?{skip}': 'Block these ports via firewall: {ports}?{skip}',
+  'Gesperrt – {n} Port(e) per Firewall blockiert.{skip} Achtung: das wirkt nur auf den Host-Firewall-Weg. Über den Tunnel oder ein gemeinsames Docker-Netz erreichbare Ports musst du dort trennen (Verbindung lösen bzw. Tunnel-/Pangolin-Regel).': 'Blocked – {n} port(s) blocked via firewall.{skip} Note: this only affects the host firewall path. Ports reachable via the tunnel or a shared Docker network must be cut there (disconnect the link or a tunnel/Pangolin rule).',
 };

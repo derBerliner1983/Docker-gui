@@ -1709,18 +1709,29 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
     catch (e) { if (chk) setChk({ ...chk, reason: e instanceof Error ? e.message : 'Fehler' }); }
     finally { setSimBusy(false); }
   };
+  // Kritische Verwaltungs-Ports NIE automatisch sperren (sonst sperrt man sich aus).
+  const CRITICAL_PORTS = ['22', '80', '443'];
   // „Sperren": erstellt Firewall-Deny-Regeln für die offenen Ports (Host-Firewall-Weg).
   const blockCheck = async () => {
     if (!chk) return;
     const single = simPort.replace(/[^0-9]/g, '');
-    const ports = single ? [single] : chk.ports.map(String);
-    if (!ports.length) return;
+    const requested = single ? [single] : chk.ports.map(String);
+    if (!requested.length) return;
+    // 22/80/443 herausnehmen – sonst verlierst du SSH/Web-Oberfläche
+    const skipped = requested.filter((p) => CRITICAL_PORTS.includes(p));
+    const ports = requested.filter((p) => !CRITICAL_PORTS.includes(p));
+    if (!ports.length) {
+      window.alert(tt('Nur kritische Ports (22 SSH, 80/443 Web) gefunden – die werden zum Schutz NICHT gesperrt, sonst sperrst du dich aus.'));
+      return;
+    }
+    const noteSkip = skipped.length ? tt(' (22/80/443 wurden zum Schutz übersprungen)') : '';
+    if (!window.confirm(tt('Diese Ports per Firewall sperren: {ports}?{skip}', { ports: ports.join(', '), skip: noteSkip }))) return;
     const st = sshTarget();
     const from = simSrc === 'lan' ? LAN_RANGES : simSrc === 'ip' ? simIp.trim() : st ? st.host : (customZones.find((z) => z.id === simSrc)?.cidr || undefined);
     setBlockBusy(true);
     try {
       for (const p of ports) await api.firewall.add({ action: 'deny', port: p, proto: 'tcp', from });
-      setChk({ ...chk, reachable: false, ports: [], reason: tt('Gesperrt – {n} Port(e) per Firewall blockiert. Achtung: das wirkt nur auf den Host-Firewall-Weg. Über den Tunnel oder ein gemeinsames Docker-Netz erreichbare Ports musst du dort trennen (Verbindung lösen bzw. Tunnel-/Pangolin-Regel).', { n: String(ports.length) }) });
+      setChk({ ...chk, reachable: false, ports: [], reason: tt('Gesperrt – {n} Port(e) per Firewall blockiert.{skip} Achtung: das wirkt nur auf den Host-Firewall-Weg. Über den Tunnel oder ein gemeinsames Docker-Netz erreichbare Ports musst du dort trennen (Verbindung lösen bzw. Tunnel-/Pangolin-Regel).', { n: String(ports.length), skip: noteSkip }) });
       onChanged?.();
     } catch (e) { setChk({ ...chk, reason: e instanceof Error ? e.message : 'Fehler' }); }
     finally { setBlockBusy(false); }
