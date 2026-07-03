@@ -1458,6 +1458,17 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
   });
   const cloudRectOf = (key: string) => cloudRects.find((c) => c.key === key);
 
+  // „Maschine": umschließt den Host + die Container, die auf ihm laufen (gleiche Zone).
+  // Zeigt sichtbar, dass die Docker AUF dem Host laufen (nicht eigenständige Rechner).
+  const hostNode = nodes.find((n) => n.id === 'host');
+  const machineMembers = hostNode ? nodes.filter((n) => n.id === 'host' || (n.kind === 'docker' && n.zone === hostNode.zone)) : [];
+  const machineRect = machineMembers.length > 1 ? (() => {
+    const M = 14, TOP = 22;
+    const xs = machineMembers.map((n) => positions[n.id].x), ys = machineMembers.map((n) => positions[n.id].y);
+    const x = Math.min(...xs) - M, y = Math.min(...ys) - M - TOP;
+    return { x: Math.max(0, x), y: Math.max(0, y), w: Math.max(...xs) + NODE_W + M - x, h: Math.max(...ys) + NODE_H + M - y };
+  })() : null;
+
   // ── Erreichbarkeits-Kanten (mit Label & optionalem Link-Paar zum Trennen) ──
   type Edge = { a: string; b: string; label?: string; link?: [string, string] };
   const edges: Edge[] = [];
@@ -1752,6 +1763,16 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 </div>
               </div>
             ))}
+            {/* Maschine: Host + darauf laufende Container */}
+            {machineRect && (
+              <div style={{ position: 'absolute', left: machineRect.x, top: machineRect.y, width: machineRect.w, height: machineRect.h, zIndex: 0,
+                border: '1.5px solid var(--color-accent)', borderRadius: 12, background: 'color-mix(in srgb, var(--color-accent) 5%, transparent)', pointerEvents: 'none' }}>
+                <div style={{ position: 'absolute', top: -11, left: 12, padding: '1px 8px', fontSize: 10.5, fontWeight: 700, color: 'var(--color-accent)',
+                  background: 'var(--color-surface-sunken)', borderRadius: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Server size={11} /> {tt('Docker-Host (Container laufen hier)')}
+                </div>
+              </div>
+            )}
             {/* Kanten */}
             <svg style={{ position: 'absolute', inset: 0, width: maxX, height: maxY, zIndex: 1, pointerEvents: 'none' }}>
               {/* Tunnel: Internet-Wolke ↔ Tunnel-Container */}
@@ -1760,7 +1781,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 const x1 = ic.x + ic.w / 2, y1 = ic.y + ic.h, x2 = tp.x + NODE_W / 2, y2 = tp.y + NODE_H / 2;
                 return (<g>
                   <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-warning)" strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.6} />
-                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--color-warning)">{tt('Tunnel')}</text>
+                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--color-warning)"
+                    stroke="var(--color-surface-sunken)" strokeWidth={3.5} strokeLinejoin="round" paintOrder="stroke">{tt('Tunnel')}</text>
                 </g>);
               })()}
               {/* Direkter Weg: Internet-Wolke ↔ Host (nur mit Router-Portfreigabe erreichbar) */}
@@ -1768,8 +1790,9 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                 const ic = cloudRectOf('internet')!; const hp = positions['host'];
                 const x1 = ic.x + ic.w / 2, y1 = ic.y + ic.h, x2 = hp.x + NODE_W / 2, y2 = hp.y + NODE_H / 2;
                 return (<g>
-                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-danger)" strokeWidth={1.5} strokeDasharray="2 5" strokeOpacity={0.45} />
-                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="var(--color-danger)" opacity={0.8}>{tt('direkt (nur mit Portfreigabe)')}</text>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-danger)" strokeWidth={1.5} strokeDasharray="2 5" strokeOpacity={0.5} />
+                  <text x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 3} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="var(--color-danger)"
+                    stroke="var(--color-surface-sunken)" strokeWidth={3.5} strokeLinejoin="round" paintOrder="stroke">{tt('direkt (nur mit Portfreigabe)')}</text>
                 </g>);
               })()}
               {edges.map((ed, i) => {
@@ -1793,7 +1816,8 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                     )}
                     {link && <text x={mx} y={my + 3.5} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--color-success)" style={{ pointerEvents: 'none' }}>×</text>}
                     {label && !link && (
-                      <text x={mx} y={my - 3} textAnchor="middle" fontSize={9.5} fill="var(--color-muted)" opacity={dim < 0.2 ? 0.4 : 0.9} style={{ pointerEvents: 'none' }}>{label}</text>
+                      <text x={mx} y={my - 3} textAnchor="middle" fontSize={9.5} fill="var(--color-muted)" opacity={dim < 0.2 ? 0.4 : 0.95}
+                        stroke="var(--color-surface-sunken)" strokeWidth={3} strokeLinejoin="round" paintOrder="stroke" style={{ pointerEvents: 'none' }}>{label}</text>
                     )}
                   </g>
                 );
@@ -1812,8 +1836,13 @@ function FirewallStudio({ networks, containers, onChanged }: { networks: DockerN
                       borderLeft: `3px solid ${NODE_COLOR[n.kind]}`, borderRadius: 8, boxShadow: isSel ? '0 0 0 2px var(--color-accent-soft)' : 'none' }}>
                     <Icon size={16} style={{ color: NODE_COLOR[n.kind], flexShrink: 0 }} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.label}</div>
-                      <div style={{ fontSize: 10.5, color: n.reach ? 'var(--color-success)' : 'var(--color-faint)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.reach ? `${n.reach}${n.ports && n.ports.length ? ':' + n.ports[0] : ''}` : (n.ip || n.sub || '')}</div>
+                      <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.2 }}>{n.label}</div>
+                      <div style={{ fontSize: 10, color: n.reach ? 'var(--color-success)' : 'var(--color-faint)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>{n.reach ? `${n.reach}${n.ports && n.ports.length ? ':' + n.ports[0] : ''}` : (n.ip || n.sub || '')}</div>
+                      {n.kind === 'docker' && (n.reach || n.nets?.length) && (
+                        <div style={{ fontSize: 9, color: 'var(--color-faint)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3 }}>
+                          {n.ip ? `${n.ip} · ` : ''}{n.nets?.[0]?.net || ''}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
