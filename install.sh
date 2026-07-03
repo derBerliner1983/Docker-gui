@@ -101,10 +101,26 @@ if [ "${1:-}" = "--update" ]; then
   # Neueste Quelle von GitHub holen (sofern dieses Verzeichnis ein Git-Checkout ist).
   # git pull läuft im SOURCE_DIR (dem ursprünglichen Klon), nicht im INSTALL_DIR.
   if command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
-    info "Hole neueste Version von GitHub (git pull in $SOURCE_DIR)..."
+    info "Hole neueste Version von GitHub (in $SOURCE_DIR)..."
     git config --global --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
-    git -C "$SOURCE_DIR" pull --ff-only 2>&1 || warn "git pull fehlgeschlagen – fahre mit vorhandenem Stand fort"
-    # Neueste VERSION nach dem Pull erneut einlesen
+    # Aktuellen Branch + zugehörigen Remote-Branch bestimmen
+    GIT_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+    GIT_UPSTREAM="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
+    [ -z "$GIT_UPSTREAM" ] && [ -n "$GIT_BRANCH" ] && GIT_UPSTREAM="origin/$GIT_BRANCH"
+    if git -C "$SOURCE_DIR" fetch --tags origin 2>&1 && [ -n "$GIT_UPSTREAM" ]; then
+      # Deployment-Verzeichnis: verwaiste, nicht getrackte Quelldateien entfernen
+      # (blockieren sonst den Merge). node_modules/dist sind ignoriert und bleiben.
+      git -C "$SOURCE_DIR" clean -fd 2>/dev/null || true
+      # Hart auf den Remote-Stand setzen (robust gegen lokale Abweichungen)
+      if git -C "$SOURCE_DIR" reset --hard "$GIT_UPSTREAM" 2>&1; then
+        info "Auf $GIT_UPSTREAM gesetzt."
+      else
+        warn "git reset fehlgeschlagen – fahre mit vorhandenem Stand fort"
+      fi
+    else
+      warn "git fetch fehlgeschlagen – fahre mit vorhandenem Stand fort"
+    fi
+    # Neueste VERSION nach dem Update erneut einlesen
     NEW_VERSION="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || cat ./VERSION 2>/dev/null || echo '0.0.0')"
   fi
 fi
