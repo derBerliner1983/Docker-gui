@@ -24,7 +24,7 @@ import { linuxUserRoutes } from './routes/linuxusers';
 import { proxyRoutes } from './routes/proxy';
 import { settingsRoutes } from './routes/settings';
 import { networkRoutes } from './routes/networks';
-import { firewallRoutes } from './routes/firewall';
+import { firewallRoutes, ensureLanWebAccess } from './routes/firewall';
 import { securityRoutes } from './routes/security';
 import { vmNetworkRoutes } from './routes/vmnetworks';
 import { imageUpdateRoutes } from './routes/imageupdates';
@@ -151,6 +151,9 @@ async function main() {
 
   // Firewall-Verbindungsprotokoll periodisch in die DB einlesen
   startFirewallLogIngest();
+
+  // Sicherstellen, dass die Web-Oberfläche/SSH immer aus dem LAN erreichbar bleibt
+  try { ensureLanWebAccess(); } catch { /* */ }
 }
 
 main().catch((err) => {

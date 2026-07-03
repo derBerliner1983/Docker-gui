@@ -463,6 +463,25 @@ export function buildFirewallAnalysis() {
   return { active, ruleCount: rules.length, defaultIncoming: def, listeningCount: listening.size, findings, counts };
 }
 
+// Garantiert, dass die Web-Oberfläche IMMER aus dem LAN erreichbar bleibt –
+// aber nur aus dem LAN. Nur Web-Ports (443 HTTPS, 80 HTTP→HTTPS-Weiterleitung),
+// bewusst NICHT SSH (22). Läuft beim Start (idempotent, ufw überspringt bereits
+// vorhandene Regeln). Verhindert, dass man sich per „Sperren" aussperrt.
+export function ensureLanWebAccess(): void {
+  try {
+    if (!hasBinary('ufw')) return;
+    const status = safeExec('ufw status 2>/dev/null') || privExecSafe('ufw status');
+    if (!/Status:\s*active/i.test(status)) return; // ufw inaktiv → nichts erzwingen
+    const lans = hostLanSubnets();
+    const ranges = lans.length ? lans : ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
+    for (const port of ['443', '80']) {
+      for (const lan of ranges) {
+        try { privExec(`ufw allow from ${lan} to any port ${port} comment 'Core-Hub Web LAN (immer erreichbar)'`, { timeout: 8000 }); } catch { /* */ }
+      }
+    }
+  } catch { /* ufw nicht verfügbar */ }
+}
+
 export async function firewallRoutes(fastify: FastifyInstance) {
   fastify.get('/api/firewall', { preHandler: requireAuth }, async (_req, reply) => {
     if (!hasBinary('ufw')) {
