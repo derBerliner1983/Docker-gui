@@ -356,7 +356,7 @@ export const api = {
 
   voice: {
     config: () => req<import('./types').VoiceConfig>('/api/voice/config'),
-    setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) =>
+    setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts' | 'whisperModel' | 'voices'>>) =>
       req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
     install: () => req<{ ok: boolean; running: boolean }>('/api/voice/install', { method: 'POST' }),
     installStatus: () => req<{ running: boolean; error: string | null; log: string; daemon: boolean }>('/api/voice/install/status'),

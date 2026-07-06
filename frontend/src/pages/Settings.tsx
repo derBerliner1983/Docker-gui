@@ -680,7 +680,7 @@ function VoicePanel() {
     }, 4000);
   };
 
-  const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) => {
+  const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts' | 'whisperModel' | 'voices'>>) => {
     setBusy(true); setMsg('');
     try { const c = await api.voice.setConfig(patch); setCfg((prev) => (prev ? { ...prev, ...c } : c)); setMsg(tt('Gespeichert')); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
@@ -706,7 +706,7 @@ function VoicePanel() {
             {av.daemon ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachdienst')}
           </span>
           <span className={`badge badge--${av.tts ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
-            {av.tts ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachausgabe')} {av.voices.length > 0 ? `(${av.voices.join(', ')})` : ''}
+            {av.tts ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachausgabe')}
           </span>
           <span className={`badge badge--${cfg.model ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
             {cfg.model ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {cfg.model ? cfg.model.split('/').pop() : tt('kein Modell geladen')}
@@ -765,6 +765,42 @@ function VoicePanel() {
               <button key={l.code} className={`btn btn--sm ${cfg.lang === l.code ? 'btn--primary' : 'btn--outline'}`} disabled={busy} onClick={() => save({ lang: l.code })}>{l.label}</button>
             ))}
           </div>
+        </div>
+
+        {/* TTS-Stimme (für die gewählte Sprache) */}
+        {(() => {
+          const opts = av.catalog?.[cfg.lang] ?? [];
+          const cur = cfg.voices?.[cfg.lang] ?? '';
+          return (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Stimme')} <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}>({cfg.lang.toUpperCase()})</span></div>
+              {opts.length === 0 ? (
+                <div style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{tt('Für diese Sprache ist derzeit keine Stimme verfügbar.')}</div>
+              ) : (
+                <select className="input" style={{ fontSize: 13, maxWidth: 320 }} value={cur} disabled={busy}
+                  onChange={(e) => save({ voices: { [cfg.lang]: e.target.value } })}>
+                  <option value="">{tt('Standard')}{opts[0] ? ` (${opts[0].label})` : ''}</option>
+                  {opts.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}{o.installed ? '' : ' – ' + tt('lädt beim ersten Mal')}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Whisper-Modell (Genauigkeit vs. Tempo) */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Erkennungsmodell (Whisper)')}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(cfg.whisperModels ?? ['tiny', 'base', 'small', 'medium']).map((m) => (
+              <button key={m} className={`btn btn--sm ${cfg.whisperModel === m ? 'btn--primary' : 'btn--outline'}`} disabled={busy}
+                onClick={() => save({ whisperModel: m })} title={av.loaded?.includes(m) ? tt('geladen') : undefined}>
+                {m}{av.loaded?.includes(m) ? ' ●' : ''}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Kleiner = schneller, größer = genauer. „medium" braucht mehr RAM/Zeit. Ein neues Modell wird beim ersten Mal geladen.')}</div>
         </div>
 
         {/* Sprachausgabe */}

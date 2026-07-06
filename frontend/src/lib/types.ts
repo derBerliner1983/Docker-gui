@@ -454,13 +454,18 @@ export interface OllamaModelShow {
   template?: string;
 }
 
+export interface VoiceOpt { id: string; label: string; installed: boolean }
+
 export interface VoiceConfig {
   enabled: boolean;
   wakeword: string;
   lang: 'de' | 'en' | 'th';
   tts: boolean;
+  whisperModel: string;
+  whisperModels?: string[];
+  voices: { de?: string; en?: string; th?: string };
   model: string | null;
-  available: { daemon: boolean; stt: boolean; tts: boolean; voices: string[]; model?: string };
+  available: { daemon: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Record<string, VoiceOpt[]> };
   install?: { running: boolean; error: string | null; log: string };
 }
 
