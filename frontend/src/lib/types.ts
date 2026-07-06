@@ -461,6 +461,7 @@ export interface VoiceConfig {
   tts: boolean;
   model: string | null;
   available: { daemon: boolean; stt: boolean; tts: boolean; voices: string[]; model?: string };
+  install?: { running: boolean; error: string | null; log: string };
 }
 
 export interface NetscanJob {
