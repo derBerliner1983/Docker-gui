@@ -111,6 +111,8 @@ export const en: Record<string, string> = {
   'Verbinde …': 'Connecting …',
   'Antwortet …': 'Answering …',
   'Ich höre …': 'Listening …',
+  'Gehört': 'Heard',
+  'zuletzt erkannt': 'last recognized',
   'Stimme': 'Voice',
   'Für diese Sprache ist derzeit keine Stimme verfügbar.': 'No voice is currently available for this language.',
   'Standard': 'Default',

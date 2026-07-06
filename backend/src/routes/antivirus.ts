@@ -77,7 +77,7 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
       reply.send({ ok: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
-      reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+      reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
     }
   });
 
@@ -123,7 +123,7 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
         reply.send({ ok: true, active });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : `${unit} ließ sich nicht ${req.body?.enable ? 'starten' : 'stoppen'} – evtl. fehlen die Signaturen (erst „Signaturen aktualisieren").` });
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : `${unit} ließ sich nicht ${req.body?.enable ? 'starten' : 'stoppen'} – evtl. fehlen die Signaturen (erst „Signaturen aktualisieren").` });
       }
     }
   );

@@ -104,7 +104,7 @@ export async function updateRoutes(fastify: FastifyInstance) {
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Update fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
       }
     }
   );
