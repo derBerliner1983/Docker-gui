@@ -293,7 +293,8 @@ Font: Inter.
 | Sprachdienst per Button aus dem Tool installierbar (`/api/voice/install`, kein Shell-Zugriff nötig) | ✅ |
 | KI-Zentrale: automatisches Zuhören (Auto-Reconnect), Mute-Schalter; Wellen-Visualisierung (mittig nach außen, nur bei Weckwort/Antwort sichtbar) | ✅ |
 | Weckwort einsprechen (Aufnahme → Whisper), TTS-Stimme je Sprache wählbar, Whisper-Modell (tiny/base/small/medium) umschaltbar | ✅ |
-| Geplant: eigene Stimme klonen (XTTS/Coqui), Sprachmodelle löschen | ⏳ |
+| TTS-Motor **Kokoro** zusätzlich (sehr gute Englisch-Stimmen; Deutsch/Thai bleiben Piper). Stimmen-ID mit Motor-Präfix `piper:` / `kokoro:` | ✅ |
+| Geplant: eigene Stimme klonen (Chatterbox/XTTS), Sprachmodelle löschen | ⏳ |
 
 ### ⏳ Geplant / Ideen
 

@@ -2,25 +2,22 @@
 """
 Core-Hub Voice-Daemon – lokal & kostenlos.
 
-Ein einzelner, schlanker HTTP-Dienst (nur Python-Standardbibliothek als Server)
-für Spracherkennung (STT) und Sprachausgabe (TTS):
+Ein schlanker HTTP-Dienst (nur Python-Standardbibliothek als Server) für
+Spracherkennung (STT) und Sprachausgabe (TTS):
 
-  * STT: faster-whisper (Whisper lokal, multilingual inkl. Deutsch/Englisch/Thai)
-  * TTS: Piper (lokal, schnelle neuronale Stimmen; Stimme je Sprache wählbar)
+  * STT:  faster-whisper (Whisper lokal, multilingual inkl. Deutsch/Englisch/Thai)
+  * TTS:  Piper   (Deutsch, Englisch, … – schnell & leicht)
+          Kokoro  (Englisch u.a. – sehr hohe Qualität; KEIN Deutsch/Thai)
 
-Das Node-Backend (routes/voice.ts) übergibt Whisper-Modell und Stimme je Anfrage
-(Quelle der Wahrheit sind die App-Einstellungen). Es werden KEINE Daten in die
-Cloud geschickt.
+Die Stimme wird als "<engine>:<voice>" adressiert, z.B. "piper:de_DE-thorsten-medium"
+oder "kokoro:am_michael". Ohne Präfix = Piper. Es werden KEINE Daten in die Cloud
+geschickt.
 
 Endpunkte:
   GET  /health                         -> {ok, stt, tts, model, catalog, ...}
   GET  /voices                         -> Stimmen-Katalog je Sprache (+ installiert)
   POST /transcribe?lang=de&model=base  -> Body: int16le 16 kHz mono -> {text, lang}
-  POST /tts?lang=de&voice=<id>         -> Body: UTF-8 Text          -> audio/wav
-
-Umgebungsvariablen:
-  VOICE_PORT (11435), WHISPER_MODEL (base), WHISPER_DEVICE (auto),
-  WHISPER_COMPUTE (int8), VOICE_CACHE (~/.cache/core-hub-voice)
+  POST /tts?lang=de&voice=<engine:id>  -> Body: UTF-8 Text          -> audio/wav
 """
 import io
 import os
@@ -37,11 +34,9 @@ WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 CACHE = os.environ.get("VOICE_CACHE", os.path.expanduser("~/.cache/core-hub-voice"))
 os.makedirs(CACHE, exist_ok=True)
 
-# ── Piper-Stimmen-Katalog (rhasspy/piper-voices auf HuggingFace) ─────────────────
-# Thai: Piper bietet (Stand jetzt) keine offizielle Stimme. STT (Verstehen) läuft
-# trotzdem; eine eigene .onnx/.json-Stimme kann hier ergänzt werden.
+# ── Piper-Stimmen (rhasspy/piper-voices) ─────────────────────────────────────────
 PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
-CATALOG = {
+PIPER_VOICES = {
     "de": [
         {"id": "de_DE-thorsten-medium", "label": "Thorsten (mittel)", "rel": "de/de_DE/thorsten/medium/de_DE-thorsten-medium"},
         {"id": "de_DE-thorsten-high",   "label": "Thorsten (hoch)",   "rel": "de/de_DE/thorsten/high/de_DE-thorsten-high"},
@@ -52,19 +47,42 @@ CATALOG = {
     "en": [
         {"id": "en_US-amy-medium",    "label": "Amy (US)",    "rel": "en/en_US/amy/medium/en_US-amy-medium"},
         {"id": "en_US-lessac-medium", "label": "Lessac (US)", "rel": "en/en_US/lessac/medium/en_US-lessac-medium"},
-        {"id": "en_US-ryan-high",     "label": "Ryan (US)",   "rel": "en/en_US/ryan/high/en_US-ryan-high"},
         {"id": "en_GB-alan-medium",   "label": "Alan (GB)",   "rel": "en/en_GB/alan/medium/en_GB-alan-medium"},
     ],
     "th": [],
 }
-REL_BY_ID = {v["id"]: v["rel"] for langs in CATALOG.values() for v in langs}
+PIPER_REL = {v["id"]: v["rel"] for langs in PIPER_VOICES.values() for v in langs}
+
+# ── Kokoro-Stimmen (nur Sprachen, die Kokoro kann – KEIN Deutsch/Thai) ───────────
+KOKORO_ONNX_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
+KOKORO_VOICES_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
+KOKORO_VOICES = {
+    "en": [
+        {"id": "af_heart",   "label": "Heart (US)"},
+        {"id": "af_bella",   "label": "Bella (US)"},
+        {"id": "am_michael", "label": "Michael (US)"},
+        {"id": "am_adam",    "label": "Adam (US)"},
+        {"id": "bf_emma",    "label": "Emma (GB)"},
+        {"id": "bm_george",  "label": "George (GB)"},
+    ],
+}
 
 _whisper = {}   # size -> WhisperModel
 _piper = {}     # voice_id -> PiperVoice
+_kokoro = None  # Kokoro-Instanz
 
 
 def log(*a):
     print("[voiced]", *a, flush=True)
+
+
+def _download(url: str, dest: str):
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        return
+    log(f"lade herunter: {os.path.basename(dest)}")
+    tmp = dest + ".part"
+    urllib.request.urlretrieve(url, tmp)
+    os.replace(tmp, dest)
 
 
 # ── STT: faster-whisper (je Modellgröße gecacht) ─────────────────────────────────
@@ -91,35 +109,20 @@ def transcribe(pcm: bytes, lang: str, size: str) -> str:
     return "".join(s.text for s in segments).strip()
 
 
-# ── TTS: Piper (Stimme je Sprache; bei Bedarf herunterladen) ─────────────────────
-def _voice_paths(voice_id: str):
-    name = voice_id
-    return os.path.join(CACHE, name + ".onnx"), os.path.join(CACHE, name + ".onnx.json")
-
-
-def _download(url: str, dest: str):
-    if os.path.exists(dest) and os.path.getsize(dest) > 0:
-        return
-    log(f"lade Stimme herunter: {os.path.basename(dest)}")
-    tmp = dest + ".part"
-    urllib.request.urlretrieve(url, tmp)
-    os.replace(tmp, dest)
-
-
-def default_voice(lang: str):
-    opts = CATALOG.get(lang) or []
-    return opts[0]["id"] if opts else None
+# ── TTS: Piper ───────────────────────────────────────────────────────────────────
+def _piper_paths(voice_id: str):
+    return os.path.join(CACHE, voice_id + ".onnx"), os.path.join(CACHE, voice_id + ".onnx.json")
 
 
 def get_piper(voice_id: str):
     if voice_id in _piper:
         return _piper[voice_id]
-    rel = REL_BY_ID.get(voice_id)
+    rel = PIPER_REL.get(voice_id)
     if not rel:
         _piper[voice_id] = None
         return None
     from piper import PiperVoice  # type: ignore
-    onnx, conf = _voice_paths(voice_id)
+    onnx, conf = _piper_paths(voice_id)
     _download(f"{PIPER_BASE}/{rel}.onnx", onnx)
     _download(f"{PIPER_BASE}/{rel}.onnx.json", conf)
     voice = PiperVoice.load(onnx, config_path=conf)
@@ -128,11 +131,10 @@ def get_piper(voice_id: str):
     return voice
 
 
-def synthesize(text: str, lang: str, voice_id: str) -> bytes:
-    vid = voice_id or default_voice(lang)
-    voice = get_piper(vid) if vid else None
+def piper_tts(text: str, voice_id: str) -> bytes:
+    voice = get_piper(voice_id)
     if voice is None:
-        raise RuntimeError(f"keine TTS-Stimme für '{lang}'")
+        raise RuntimeError(f"unbekannte Piper-Stimme '{voice_id}'")
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
         try:
@@ -145,13 +147,76 @@ def synthesize(text: str, lang: str, voice_id: str) -> bytes:
     return buf.getvalue()
 
 
+# ── TTS: Kokoro (nur wenn kokoro-onnx installiert) ───────────────────────────────
+def _kokoro_files_ready() -> bool:
+    return os.path.exists(os.path.join(CACHE, "kokoro-v1.0.onnx"))
+
+
+def get_kokoro():
+    global _kokoro
+    if _kokoro is None:
+        from kokoro_onnx import Kokoro  # type: ignore
+        onnx = os.path.join(CACHE, "kokoro-v1.0.onnx")
+        voices = os.path.join(CACHE, "voices-v1.0.bin")
+        _download(KOKORO_ONNX_URL, onnx)
+        _download(KOKORO_VOICES_URL, voices)
+        _kokoro = Kokoro(onnx, voices)
+        log("Kokoro geladen")
+    return _kokoro
+
+
+def kokoro_available() -> bool:
+    try:
+        import kokoro_onnx  # type: ignore  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def kokoro_tts(text: str, voice_id: str) -> bytes:
+    import numpy as np  # type: ignore
+    k = get_kokoro()
+    lang = "en-gb" if voice_id[:1] == "b" else "en-us"
+    samples, sr = k.create(text, voice=voice_id, speed=1.0, lang=lang)
+    pcm16 = (np.clip(np.asarray(samples), -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sr))
+        wf.writeframes(pcm16)
+    return buf.getvalue()
+
+
+def default_voice(lang: str):
+    opts = PIPER_VOICES.get(lang) or []
+    return "piper:" + opts[0]["id"] if opts else None
+
+
+def synthesize(text: str, lang: str, voice_id: str) -> bytes:
+    vid = voice_id or default_voice(lang)
+    if not vid:
+        raise RuntimeError(f"keine TTS-Stimme für '{lang}'")
+    engine, sep, name = vid.partition(":")
+    if not sep:  # ohne Präfix = Piper
+        engine, name = "piper", vid
+    if engine == "kokoro":
+        return kokoro_tts(text, name)
+    return piper_tts(text, name)
+
+
 def catalog_with_state():
+    kok = kokoro_available()
     out = {}
-    for lang, opts in CATALOG.items():
-        out[lang] = []
-        for v in opts:
-            onnx, _ = _voice_paths(v["id"])
-            out[lang].append({"id": v["id"], "label": v["label"], "installed": os.path.exists(onnx)})
+    for lang in ["de", "en", "th"]:
+        items = []
+        for v in PIPER_VOICES.get(lang, []):
+            onnx, _ = _piper_paths(v["id"])
+            items.append({"id": "piper:" + v["id"], "label": v["label"] + " · Piper", "installed": os.path.exists(onnx)})
+        if kok:
+            for v in KOKORO_VOICES.get(lang, []):
+                items.append({"id": "kokoro:" + v["id"], "label": v["label"] + " · Kokoro", "installed": _kokoro_files_ready()})
+        out[lang] = items
     return out
 
 
@@ -174,12 +239,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/health":
+            cat = catalog_with_state()
             self._json(200, {
                 "ok": True, "stt": True,
-                "tts": any(CATALOG.values()),
+                "tts": any(cat.values()),
                 "model": DEFAULT_MODEL,
                 "loaded": list(_whisper.keys()),
-                "catalog": catalog_with_state(),
+                "kokoro": kokoro_available(),
+                "catalog": cat,
             })
         elif p == "/voices":
             self._json(200, {"catalog": catalog_with_state()})
@@ -208,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    log(f"starte auf 127.0.0.1:{PORT}")
+    log(f"starte auf 127.0.0.1:{PORT} (Kokoro verfügbar: {kokoro_available()})")
     try:
         get_whisper(DEFAULT_MODEL)
     except Exception as e:  # noqa: BLE001
