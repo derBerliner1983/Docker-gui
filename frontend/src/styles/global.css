@@ -121,6 +121,16 @@ body {
 
 .page { flex: 1; overflow-y: auto; padding: 26px 28px 48px; }
 
+/* KI-Zentrale: Weltkugel (füllt den Platz) + rechte Status-Spalte */
+.aihub-layout { flex: 1; display: flex; gap: 18px; min-height: 0; }
+.aihub-globe { flex: 1; min-height: 0; min-width: 0; }
+.aihub-side { width: 288px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+@media (max-width: 760px) {
+  .aihub-layout { flex-direction: column; }
+  .aihub-globe { min-height: 300px; }
+  .aihub-side { width: 100%; flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
+}
+
 .page-header {
   display: flex; align-items: center;
   justify-content: space-between; margin-bottom: 22px;
