@@ -21,47 +21,35 @@ error() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 
 [ "$EUID" -ne 0 ] && error "Bitte als root ausführen: sudo bash install.sh"
 
-# ── KI-Erweiterung: Ollama installieren ──────────────────────────────────────
-if [ "${1:-}" = "--ki" ]; then
-  info "=== $APP_NAME – KI-Erweiterung (Ollama) ==="
-  if command -v ollama &>/dev/null; then
-    info "Ollama ist bereits installiert ($(ollama --version 2>/dev/null || echo 'unbekannte Version'))."
-  else
-    info "Lade und installiere Ollama..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    info "Ollama installiert."
-  fi
-  systemctl enable ollama 2>/dev/null || true
-  systemctl start  ollama 2>/dev/null || true
-  info "Ollama-Dienst aktiviert und gestartet (Port 11434)."
-  info "KI-Modelle jetzt unter dem Reiter 'KI-Modelle' in Core-Hub verwalten."
-  exit 0
-fi
-
-# ── Sprachsteuerung: lokaler Voice-Daemon (Whisper STT + Piper TTS) ──────────────
-if [ "${1:-}" = "--voice" ]; then
-  info "=== $APP_NAME – Sprachsteuerung (Whisper + Piper, lokal) ==="
-  info "Installiere Python + Audio-Abhängigkeiten..."
-  apt-get update -qq 2>/dev/null || true
-  apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg 2>/dev/null \
-    || error "Konnte python3/venv/ffmpeg nicht installieren (nur apt/Debian/Ubuntu unterstützt)."
-
-  VOICE_DIR="$INSTALL_DIR/voice"
-  # voiced.py-Quelle: bevorzugt aus der Installation, sonst aus dem Git-Checkout
-  SRC_PY="$INSTALL_DIR/backend/voice/voiced.py"
+# ── Sprachsteuerung einrichten/aktualisieren (Whisper STT + Piper TTS, lokal) ────
+# Wird von `--voice` UND vom normalen Install/Update aufgerufen (letzteres nur,
+# wenn die Sprachsteuerung bereits installiert ist oder `--with-voice` angegeben
+# wurde). Idempotent: bereits vorhandene venv/Pakete werden nicht neu geladen.
+setup_voice() {
+  local VOICE_DIR="$INSTALL_DIR/voice"
+  local SRC_PY="$INSTALL_DIR/backend/voice/voiced.py"
   [ -f "$SRC_PY" ] || SRC_PY="$SOURCE_DIR/backend/voice/voiced.py"
-  [ -f "$SRC_PY" ] || error "voiced.py nicht gefunden. Zuerst Core-Hub installieren (sudo bash install.sh)."
+  if [ ! -f "$SRC_PY" ]; then warn "voiced.py nicht gefunden – Sprachsteuerung übersprungen."; return 0; fi
   mkdir -p "$VOICE_DIR" "$DATA_DIR/voice-cache"
   cp "$SRC_PY" "$VOICE_DIR/voiced.py"
 
-  info "Erstelle Python-venv und installiere faster-whisper + piper-tts (kann etwas dauern)..."
-  python3 -m venv "$VOICE_DIR/venv"
-  "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null
-  "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts \
-    || error "pip-Installation fehlgeschlagen (faster-whisper / piper-tts)."
+  if [ ! -d "$VOICE_DIR/venv" ]; then
+    info "Sprachsteuerung: installiere Python + faster-whisper + piper-tts (einmalig, kann dauern)..."
+    apt-get update -qq 2>/dev/null || true
+    if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg 2>/dev/null; then
+      warn "python3/venv/ffmpeg konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
+    fi
+    python3 -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
+    "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
+    if ! "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts; then
+      warn "pip-Installation (faster-whisper/piper-tts) fehlgeschlagen – Sprachsteuerung übersprungen."; return 0
+    fi
+  elif ! "$VOICE_DIR/venv/bin/python" -c "import faster_whisper" 2>/dev/null; then
+    "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts || true
+  fi
 
   id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" "$DATA_DIR/voice-cache" 2>/dev/null || true
-  RUN_USER="$SERVICE_USER"; id "$RUN_USER" &>/dev/null || RUN_USER="root"
+  local RUN_USER="$SERVICE_USER"; id "$RUN_USER" &>/dev/null || RUN_USER="root"
 
   cat > "/etc/systemd/system/core-hub-voice.service" <<EOF
 [Unit]
@@ -83,12 +71,35 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-
   systemctl daemon-reload
   systemctl enable core-hub-voice 2>/dev/null || true
   systemctl restart core-hub-voice 2>/dev/null || true
-  info "Voice-Dienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
+  info "Sprachdienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
+}
+
+# ── KI-Erweiterung: Ollama installieren ──────────────────────────────────────
+if [ "${1:-}" = "--ki" ]; then
+  info "=== $APP_NAME – KI-Erweiterung (Ollama) ==="
+  if command -v ollama &>/dev/null; then
+    info "Ollama ist bereits installiert ($(ollama --version 2>/dev/null || echo 'unbekannte Version'))."
+  else
+    info "Lade und installiere Ollama..."
+    curl -fsSL https://ollama.com/install.sh | sh
+    info "Ollama installiert."
+  fi
+  systemctl enable ollama 2>/dev/null || true
+  systemctl start  ollama 2>/dev/null || true
+  info "Ollama-Dienst aktiviert und gestartet (Port 11434)."
+  info "KI-Modelle jetzt unter dem Reiter 'KI-Modelle' in Core-Hub verwalten."
+  exit 0
+fi
+
+# ── Sprachsteuerung: lokaler Voice-Daemon (Whisper STT + Piper TTS) ──────────────
+if [ "${1:-}" = "--voice" ]; then
+  info "=== $APP_NAME – Sprachsteuerung (Whisper + Piper, lokal) ==="
+  setup_voice
   info "Sprache & Weckwort in Core-Hub unter 'Einstellungen → Sprachsteuerung' festlegen."
+  info "Ab jetzt wird die Sprachsteuerung bei jedem Update automatisch mit aktualisiert."
   info "Ein größeres/besseres Modell: 'WHISPER_MODEL=small' in /etc/systemd/system/core-hub-voice.service."
   exit 0
 fi
@@ -480,6 +491,17 @@ EOF
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
+
+# ── Sprachsteuerung automatisch mitziehen ──
+# Bei jedem Install/Update aktualisieren, wenn sie schon eingerichtet ist
+# (systemd-Unit oder venv vorhanden) oder wenn `--with-voice` angegeben wurde.
+WANT_VOICE=0
+case " $* " in *" --with-voice "*) WANT_VOICE=1;; esac
+if [ -f /etc/systemd/system/core-hub-voice.service ] || [ -d "$INSTALL_DIR/voice/venv" ]; then WANT_VOICE=1; fi
+if [ "$WANT_VOICE" = "1" ]; then
+  info "Aktualisiere Sprachsteuerung mit..."
+  setup_voice || warn "Sprachsteuerung konnte nicht aktualisiert werden."
+fi
 
 sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then

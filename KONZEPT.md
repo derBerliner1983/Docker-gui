@@ -289,7 +289,7 @@ Font: Inter.
 | Browser-Mikrofon → Server-Pipeline (VAD-Segmentierung, WebSocket) | ✅ |
 | Gefühlt schnell: sofortiges „Verstanden"-Feedback, Antwort wird **satzweise** vorgelesen (kein Warten auf die Gesamtantwort) | ✅ |
 | Einstellungen → Sprachsteuerung: An/Aus, Weckwort, Sprache, Vorlesen | ✅ |
-| Installer: `sudo bash install.sh --voice` (Python-venv + faster-whisper + piper-tts, systemd-Dienst `core-hub-voice`) | ✅ |
+| Installer: `sudo bash install.sh --voice` bzw. `--with-voice`; danach bei jedem Update automatisch mit aktualisiert (systemd-Dienst `core-hub-voice`) | ✅ |
 
 ### ⏳ Geplant / Ideen
 
