@@ -27,6 +27,7 @@ export const es: Record<string, string> = {
   'nav.users': 'Usuarios',
   'nav.settings': 'Ajustes',
   'nav.ai': 'Modelos de IA',
+  'nav.aihub': 'Centro de IA',
 
   // ── Sidebar / chrome ──
   'sidebar.updateAvailable': 'Actualización disponible',
@@ -75,6 +76,14 @@ export const es: Record<string, string> = {
   'page.backups.subtitle': '{n} copias · {size} · {dir}',
   'page.packages.subtitle': '{manager} · {n} instalados · {size}',
   'page.ai.subtitle': '{n} modelos · {size} usados',
+  'page.aihub.subtitle.active': '{n} modelo(s) activo(s) en memoria',
+  'Keine KI aktiv': 'Ninguna IA activa',
+  'KI aktiv im Arbeitsspeicher': 'IA activa en memoria',
+  '1 Sprachmodell ist geladen und einsatzbereit.': '1 modelo de lenguaje está cargado y listo.',
+  '{n} Sprachmodelle sind geladen und einsatzbereit.': '{n} modelos de lenguaje están cargados y listos.',
+  'Aktuell keine KI in den Arbeitsspeicher geladen': 'Actualmente no hay ninguna IA cargada en memoria',
+  'Lade unter „KI-Modelle" ein Sprachmodell in den Arbeitsspeicher (RAM oder GPU), damit die KI-Visualisierung erscheint.': 'Carga un modelo de lenguaje en memoria (RAM o GPU) en «Modelos de IA» para que aparezca la visualización de IA.',
+  'Hinweis: Ollama ist derzeit gestoppt.': 'Nota: Ollama está detenido actualmente.',
   'page.notFound': 'Contenedor no encontrado',
   'page.back': '← Volver',
 

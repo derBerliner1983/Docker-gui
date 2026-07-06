@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import {
   LayoutDashboard, Container, MonitorPlay, FolderOpen, Settings,
-  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes, Files, BrainCircuit,
+  Users, Activity, Clock, Moon, Sun, ChevronLeft, ChevronRight, LogOut, HardDrive, RefreshCw, ShieldCheck, Network, ShieldAlert, Bug, LayoutGrid, TerminalSquare, Boxes, Files, BrainCircuit, Orbit,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useT, tt } from '../../lib/i18n';
@@ -159,12 +159,22 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
             <div className="sidebar__section-label">{t('nav.section.ai')}</div>
             <NavLink
               to="/ki"
+              end
               className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
               title={collapsed ? t('nav.ai') : undefined}
               onClick={handleNavClick}
             >
               <BrainCircuit className="sidebar__item-icon" />
               <span className="sidebar__item-label">{t('nav.ai')}</span>
+            </NavLink>
+            <NavLink
+              to="/ki/hub"
+              className={({ isActive }) => `sidebar__item${isActive ? ' sidebar__item--active' : ''}`}
+              title={collapsed ? t('nav.aihub') : undefined}
+              onClick={handleNavClick}
+            >
+              <Orbit className="sidebar__item-icon" />
+              <span className="sidebar__item-label">{t('nav.aihub')}</span>
             </NavLink>
           </div>
         )}
