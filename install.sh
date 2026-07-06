@@ -34,18 +34,26 @@ setup_voice() {
   cp "$SRC_PY" "$VOICE_DIR/voiced.py"
 
   if [ ! -d "$VOICE_DIR/venv" ]; then
-    info "Sprachsteuerung: installiere Python + faster-whisper + piper-tts (einmalig, kann dauern)..."
+    info "Sprachsteuerung: installiere Python + faster-whisper + piper-tts + kokoro (einmalig, kann dauern)..."
     apt-get update -qq 2>/dev/null || true
-    if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg 2>/dev/null; then
-      warn "python3/venv/ffmpeg konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
+    if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg espeak-ng 2>/dev/null; then
+      warn "python3/venv/ffmpeg/espeak-ng konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
     fi
     python3 -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
     "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
     if ! "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts; then
       warn "pip-Installation (faster-whisper/piper-tts) fehlgeschlagen – Sprachsteuerung übersprungen."; return 0
     fi
-  elif ! "$VOICE_DIR/venv/bin/python" -c "import faster_whisper" 2>/dev/null; then
-    "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts || true
+    # Kokoro (bessere Englisch-Stimmen) – optional, bricht die Installation nicht ab
+    "$VOICE_DIR/venv/bin/pip" install kokoro-onnx soundfile 2>/dev/null || warn "Kokoro-TTS konnte nicht installiert werden (Englisch bleibt bei Piper)."
+  else
+    if ! "$VOICE_DIR/venv/bin/python" -c "import faster_whisper" 2>/dev/null; then
+      "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts || true
+    fi
+    if ! "$VOICE_DIR/venv/bin/python" -c "import kokoro_onnx" 2>/dev/null; then
+      apt-get install -y --no-install-recommends espeak-ng 2>/dev/null || true
+      "$VOICE_DIR/venv/bin/pip" install kokoro-onnx soundfile 2>/dev/null || true
+    fi
   fi
 
   id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" "$DATA_DIR/voice-cache" 2>/dev/null || true
