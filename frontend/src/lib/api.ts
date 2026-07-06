@@ -358,6 +358,8 @@ export const api = {
     config: () => req<import('./types').VoiceConfig>('/api/voice/config'),
     setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) =>
       req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
+    install: () => req<{ ok: boolean; running: boolean }>('/api/voice/install', { method: 'POST' }),
+    installStatus: () => req<{ running: boolean; error: string | null; log: string; daemon: boolean }>('/api/voice/install/status'),
   },
 
   cron: {

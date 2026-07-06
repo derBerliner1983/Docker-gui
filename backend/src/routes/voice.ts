@@ -1,5 +1,9 @@
 import type { FastifyInstance } from 'fastify';
+import { spawn } from 'child_process';
+import path from 'path';
+import fs from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
+import { isRoot } from '../lib/privilege';
 import { appSettingsQueries } from '../db/index';
 
 // ── lokaler Voice-Daemon (Whisper STT + Piper TTS) ───────────────────────────────
@@ -153,6 +157,47 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/[.,!?;:„"“”'’()\-]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// ── Selbst-Installation des Sprachdienstes über install.sh (--voice) ──────────────
+// Läuft im Hintergrund; /bin/bash ist in der sudoers-Allowlist, daher braucht das
+// Verwaltungstool dafür keine Shell vom Benutzer.
+const install = { running: false, log: '', error: '' as string | null, startedAt: 0 };
+
+function installScriptPath(): string | null {
+  for (const p of [
+    path.resolve(process.cwd(), '..', 'install.sh'),
+    '/opt/core-hub/install.sh',
+    path.resolve(__dirname, '../../../install.sh'),
+  ]) {
+    try { if (fs.existsSync(p)) return p; } catch { /* */ }
+  }
+  return null;
+}
+
+function startVoiceInstall(): { started: boolean; error?: string } {
+  if (install.running) return { started: true };
+  const script = installScriptPath();
+  if (!script) return { started: false, error: 'install.sh nicht gefunden' };
+  install.running = true; install.log = ''; install.error = null; install.startedAt = Date.now();
+  const bin = isRoot ? '/bin/bash' : 'sudo';
+  const args = isRoot ? [script, '--voice'] : ['-n', '/bin/bash', script, '--voice'];
+  let child;
+  try {
+    child = spawn(bin, args, { cwd: path.dirname(script) });
+  } catch (e) {
+    install.running = false; install.error = e instanceof Error ? e.message : 'Start fehlgeschlagen';
+    return { started: false, error: install.error };
+  }
+  const append = (d: Buffer) => { install.log = (install.log + d.toString()).slice(-6000); };
+  child.stdout.on('data', append);
+  child.stderr.on('data', append);
+  child.on('close', (code) => {
+    install.running = false;
+    install.error = code === 0 ? null : `Installation fehlgeschlagen (Code ${code}). Details siehe Log.`;
+  });
+  child.on('error', (e) => { install.running = false; install.error = e.message; });
+  return { started: true };
+}
+
 export async function voiceRoutes(fastify: FastifyInstance) {
 
   // ── Konfiguration + Verfügbarkeit ──
@@ -160,7 +205,24 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const cfg = readConfig();
     const health = await daemonHealth();
     const model = await loadedModel();
-    reply.send({ ...cfg, available: { daemon: health.ok, stt: health.stt, tts: health.tts, voices: health.voices, model: health.model }, model });
+    reply.send({
+      ...cfg,
+      available: { daemon: health.ok, stt: health.stt, tts: health.tts, voices: health.voices, model: health.model },
+      model,
+      install: { running: install.running, error: install.error, log: install.log.slice(-1200) },
+    });
+  });
+
+  // Sprachdienst über das Verwaltungstool installieren (Hintergrund)
+  fastify.post('/api/voice/install', { preHandler: requireAdmin }, async (_req, reply) => {
+    const r = startVoiceInstall();
+    if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
+    reply.send({ ok: true, running: install.running });
+  });
+
+  fastify.get('/api/voice/install/status', { preHandler: requireAuth }, async (_req, reply) => {
+    const health = await daemonHealth();
+    reply.send({ running: install.running, error: install.error, log: install.log.slice(-4000), daemon: health.ok });
   });
 
   fastify.post<{ Body: Partial<VoiceConfig> }>('/api/voice/config', { preHandler: requireAdmin }, async (req, reply) => {

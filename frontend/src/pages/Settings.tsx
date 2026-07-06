@@ -636,10 +636,33 @@ function VoicePanel() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
+  const [installing, setInstalling] = useState(false);
+  const [installLog, setInstallLog] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const load = useCallback(async () => {
-    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); } catch { /* */ }
+    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); if (c.install?.running) setInstalling(true); } catch { /* */ }
   }, []);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  const startInstall = async () => {
+    setInstalling(true); setInstallLog(''); setMsg('');
+    try { await api.voice.install(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setInstalling(false); return; }
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const st = await api.voice.installStatus();
+        setInstallLog(st.log.slice(-1500));
+        if (!st.running) {
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setInstalling(false);
+          if (st.error) setMsg(st.error); else setMsg(tt('Sprachdienst installiert.'));
+          void load();
+        }
+      } catch { /* */ }
+    }, 4000);
+  };
 
   const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) => {
     setBusy(true); setMsg('');
@@ -674,12 +697,22 @@ function VoicePanel() {
           </span>
         </div>
         {!av.daemon && (
-          <div style={{ fontSize: 12, color: 'var(--color-warning)', lineHeight: 1.6 }}>
-            {tt('Der lokale Sprachdienst läuft nicht. Installiere ihn einmalig mit:')}
-            <code style={{ display: 'block', marginTop: 6, background: 'var(--color-surface-sunken)', padding: '8px 12px', borderRadius: 6, fontSize: 12 }}>sudo bash install.sh --voice</code>
-            <span style={{ display: 'block', marginTop: 6, color: 'var(--color-muted)' }}>
-              {tt('Danach wird er bei jedem Update automatisch mit aktualisiert (kein separater Befehl nötig).')}
-            </span>
+          <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6, background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px' }}>
+            <div style={{ color: 'var(--color-warning)', fontWeight: 600, marginBottom: 8 }}>{tt('Der lokale Sprachdienst ist noch nicht installiert.')}</div>
+            <button className="btn btn--primary btn--sm" disabled={installing} onClick={() => void startInstall()}>
+              {installing
+                ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Installiere … (kann einige Minuten dauern)')}</>
+                : <><Download size={12} /> {tt('Jetzt installieren')}</>}
+            </button>
+            <div style={{ marginTop: 8 }}>
+              {tt('Das Verwaltungstool richtet Whisper + Piper selbst ein (per install.sh). Danach wird der Dienst bei jedem Update automatisch mit aktualisiert.')}
+            </div>
+            {installLog && (
+              <pre style={{ marginTop: 8, maxHeight: 140, overflow: 'auto', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', fontSize: 10.5, color: 'var(--color-faint)', whiteSpace: 'pre-wrap' }}>{installLog}</pre>
+            )}
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--color-faint)' }}>
+              {tt('Alternativ manuell:')} <code style={{ background: 'var(--color-surface)', padding: '1px 6px', borderRadius: 4 }}>sudo bash install.sh --voice</code>
+            </div>
           </div>
         )}
 
