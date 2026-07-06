@@ -454,6 +454,15 @@ export interface OllamaModelShow {
   template?: string;
 }
 
+export interface VoiceConfig {
+  enabled: boolean;
+  wakeword: string;
+  lang: 'de' | 'en' | 'th';
+  tts: boolean;
+  model: string | null;
+  available: { daemon: boolean; stt: boolean; tts: boolean; voices: string[]; model?: string };
+}
+
 export interface NetscanJob {
   id: string;
   label: string;

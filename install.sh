@@ -38,6 +38,61 @@ if [ "${1:-}" = "--ki" ]; then
   exit 0
 fi
 
+# ── Sprachsteuerung: lokaler Voice-Daemon (Whisper STT + Piper TTS) ──────────────
+if [ "${1:-}" = "--voice" ]; then
+  info "=== $APP_NAME – Sprachsteuerung (Whisper + Piper, lokal) ==="
+  info "Installiere Python + Audio-Abhängigkeiten..."
+  apt-get update -qq 2>/dev/null || true
+  apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg 2>/dev/null \
+    || error "Konnte python3/venv/ffmpeg nicht installieren (nur apt/Debian/Ubuntu unterstützt)."
+
+  VOICE_DIR="$INSTALL_DIR/voice"
+  # voiced.py-Quelle: bevorzugt aus der Installation, sonst aus dem Git-Checkout
+  SRC_PY="$INSTALL_DIR/backend/voice/voiced.py"
+  [ -f "$SRC_PY" ] || SRC_PY="$SOURCE_DIR/backend/voice/voiced.py"
+  [ -f "$SRC_PY" ] || error "voiced.py nicht gefunden. Zuerst Core-Hub installieren (sudo bash install.sh)."
+  mkdir -p "$VOICE_DIR" "$DATA_DIR/voice-cache"
+  cp "$SRC_PY" "$VOICE_DIR/voiced.py"
+
+  info "Erstelle Python-venv und installiere faster-whisper + piper-tts (kann etwas dauern)..."
+  python3 -m venv "$VOICE_DIR/venv"
+  "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null
+  "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts \
+    || error "pip-Installation fehlgeschlagen (faster-whisper / piper-tts)."
+
+  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" "$DATA_DIR/voice-cache" 2>/dev/null || true
+  RUN_USER="$SERVICE_USER"; id "$RUN_USER" &>/dev/null || RUN_USER="root"
+
+  cat > "/etc/systemd/system/core-hub-voice.service" <<EOF
+[Unit]
+Description=Core-Hub Voice Daemon (Whisper STT + Piper TTS)
+After=network.target
+
+[Service]
+Type=simple
+User=$RUN_USER
+Group=$RUN_USER
+Environment=VOICE_PORT=11435
+Environment=WHISPER_MODEL=base
+Environment=WHISPER_COMPUTE=int8
+Environment=VOICE_CACHE=$DATA_DIR/voice-cache
+ExecStart=$VOICE_DIR/venv/bin/python $VOICE_DIR/voiced.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable core-hub-voice 2>/dev/null || true
+  systemctl restart core-hub-voice 2>/dev/null || true
+  info "Voice-Dienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
+  info "Sprache & Weckwort in Core-Hub unter 'Einstellungen → Sprachsteuerung' festlegen."
+  info "Ein größeres/besseres Modell: 'WHISPER_MODEL=small' in /etc/systemd/system/core-hub-voice.service."
+  exit 0
+fi
+
 # ── Deinstallation ────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--deinstall" ]; then
   info "=== $APP_NAME Deinstallation ==="
@@ -52,6 +107,10 @@ if [ "${1:-}" = "--deinstall" ]; then
   systemctl stop  "$SERVICE_NAME" 2>/dev/null || true
   systemctl disable "$SERVICE_NAME" 2>/dev/null || true
   rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
+  # Voice-Dienst (falls installiert) ebenfalls entfernen
+  systemctl stop  core-hub-voice 2>/dev/null || true
+  systemctl disable core-hub-voice 2>/dev/null || true
+  rm -f "/etc/systemd/system/core-hub-voice.service"
   systemctl daemon-reload
   info "systemd-Service entfernt."
 
