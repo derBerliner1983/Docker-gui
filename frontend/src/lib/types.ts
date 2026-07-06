@@ -465,7 +465,7 @@ export interface VoiceConfig {
   whisperModels?: string[];
   voices: { de?: string; en?: string; th?: string };
   model: string | null;
-  available: { daemon: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Record<string, VoiceOpt[]> };
+  available: { daemon: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Record<string, VoiceOpt[]>; kokoro?: boolean; qwen?: boolean };
   install?: { running: boolean; error: string | null; log: string };
 }
 

@@ -67,9 +67,21 @@ KOKORO_VOICES = {
     ],
 }
 
+# ── Qwen3-TTS (optional, schwer: PyTorch; sehr gute Qualität inkl. DEUTSCH) ───────
+# Wird nur genutzt, wenn `qwen-tts` installiert ist (install.sh --voice-qwen).
+# Kein Thai (Qwen unterstützt: zh,en,ja,ko,de,fr,ru,pt,es,it).
+QWEN_MODEL = os.environ.get("QWEN_TTS_MODEL", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice")
+QWEN_LANG = {"de": "German", "en": "English"}
+QWEN_SPEAKERS = ["Ryan", "Serena", "Vivian", "Dylan", "Eric", "Aiden"]
+QWEN_VOICES = {
+    "de": [{"id": s, "label": s} for s in QWEN_SPEAKERS],
+    "en": [{"id": s, "label": s} for s in QWEN_SPEAKERS],
+}
+
 _whisper = {}   # size -> WhisperModel
 _piper = {}     # voice_id -> PiperVoice
 _kokoro = None  # Kokoro-Instanz
+_qwen = None    # Qwen3TTSModel-Instanz
 
 
 def log(*a):
@@ -188,6 +200,47 @@ def kokoro_tts(text: str, voice_id: str) -> bytes:
     return buf.getvalue()
 
 
+# ── TTS: Qwen3-TTS (optional) ────────────────────────────────────────────────────
+def qwen_available() -> bool:
+    try:
+        import qwen_tts  # type: ignore  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def get_qwen():
+    global _qwen
+    if _qwen is None:
+        import torch  # type: ignore
+        from qwen_tts import Qwen3TTSModel  # type: ignore
+        cuda = torch.cuda.is_available()
+        log(f"lade Qwen3-TTS '{QWEN_MODEL}' (device={'cuda' if cuda else 'cpu'}) – kann dauern")
+        _qwen = Qwen3TTSModel.from_pretrained(
+            QWEN_MODEL,
+            device_map="cuda:0" if cuda else "cpu",
+            dtype=torch.bfloat16 if cuda else torch.float32,
+        )
+        log("Qwen3-TTS bereit")
+    return _qwen
+
+
+def qwen_tts(text: str, speaker: str, lang: str) -> bytes:
+    import numpy as np  # type: ignore
+    model = get_qwen()
+    language = QWEN_LANG.get(lang, "English")
+    wavs, sr = model.generate_custom_voice(text=text, language=language, speaker=speaker or "Ryan")
+    samples = np.asarray(wavs[0], dtype=np.float32)
+    pcm16 = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(sr))
+        wf.writeframes(pcm16)
+    return buf.getvalue()
+
+
 def default_voice(lang: str):
     opts = PIPER_VOICES.get(lang) or []
     return "piper:" + opts[0]["id"] if opts else None
@@ -202,11 +255,14 @@ def synthesize(text: str, lang: str, voice_id: str) -> bytes:
         engine, name = "piper", vid
     if engine == "kokoro":
         return kokoro_tts(text, name)
+    if engine == "qwen":
+        return qwen_tts(text, name, lang)
     return piper_tts(text, name)
 
 
 def catalog_with_state():
     kok = kokoro_available()
+    qw = qwen_available()
     out = {}
     for lang in ["de", "en", "th"]:
         items = []
@@ -216,6 +272,9 @@ def catalog_with_state():
         if kok:
             for v in KOKORO_VOICES.get(lang, []):
                 items.append({"id": "kokoro:" + v["id"], "label": v["label"] + " · Kokoro", "installed": _kokoro_files_ready()})
+        if qw:
+            for v in QWEN_VOICES.get(lang, []):
+                items.append({"id": "qwen:" + v["id"], "label": v["label"] + " · Qwen", "installed": True})
         out[lang] = items
     return out
 
@@ -246,6 +305,7 @@ class Handler(BaseHTTPRequestHandler):
                 "model": DEFAULT_MODEL,
                 "loaded": list(_whisper.keys()),
                 "kokoro": kokoro_available(),
+                "qwen": qwen_available(),
                 "catalog": cat,
             })
         elif p == "/voices":
