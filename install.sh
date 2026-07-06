@@ -72,6 +72,7 @@ Environment=VOICE_PORT=11435
 Environment=WHISPER_MODEL=base
 Environment=WHISPER_COMPUTE=int8
 Environment=VOICE_CACHE=$DATA_DIR/voice-cache
+Environment=QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
 ExecStart=$VOICE_DIR/venv/bin/python $VOICE_DIR/voiced.py
 Restart=on-failure
 RestartSec=3
@@ -143,6 +144,31 @@ if [ "${1:-}" = "--voice" ]; then
   info "Sprache & Weckwort in Core-Hub unter 'Einstellungen → Sprachsteuerung' festlegen."
   info "Ab jetzt wird die Sprachsteuerung bei jedem Update automatisch mit aktualisiert."
   info "Ein größeres/besseres Modell: 'WHISPER_MODEL=small' in /etc/systemd/system/core-hub-voice.service."
+  exit 0
+fi
+
+# ── Qwen3-TTS für Deutsch (optional, schwer: PyTorch + mehrere GB Modell) ────────
+if [ "${1:-}" = "--voice-qwen" ]; then
+  info "=== $APP_NAME – Qwen3-TTS (sehr gute Stimme inkl. DEUTSCH) ==="
+  VOICE_DIR="$INSTALL_DIR/voice"
+  if [ ! -d "$VOICE_DIR/venv" ]; then
+    info "Voice-Basis fehlt – richte zuerst Whisper/Piper ein..."
+    setup_voice
+  fi
+  [ -d "$VOICE_DIR/venv" ] || error "Voice-venv fehlt. Zuerst: sudo bash install.sh --voice"
+  info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
+  "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
+  # CPU-PyTorch als robuster Standard. Für NVIDIA/AMD-GPU ggf. passenden Index nutzen:
+  #   NVIDIA:  --index-url https://download.pytorch.org/whl/cu124
+  #   AMD/ROCm: --index-url https://download.pytorch.org/whl/rocm6.2
+  "$VOICE_DIR/venv/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu 2>/dev/null \
+    || "$VOICE_DIR/venv/bin/pip" install torch || error "PyTorch-Installation fehlgeschlagen."
+  "$VOICE_DIR/venv/bin/pip" install qwen-tts soundfile || error "qwen-tts-Installation fehlgeschlagen."
+  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" 2>/dev/null || true
+  systemctl restart core-hub-voice 2>/dev/null || true
+  info "Qwen3-TTS installiert. Das Modell (~3–4 GB) wird beim ersten Nutzen automatisch geladen."
+  info "In Einstellungen unter 'Stimme' die '… · Qwen'-Stimmen für Deutsch wählen."
+  info "Kleiner/schneller: QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice in /etc/systemd/system/core-hub-voice.service."
   exit 0
 fi
 

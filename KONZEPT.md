@@ -294,7 +294,8 @@ Font: Inter.
 | KI-Zentrale: automatisches Zuhören (Auto-Reconnect), Mute-Schalter; Wellen-Visualisierung (mittig nach außen, nur bei Weckwort/Antwort sichtbar) | ✅ |
 | Weckwort einsprechen (Aufnahme → Whisper), TTS-Stimme je Sprache wählbar, Whisper-Modell (tiny/base/small/medium) umschaltbar | ✅ |
 | TTS-Motor **Kokoro** zusätzlich (sehr gute Englisch-Stimmen; Deutsch/Thai bleiben Piper). Stimmen-ID mit Motor-Präfix `piper:` / `kokoro:` | ✅ |
-| Geplant: eigene Stimme klonen (Chatterbox/XTTS), Sprachmodelle löschen | ⏳ |
+| TTS-Motor **Qwen3-TTS** (1.7B, optional) für **Deutsch** in Studioqualität – `sudo bash install.sh --voice-qwen` oder Button in den Einstellungen (schwer: PyTorch, GPU empfohlen) | ✅ |
+| Geplant: eigene Stimme klonen (Qwen/Chatterbox), Sprachmodelle löschen | ⏳ |
 
 ### ⏳ Geplant / Ideen
 

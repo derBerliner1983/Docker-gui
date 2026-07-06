@@ -662,9 +662,9 @@ function VoicePanel() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
-  const startInstall = async () => {
+  const startInstall = async (kind: 'voice' | 'qwen' = 'voice') => {
     setInstalling(true); setInstallLog(''); setMsg('');
-    try { await api.voice.install(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setInstalling(false); return; }
+    try { await (kind === 'qwen' ? api.voice.installQwen() : api.voice.install()); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setInstalling(false); return; }
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
@@ -785,6 +785,16 @@ function VoicePanel() {
                   ))}
                 </select>
               )}
+              {/* Qwen3-TTS: sehr gute Stimme inkl. Deutsch (schwer, optional) */}
+              {av.daemon && !av.qwen && (
+                <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--color-muted)', lineHeight: 1.6 }}>
+                  <button className="btn btn--outline btn--sm" disabled={installing} onClick={() => void startInstall('qwen')}>
+                    {installing ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Installiere …')}</> : <><Download size={12} /> {tt('Qwen-Stimme (auch Deutsch) installieren')}</>}
+                  </button>
+                  <div style={{ marginTop: 5 }}>{tt('Studioqualität inkl. Deutsch. Schwer: PyTorch + Modell (~3–4 GB), GPU empfohlen. Danach erscheinen „… · Qwen"-Stimmen.')}</div>
+                </div>
+              )}
+              {av.qwen && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-success)' }}>{tt('Qwen-Stimmen verfügbar (inkl. Deutsch).')}</div>}
             </div>
           );
         })()}

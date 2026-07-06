@@ -45,11 +45,11 @@ function voiceFor(cfg: VoiceConfig): string {
   return cfg.voices[cfg.lang] || '';
 }
 
-async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog }> {
+async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean }> {
   try {
     const r = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(2000) });
     if (!r.ok) return { ok: false, stt: false, tts: false };
-    return await r.json() as { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog };
+    return await r.json() as { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean };
   } catch {
     return { ok: false, stt: false, tts: false };
   }
@@ -190,13 +190,13 @@ function installScriptPath(): string | null {
   return null;
 }
 
-function startVoiceInstall(): { started: boolean; error?: string } {
+function startVoiceInstall(flag = '--voice'): { started: boolean; error?: string } {
   if (install.running) return { started: true };
   const script = installScriptPath();
   if (!script) return { started: false, error: 'install.sh nicht gefunden' };
   install.running = true; install.log = ''; install.error = null; install.startedAt = Date.now();
   const bin = isRoot ? '/bin/bash' : 'sudo';
-  const args = isRoot ? [script, '--voice'] : ['-n', '/bin/bash', script, '--voice'];
+  const args = isRoot ? [script, flag] : ['-n', '/bin/bash', script, flag];
   let child;
   try {
     child = spawn(bin, args, { cwd: path.dirname(script) });
@@ -228,7 +228,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({
       ...cfg,
       whisperModels: WHISPER_MODELS,
-      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {} },
+      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {}, kokoro: !!health.kokoro, qwen: !!health.qwen },
       model,
       install: { running: install.running, error: install.error, log: install.log.slice(-1200) },
     });
@@ -236,7 +236,14 @@ export async function voiceRoutes(fastify: FastifyInstance) {
 
   // Sprachdienst über das Verwaltungstool installieren (Hintergrund)
   fastify.post('/api/voice/install', { preHandler: requireAdmin }, async (_req, reply) => {
-    const r = startVoiceInstall();
+    const r = startVoiceInstall('--voice');
+    if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
+    reply.send({ ok: true, running: install.running });
+  });
+
+  // Qwen3-TTS (Deutsch in Studioqualität) nachinstallieren – schwer (PyTorch)
+  fastify.post('/api/voice/install-qwen', { preHandler: requireAdmin }, async (_req, reply) => {
+    const r = startVoiceInstall('--voice-qwen');
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
   });
