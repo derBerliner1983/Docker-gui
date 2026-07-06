@@ -80,7 +80,7 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     // ── Erdkugel-Punkte (Fibonacci) mit Land-Klassifikation ──
-    const NG = 2400;
+    const NG = 3000;
     const golden = Math.PI * (3 - Math.sqrt(5));
     const globe: { x: number; y: number; z: number; land: boolean; keep: boolean }[] = [];
     for (let i = 0; i < NG; i++) {
@@ -91,7 +91,7 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
       const lat = Math.asin(y) * 180 / Math.PI;
       const lon = Math.atan2(z, x) * 180 / Math.PI;
       const land = isLand(lat, lon);
-      globe.push({ x, y, z, land, keep: land || Math.random() < 0.32 });
+      globe.push({ x, y, z, land, keep: land || Math.random() < 0.20 });
     }
 
     // ── Netz-Punkte (Struktur) + Kanten ──
@@ -129,6 +129,9 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
 
     const render = () => {
       const { r, g, b } = accent.current;
+      // Linienfarbe: gedämpfte, leicht kühlere Variante des Akzents, damit die
+      // Knotenpunkte klarer hervortreten (Linien dezenter als die Punkte).
+      const lr = Math.round(r * 0.55 + 40), lg = Math.round(g * 0.55 + 50), lb = Math.round(b * 0.55 + 55);
       const on = onlineRef.current;
       act += ((on && busyRef.current ? 1 : 0) - act) * 0.06;   // Aktivitätsintensität
       netFade += ((on ? 1 : 0) - netFade) * 0.08;              // Netz sanft ein-/ausblenden
@@ -166,13 +169,13 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
         if (!p.keep) continue;
         const q = rot(p, Rg);
         if (p.land) {
-          const a = (0.32 + q.depth * 0.6) * (1 + act * 0.35);
+          const a = (0.45 + q.depth * 0.5) * (1 + act * 0.3);
           ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(1, a)})`;
-          const s = (0.8 + q.depth * 1.7) + act * 0.5;
+          const s = (1.0 + q.depth * 1.9) + act * 0.5;
           ctx.fillRect(q.sx, q.sy, s, s);
         } else {
-          ctx.fillStyle = `rgba(${r},${g},${b},${0.05 + q.depth * 0.12})`;
-          const s = 0.6 + q.depth * 0.9;
+          ctx.fillStyle = `rgba(${r},${g},${b},${0.03 + q.depth * 0.07})`;
+          const s = 0.5 + q.depth * 0.7;
           ctx.fillRect(q.sx, q.sy, s, s);
         }
       }
@@ -184,8 +187,8 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
         for (const [i, j] of edges) {
           const a = proj[i], c = proj[j];
           const d = (a.depth + c.depth) / 2;
-          const alpha = (0.04 + d * 0.18) * (1 + act * 1.1) * netFade;
-          ctx.strokeStyle = `rgba(${r},${g},${b},${Math.min(0.9, alpha)})`;
+          const alpha = (0.02 + d * 0.085) * (1 + act * 0.9) * netFade;
+          ctx.strokeStyle = `rgba(${lr},${lg},${lb},${Math.min(0.5, alpha)})`;
           ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(c.sx, c.sy); ctx.stroke();
         }
         for (const p of proj) {
