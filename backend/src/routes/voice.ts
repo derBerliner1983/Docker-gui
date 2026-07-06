@@ -200,6 +200,9 @@ function startVoiceInstall(): { started: boolean; error?: string } {
 
 export async function voiceRoutes(fastify: FastifyInstance) {
 
+  // Roh-Audio (int16 PCM) für /api/voice/stt-once als Buffer entgegennehmen
+  fastify.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+
   // ── Konfiguration + Verfügbarkeit ──
   fastify.get('/api/voice/config', { preHandler: requireAuth }, async (_req, reply) => {
     const cfg = readConfig();
@@ -218,6 +221,19 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const r = startVoiceInstall();
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
+  });
+
+  // Einmalige Transkription (z.B. um das Weckwort einzusprechen)
+  fastify.post('/api/voice/stt-once', { preHandler: requireAuth, bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const lang = (typeof (req.query as { lang?: string })?.lang === 'string' ? (req.query as { lang?: string }).lang : 'de') as string;
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || body.length < 200) return reply.status(400).send({ error: 'Kein Audio empfangen' });
+    try {
+      const text = await transcribe(body, lang);
+      reply.send({ text });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'STT fehlgeschlagen' });
+    }
   });
 
   fastify.get('/api/voice/install/status', { preHandler: requireAuth }, async (_req, reply) => {
