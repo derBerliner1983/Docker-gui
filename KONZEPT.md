@@ -276,6 +276,21 @@ Font: Inter.
 | **Dynamische Backend-Meldungen** als `errorKey` + `errorVars` (Platzhalter) – Frontend setzt mit `tt(key, vars)` zusammen (z. B. Port-Konflikt, „Container existiert", Rate-Limit, Datei zu groß) | ✅ |
 | Neue Sprache/Anpassung = nur Locale-Datei mit `deutsch → übersetzt` editieren | ✅ |
 
+### ✅ Phase 18 – KI-Zentrale & lokale Sprachsteuerung (`v0.12.0`)
+
+| Feature | Status |
+|---|---|
+| **KI-Zentrale**: animierte Weltkugel (Kontinente) im Farbkonzept, dreht sich | ✅ |
+| Neuronales Netz nur wenn ein Modell geladen ist; offline bleibt nur die Kugel | ✅ |
+| Netz reagiert (leuchtet/pulst schneller), wenn die KI arbeitet (keep_alive-Erkennung) | ✅ |
+| Rechts: geladenes Modell + Status online (grün) / offline (grau); Hell- & Dunkelmodus | ✅ |
+| **Sprachsteuerung – lokal & kostenlos** (kein Cloud-Dienst): Whisper (STT) + Piper (TTS) | ✅ |
+| Weckwort frei konfigurierbar; Sprachen Deutsch / English / ไทย (Thai) | ✅ |
+| Browser-Mikrofon → Server-Pipeline (VAD-Segmentierung, WebSocket) | ✅ |
+| Gefühlt schnell: sofortiges „Verstanden"-Feedback, Antwort wird **satzweise** vorgelesen (kein Warten auf die Gesamtantwort) | ✅ |
+| Einstellungen → Sprachsteuerung: An/Aus, Weckwort, Sprache, Vorlesen | ✅ |
+| Installer: `sudo bash install.sh --voice` (Python-venv + faster-whisper + piper-tts, systemd-Dienst `core-hub-voice`) | ✅ |
+
 ### ⏳ Geplant / Ideen
 
 | Feature | Status |

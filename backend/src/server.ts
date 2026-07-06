@@ -35,6 +35,7 @@ import { alertRoutes } from './routes/alerts';
 import { terminalRoutes } from './routes/terminal';
 import { fileRoutes } from './routes/files';
 import { kiRoutes } from './routes/ki';
+import { voiceRoutes } from './routes/voice';
 import { prefsRoutes } from './routes/prefs';
 import { sshRoutes } from './routes/ssh';
 import { netscanRoutes } from './routes/netscan';
@@ -101,6 +102,7 @@ async function main() {
   await fastify.register(terminalRoutes);
   await fastify.register(fileRoutes);
   await fastify.register(kiRoutes);
+  await fastify.register(voiceRoutes);
   await fastify.register(prefsRoutes);
   await fastify.register(sshRoutes);
   await fastify.register(netscanRoutes);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -9,7 +9,7 @@ import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import { formatUptime, timeAgo } from '../lib/utils';
 import { useI18n, LANGUAGES, tt } from '../lib/i18n';
-import type { NotificationItem, NotificationConfig, VersionInfo } from '../lib/types';
+import type { NotificationItem, NotificationConfig, VersionInfo, VoiceConfig } from '../lib/types';
 
 function LanguagePanel() {
   const { lang, setLang, t } = useI18n();
@@ -623,6 +623,110 @@ function ProxyVisibilityPanel() {
   );
 }
 
+// ── Sprachsteuerung (lokal: Whisper STT + Piper TTS) ─────────────────────────────
+const VOICE_LANGS: { code: VoiceConfig['lang']; label: string }[] = [
+  { code: 'de', label: 'Deutsch' },
+  { code: 'en', label: 'English' },
+  { code: 'th', label: 'ไทย (Thai)' },
+];
+
+function VoicePanel() {
+  const [cfg, setCfg] = useState<VoiceConfig | null>(null);
+  const [wake, setWake] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); } catch { /* */ }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) => {
+    setBusy(true); setMsg('');
+    try { const c = await api.voice.setConfig(patch); setCfg((prev) => (prev ? { ...prev, ...c } : c)); setMsg(tt('Gespeichert')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  if (!cfg) {
+    return (
+      <Panel title={tt('Sprachsteuerung')} icon={<Mic size={15} />} subtitle={tt('Lokal · Whisper + Piper')} storageKey="set-voice" defaultCollapsed>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 16 }}><span className="spinner" style={{ width: 18, height: 18 }} /></div>
+      </Panel>
+    );
+  }
+
+  const av = cfg.available;
+  return (
+    <Panel title={tt('Sprachsteuerung')} icon={<Mic size={15} />} subtitle={tt('Lokal · Whisper (STT) + Piper (TTS) · DE/EN/TH')} storageKey="set-voice" defaultCollapsed>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 6 }}>
+
+        {/* Verfügbarkeit */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <span className={`badge badge--${av.daemon ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
+            {av.daemon ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachdienst')}
+          </span>
+          <span className={`badge badge--${av.tts ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
+            {av.tts ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachausgabe')} {av.voices.length > 0 ? `(${av.voices.join(', ')})` : ''}
+          </span>
+          <span className={`badge badge--${cfg.model ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
+            {cfg.model ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {cfg.model ? cfg.model.split('/').pop() : tt('kein Modell geladen')}
+          </span>
+        </div>
+        {!av.daemon && (
+          <div style={{ fontSize: 12, color: 'var(--color-warning)', lineHeight: 1.6 }}>
+            {tt('Der lokale Sprachdienst läuft nicht. Installiere ihn mit:')}
+            <code style={{ display: 'block', marginTop: 6, background: 'var(--color-surface-sunken)', padding: '8px 12px', borderRadius: 6, fontSize: 12 }}>sudo bash install.sh --voice</code>
+          </div>
+        )}
+
+        {/* Aktiv */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{tt('Sprachsteuerung aktivieren')}</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--color-muted)' }}>{tt('Zeigt den Sprach-Assistenten in der KI-Zentrale.')}</span>
+          </span>
+          <Switch checked={cfg.enabled} disabled={busy} onChange={(v) => save({ enabled: v })} />
+        </label>
+
+        {/* Weckwort */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Weckwort')}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input className="input" style={{ flex: 1, fontSize: 13 }} value={wake} disabled={busy}
+              placeholder={tt('z.B. Computer, Jarvis, Hey Core')}
+              onChange={(e) => setWake(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && wake.trim() && save({ wakeword: wake.trim() })} />
+            <button className="btn btn--primary btn--sm" disabled={busy || !wake.trim() || wake.trim() === cfg.wakeword} onClick={() => save({ wakeword: wake.trim() })}>{tt('Speichern')}</button>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Nach dem Weckwort wird zugehört und dein Befehl an das geladene KI-Modell geschickt.')}</div>
+        </div>
+
+        {/* Sprache */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Sprache')}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {VOICE_LANGS.map((l) => (
+              <button key={l.code} className={`btn btn--sm ${cfg.lang === l.code ? 'btn--primary' : 'btn--outline'}`} disabled={busy} onClick={() => save({ lang: l.code })}>{l.label}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sprachausgabe */}
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{tt('Antwort vorlesen (Sprachausgabe)')}</span>
+            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--color-muted)' }}>{tt('Liest die Antwort satzweise vor, sobald sie entsteht.')}</span>
+          </span>
+          <Switch checked={cfg.tts} disabled={busy} onChange={(v) => save({ tts: v })} />
+        </label>
+
+        {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
   const { t } = useI18n();
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.settings.info>> | null>(null);
@@ -645,6 +749,7 @@ export function Settings() {
           { id: '2fa', node: <TwoFactorPanel /> },
           { id: 'smtp', node: <SmtpPanel /> },
           { id: 'notifications', node: <NotificationsPanel /> },
+          { id: 'voice', node: <VoicePanel /> },
           { id: 'migration', node: <MigrationPanel /> },
           { id: 'sysinfo', node: (
         <Panel title={tt('System-Info')} icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>

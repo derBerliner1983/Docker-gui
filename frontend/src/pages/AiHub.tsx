@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MemoryStick, Cpu, Activity } from 'lucide-react';
+import { MemoryStick, Cpu, Activity, Mic, MicOff } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { api } from '../lib/api';
-import type { OllamaStatus, OllamaPsModel } from '../lib/types';
+import { useVoice } from '../lib/voice';
+import type { OllamaStatus, OllamaPsModel, VoiceConfig } from '../lib/types';
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────
 function fmtBytes(b: number): string {
@@ -291,6 +292,11 @@ export function AiHub() {
   const prevSig = useRef<number | null>(null);
   const busyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Sprachsteuerung (nur wenn in den Einstellungen aktiviert)
+  const [voiceCfg, setVoiceCfg] = useState<VoiceConfig | null>(null);
+  const voice = useVoice((b) => setBusy(b));
+  useEffect(() => { api.voice.config().then(setVoiceCfg).catch(() => {}); }, []);
+
   const load = useCallback(async () => {
     try {
       const [s, ps] = await Promise.allSettled([api.ki.status(), api.ki.ps()]);
@@ -391,6 +397,51 @@ export function AiHub() {
                     <div style={{ fontSize: 11.5, color: 'var(--color-faint)', lineHeight: 1.55 }}>
                       {tt('Lade unter „KI-Modelle" ein Sprachmodell in den Arbeitsspeicher (RAM oder GPU), damit die KI-Visualisierung erscheint.')}
                     </div>
+                  </div>
+                )}
+
+                {/* Sprachsteuerung */}
+                {voiceCfg?.enabled && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{tt('Sprachsteuerung')}</span>
+                      <button
+                        className={`btn btn--sm ${voice.state.active ? 'btn--primary' : 'btn--outline'}`}
+                        disabled={!voice.state.supported || !voiceCfg.available.daemon}
+                        onClick={() => (voice.state.active ? voice.stop() : void voice.start())}
+                        title={!voiceCfg.available.daemon ? tt('Sprachdienst läuft nicht') : undefined}
+                      >
+                        {voice.state.active ? <MicOff size={13} /> : <Mic size={13} />}
+                        {voice.state.active ? tt('Stopp') : tt('Zuhören')}
+                      </button>
+                    </div>
+                    {voice.state.active && (
+                      <div style={{ fontSize: 11.5, color: voice.state.awake ? 'var(--color-accent)' : 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: voice.state.awake || voice.state.speaking ? 'var(--color-accent)' : 'var(--color-faint)', boxShadow: voice.state.awake || voice.state.speaking ? '0 0 6px var(--color-accent)' : 'none' }} />
+                        {voice.state.status}
+                      </div>
+                    )}
+                    {voice.state.error && <div style={{ fontSize: 11.5, color: 'var(--color-error)' }}>{voice.state.error}</div>}
+                    {voice.state.lines.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                        {voice.state.lines.map((ln, i) => (
+                          <div key={i} style={{
+                            fontSize: 12, lineHeight: 1.45, padding: '6px 10px', borderRadius: 8,
+                            background: ln.role === 'you' ? 'var(--color-accent-soft)' : ln.role === 'sys' ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
+                            border: '1px solid var(--color-border)',
+                            color: ln.role === 'sys' ? 'var(--color-error)' : 'var(--color-fg)',
+                          }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 6 }}>
+                              {ln.role === 'you' ? tt('Du') : ln.role === 'ai' ? 'KI' : '!'}
+                            </span>
+                            {ln.text}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!voiceCfg.available.daemon && (
+                      <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>{tt('Sprachdienst nicht erreichbar – siehe Einstellungen.')}</div>
+                    )}
                   </div>
                 )}
               </aside>

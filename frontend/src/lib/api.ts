@@ -354,6 +354,12 @@ export const api = {
       req<{ ok: boolean }>('/api/ki/unload', { method: 'POST', body: JSON.stringify({ model }) }),
   },
 
+  voice: {
+    config: () => req<import('./types').VoiceConfig>('/api/voice/config'),
+    setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) =>
+      req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
+  },
+
   cron: {
     list: () => req<{ jobs: CronJob[]; raw: string }>('/api/cron'),
     add: (schedule: string, command: string, comment?: string) =>
