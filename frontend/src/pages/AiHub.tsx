@@ -301,6 +301,36 @@ function Waveform({ analyser, active }: { analyser: React.RefObject<AnalyserNode
   return <canvas ref={ref} style={{ display: 'block' }} />;
 }
 
+// Schmaler Live-Pegel des Mikrofons – zeigt, dass wirklich zugehört wird.
+function MicMeter({ analyser, active }: { analyser: React.RefObject<AnalyserNode | null>; active: boolean }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = 240, H = 8;
+    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = '100%'; canvas.style.height = H + 'px';
+    const data = new Uint8Array(1024);
+    let raf = 0;
+    const draw = () => {
+      const an = analyser.current;
+      let level = 0;
+      if (an) { an.getByteTimeDomainData(data); let s = 0; for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; s += v * v; } level = Math.min(1, Math.sqrt(s / data.length) * 3.2); }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#10B981';
+      ctx.fillStyle = 'rgba(127,127,127,0.18)'; ctx.fillRect(0, H / 2 - 1.5, W, 3);
+      ctx.fillStyle = accent; ctx.fillRect(0, H / 2 - 1.5, W * level, 3);
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }, [active, analyser]);
+  if (!active) return null;
+  return <canvas ref={ref} style={{ display: 'block', width: '100%' }} />;
+}
+
 // Summe der Ablauf-Zeitpunkte – steigt, wenn Ollama nach einer Anfrage den
 // keep_alive-Timer neu setzt → daran erkennen wir „die KI macht etwas".
 function activitySignature(models: OllamaPsModel[]): number {
@@ -478,6 +508,14 @@ export function AiHub() {
                       <div style={{ fontSize: 11.5, color: voice.state.awake ? 'var(--color-accent)' : 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ width: 7, height: 7, borderRadius: '50%', background: voice.state.awake || voice.state.speaking ? 'var(--color-accent)' : voice.state.muted ? 'var(--color-faint)' : 'var(--color-success)', boxShadow: voice.state.awake || voice.state.speaking ? '0 0 6px var(--color-accent)' : 'none' }} />
                         {voice.state.status}
+                      </div>
+                    )}
+                    {voice.state.active && !voice.state.muted && !voice.state.speaking && (
+                      <MicMeter analyser={voice.micAnalyser} active={voice.state.active && !voice.state.speaking} />
+                    )}
+                    {voice.state.active && voice.state.heard && (
+                      <div style={{ fontSize: 11, color: 'var(--color-faint)' }} title={tt('zuletzt erkannt')}>
+                        {tt('Gehört')}: „{voice.state.heard}"
                       </div>
                     )}
                     {voice.state.error && <div style={{ fontSize: 11.5, color: 'var(--color-error)' }}>{voice.state.error}</div>}

@@ -77,6 +77,40 @@ EOF
   info "Sprachdienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
 }
 
+# ── sudoers-Allowlist schreiben (passwortloses sudo nur für nötige Befehle) ─────
+# Wichtig: sowohl /bin/bash als auch /usr/bin/bash, da sudo bloßes `bash` je nach
+# Distribution zu /usr/bin/bash auflöst (sonst „Keine Root-Rechte" bei Firewall etc.).
+write_sudoers() {
+  if ! id "$SERVICE_USER" &>/dev/null; then warn "Benutzer '$SERVICE_USER' fehlt – sudoers übersprungen."; return 0; fi
+  info "Richte sudoers-Allowlist ein (/etc/sudoers.d/core-hub)..."
+  cat > /etc/sudoers.d/core-hub <<EOF
+# Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle
+$SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf, /usr/bin/pacman, \\
+  /usr/bin/systemctl, /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /usr/sbin/groupadd, \\
+  /usr/bin/chpasswd, /usr/bin/smbpasswd, /usr/bin/cp, /usr/bin/tar, /usr/bin/mkdir, /usr/bin/rm, \\
+  /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, /usr/bin/bash, \\
+  /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, /sbin/ufw, \\
+  /usr/bin/ss, /usr/sbin/ss, /bin/ss, \\
+  /usr/bin/sed, /usr/bin/chown, /usr/bin/chmod, /usr/bin/mv, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
+  /usr/bin/dpkg-reconfigure, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
+  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl, /usr/sbin/reboot, /sbin/reboot
+EOF
+  chmod 0440 /etc/sudoers.d/core-hub
+  if visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1; then
+    info "sudoers-Allowlist aktiv."
+  else
+    rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen."
+  fi
+}
+
+# ── Nur Berechtigungen neu setzen (schnell, ohne komplette Neuinstallation) ──────
+if [ "${1:-}" = "--fix-perms" ] || [ "${1:-}" = "--permissions" ] || [ "${1:-}" = "--sudoers" ]; then
+  info "=== $APP_NAME – Berechtigungen (sudoers) neu setzen ==="
+  write_sudoers
+  info "Fertig. Firewall/Updates/Pakete funktionieren nun ohne Root-Rechte-Fehler."
+  exit 0
+fi
+
 # ── KI-Erweiterung: Ollama installieren ──────────────────────────────────────
 if [ "${1:-}" = "--ki" ]; then
   info "=== $APP_NAME – KI-Erweiterung (Ollama) ==="
@@ -330,20 +364,7 @@ getent group docker  >/dev/null && usermod -aG docker  "$SERVICE_USER" && info "
 getent group libvirt >/dev/null && usermod -aG libvirt "$SERVICE_USER" && info "→ libvirt-Gruppe"
 
 # sudoers-Allowlist: passwortloses sudo nur für benötigte Systembefehle
-info "Richte sudoers-Allowlist ein (/etc/sudoers.d/core-hub)..."
-cat > /etc/sudoers.d/core-hub <<EOF
-# Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf, /usr/bin/pacman, \\
-  /usr/bin/systemctl, /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /usr/sbin/groupadd, \\
-  /usr/bin/chpasswd, /usr/bin/smbpasswd, /usr/bin/cp, /usr/bin/tar, /usr/bin/mkdir, /usr/bin/rm, \\
-  /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, \\
-  /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, \\
-  /usr/bin/sed, /usr/bin/chown, /usr/bin/chmod, /usr/bin/mv, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
-  /usr/bin/dpkg-reconfigure, /sbin/ufw, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
-  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl, /usr/sbin/reboot, /sbin/reboot
-EOF
-chmod 0440 /etc/sudoers.d/core-hub
-visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1 || { rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen"; }
+write_sudoers
 
 # Eindeutige Build-Kennung aus Git ableiten (kurzer Hash) – so ist jeder
 # ausgelieferte Stand exakt identifizierbar, auch ohne VERSION-Erhöhung.

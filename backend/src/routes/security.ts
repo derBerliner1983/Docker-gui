@@ -507,7 +507,7 @@ export async function securityRoutes(fastify: FastifyInstance) {
         reply.send({ ok: true, output });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
       }
     }
   );

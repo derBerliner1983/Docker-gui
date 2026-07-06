@@ -189,7 +189,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
       }
     },
   );
@@ -220,7 +220,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Entfernen fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte (sudoers nicht eingerichtet?)' : msg });
+        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
       }
     },
   );

@@ -42,6 +42,7 @@ export interface VoiceState {
   awake: boolean;        // Weckwort erkannt / hört Befehl
   speaking: boolean;     // gibt gerade Audio aus / verarbeitet
   status: string;
+  heard: string;         // zuletzt erkannter Text (Feedback, auch ohne Weckwort)
   lines: VoiceLine[];
   error: string | null;
 }
@@ -55,7 +56,7 @@ export interface VoiceState {
 export function useVoice(onBusyChange?: (busy: boolean) => void) {
   const [state, setState] = useState<VoiceState>({
     supported: typeof navigator !== 'undefined' && !!navigator.mediaDevices && !!window.AudioContext,
-    active: false, connecting: false, muted: false, awake: false, speaking: false, status: '', lines: [], error: null,
+    active: false, connecting: false, muted: false, awake: false, speaking: false, status: '', heard: '', lines: [], error: null,
   });
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -152,6 +153,7 @@ export function useVoice(onBusyChange?: (busy: boolean) => void) {
       try { m = JSON.parse(ev.data as string); } catch { return; }
       switch (m.type) {
         case 'ready': patch({ status: `Bereit – Weckwort: „${m.wakeword as string}"` }); break;
+        case 'heard': patch({ heard: m.text as string }); break;
         case 'wake': patch({ awake: true, status: 'Ja? Ich höre …' }); break;
         case 'sleep': patch({ awake: false, status: 'Bereit – sag dein Weckwort' }); break;
         case 'ack': patch({ awake: false, status: 'Verstanden – denke nach …' }); addLine({ role: 'you', text: m.text as string }); break;
@@ -206,7 +208,7 @@ export function useVoice(onBusyChange?: (busy: boolean) => void) {
         let sum = 0;
         for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
         const rms = Math.sqrt(sum / input.length);
-        const speech = rms > 0.012;
+        const speech = rms > 0.008;
         if (speech) {
           collecting.current = true; silence.current = 0;
           buffers.current.push(new Float32Array(input));
