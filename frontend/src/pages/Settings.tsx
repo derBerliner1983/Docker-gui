@@ -642,6 +642,41 @@ function VoicePanel() {
   const [recording, setRecording] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Stimme klonen (Qwen)
+  const [clName, setClName] = useState('');
+  const [clText, setClText] = useState('');
+  const [clPcm, setClPcm] = useState<ArrayBuffer | null>(null);
+  const [clRec, setClRec] = useState(false);
+  const [clBusy, setClBusy] = useState(false);
+
+  const recordClone = async () => {
+    if (!cfg) return;
+    setClRec(true); setMsg(tt('Sprich ~6 Sekunden natürlich …'));
+    try {
+      const pcm = await recordPcm(6000);
+      setClPcm(pcm);
+      try { const { text } = await api.voice.sttOnce(pcm, cfg.lang); if (text) setClText(text); } catch { /* Transkript optional */ }
+      setMsg(tt('Aufnahme fertig – Text prüfen und „Klonen".'));
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Aufnahme fehlgeschlagen'); }
+    finally { setClRec(false); }
+  };
+
+  const doClone = async () => {
+    if (!clPcm || !clName.trim()) return;
+    setClBusy(true); setMsg('');
+    try {
+      await api.voice.clone(clName.trim(), clText.trim(), clPcm);
+      setMsg(tt('Stimme geklont – unter „Stimme" auswählbar.'));
+      setClName(''); setClText(''); setClPcm(null);
+      await load();
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Klonen fehlgeschlagen'); }
+    finally { setClBusy(false); }
+  };
+
+  const delClone = async (id: string) => {
+    try { await api.voice.deleteClone(id); await load(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+  };
+
   const recordWake = async () => {
     if (!cfg) return;
     setRecording(true); setMsg(tt('Sprich jetzt dein Weckwort …'));
@@ -795,6 +830,39 @@ function VoicePanel() {
                 </div>
               )}
               {av.qwen && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-success)' }}>{tt('Qwen-Stimmen verfügbar (inkl. Deutsch).')}</div>}
+            </div>
+          );
+        })()}
+
+        {/* Stimme klonen (Qwen) */}
+        {av.qwen && (() => {
+          const clones = (av.catalog?.[cfg.lang] ?? []).filter((o) => o.id.startsWith('clone:'));
+          return (
+            <div style={{ padding: '12px 14px', background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>{tt('Eigene Stimme klonen')}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--color-muted)', marginBottom: 10, lineHeight: 1.6 }}>{tt('Nimm ~6 Sekunden deiner Stimme auf. Sprich einen ruhigen, vollständigen Satz. Danach als Stimme wählbar (Deutsch/Englisch).')}</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <input className="input" style={{ fontSize: 13, width: 180 }} placeholder={tt('Name der Stimme')} value={clName} disabled={clBusy || clRec} onChange={(e) => setClName(e.target.value)} />
+                <button className="btn btn--outline btn--sm" disabled={clBusy || clRec} onClick={() => void recordClone()}>
+                  {clRec ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Nimmt auf …')}</> : <><Mic size={13} /> {clPcm ? tt('Neu aufnehmen') : tt('Aufnehmen (6 s)')}</>}
+                </button>
+                <button className="btn btn--primary btn--sm" disabled={clBusy || clRec || !clPcm || !clName.trim()} onClick={() => void doClone()}>
+                  {clBusy ? <span className="spinner" style={{ width: 11, height: 11 }} /> : null} {tt('Klonen')}
+                </button>
+              </div>
+              {clPcm && (
+                <textarea className="input" style={{ fontSize: 12.5, width: '100%', marginTop: 8, minHeight: 44 }} placeholder={tt('Gesprochener Text (Transkript) – verbessert das Klonen')} value={clText} disabled={clBusy} onChange={(e) => setClText(e.target.value)} />
+              )}
+              {clones.length > 0 && (
+                <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {clones.map((c) => (
+                    <div key={c.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5 }}>
+                      <span>{c.label}</span>
+                      <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--color-error)' }} title={tt('Löschen')} onClick={() => void delClone(c.id.replace('clone:', ''))}><Trash2 size={13} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })()}

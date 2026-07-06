@@ -21,8 +21,11 @@ Endpunkte:
 """
 import io
 import os
+import re
 import json
+import time
 import wave
+import base64
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -241,6 +244,83 @@ def qwen_tts(text: str, speaker: str, lang: str) -> bytes:
     return buf.getvalue()
 
 
+# ── Geklonte Stimmen (Qwen zero-shot voice clone) ────────────────────────────────
+CLONES_DIR = os.path.join(CACHE, "clones")
+os.makedirs(CLONES_DIR, exist_ok=True)
+CLONES_JSON = os.path.join(CACHE, "clones.json")
+
+
+def load_clones():
+    try:
+        with open(CLONES_JSON, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_clones(d):
+    with open(CLONES_JSON, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False)
+
+
+_clones = load_clones()
+
+
+def add_clone(name: str, text: str, pcm16: bytes) -> str:
+    base = re.sub(r"[^a-z0-9]+", "-", (name or "stimme").lower()).strip("-") or "stimme"
+    cid = base
+    n = 1
+    while cid in _clones:
+        n += 1
+        cid = f"{base}-{n}"
+    wav_name = cid + ".wav"
+    with wave.open(os.path.join(CLONES_DIR, wav_name), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(pcm16)
+    _clones[cid] = {"name": name or cid, "text": text or "", "wav": wav_name, "created": int(time.time())}
+    save_clones(_clones)
+    return cid
+
+
+def remove_clone(cid: str):
+    e = _clones.pop(cid, None)
+    if e:
+        try:
+            os.remove(os.path.join(CLONES_DIR, e["wav"]))
+        except Exception:
+            pass
+        save_clones(_clones)
+
+
+def clone_tts(text: str, cid: str, lang: str) -> bytes:
+    import numpy as np  # type: ignore
+    e = _clones.get(cid)
+    if not e:
+        raise RuntimeError(f"unbekannte Klonstimme '{cid}'")
+    with wave.open(os.path.join(CLONES_DIR, e["wav"]), "rb") as wf:
+        sr = wf.getframerate()
+        frames = wf.readframes(wf.getnframes())
+    ref = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+    model = get_qwen()
+    wavs, osr = model.generate_voice_clone(
+        text=text,
+        language=QWEN_LANG.get(lang, "English"),
+        ref_audio=(ref, sr),
+        ref_text=e.get("text") or "",
+    )
+    samples = np.asarray(wavs[0], dtype=np.float32)
+    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(int(osr))
+        wf.writeframes(pcm)
+    return buf.getvalue()
+
+
 def default_voice(lang: str):
     opts = PIPER_VOICES.get(lang) or []
     return "piper:" + opts[0]["id"] if opts else None
@@ -257,6 +337,8 @@ def synthesize(text: str, lang: str, voice_id: str) -> bytes:
         return kokoro_tts(text, name)
     if engine == "qwen":
         return qwen_tts(text, name, lang)
+    if engine == "clone":
+        return clone_tts(text, name, lang)
     return piper_tts(text, name)
 
 
@@ -275,6 +357,10 @@ def catalog_with_state():
         if qw:
             for v in QWEN_VOICES.get(lang, []):
                 items.append({"id": "qwen:" + v["id"], "label": v["label"] + " · Qwen", "installed": True})
+            # Geklonte Stimmen (Qwen) – für Deutsch & Englisch nutzbar
+            if lang in ("de", "en"):
+                for cid, e in _clones.items():
+                    items.append({"id": "clone:" + cid, "label": (e.get("name") or cid) + " · Klon", "installed": True})
         out[lang] = items
     return out
 
@@ -310,6 +396,16 @@ class Handler(BaseHTTPRequestHandler):
             })
         elif p == "/voices":
             self._json(200, {"catalog": catalog_with_state()})
+        elif p == "/clones":
+            self._json(200, {"clones": [{"id": k, "name": v.get("name"), "text": v.get("text")} for k, v in _clones.items()]})
+        else:
+            self._json(404, {"error": "not found"})
+
+    def do_DELETE(self):
+        p = urlparse(self.path).path
+        if p.startswith("/clone/"):
+            remove_clone(p.rsplit("/", 1)[-1])
+            self._json(200, {"ok": True})
         else:
             self._json(404, {"error": "not found"})
 
@@ -327,6 +423,14 @@ class Handler(BaseHTTPRequestHandler):
                 voice_id = qs.get("voice", [""])[0]
                 wav = synthesize(body.decode("utf-8", "ignore"), lang, voice_id)
                 self._send(200, wav, ctype="audio/wav")
+            elif u.path == "/clone":
+                data = json.loads(body.decode("utf-8", "ignore") or "{}")
+                pcm = base64.b64decode(data.get("pcm_b64", ""))
+                if len(pcm) < 8000:
+                    self._json(400, {"error": "Aufnahme zu kurz"})
+                else:
+                    cid = add_clone(data.get("name", ""), data.get("text", ""), pcm)
+                    self._json(200, {"id": cid})
             else:
                 self._json(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001
