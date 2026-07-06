@@ -675,8 +675,11 @@ function VoicePanel() {
         </div>
         {!av.daemon && (
           <div style={{ fontSize: 12, color: 'var(--color-warning)', lineHeight: 1.6 }}>
-            {tt('Der lokale Sprachdienst läuft nicht. Installiere ihn mit:')}
+            {tt('Der lokale Sprachdienst läuft nicht. Installiere ihn einmalig mit:')}
             <code style={{ display: 'block', marginTop: 6, background: 'var(--color-surface-sunken)', padding: '8px 12px', borderRadius: 6, fontSize: 12 }}>sudo bash install.sh --voice</code>
+            <span style={{ display: 'block', marginTop: 6, color: 'var(--color-muted)' }}>
+              {tt('Danach wird er bei jedem Update automatisch mit aktualisiert (kein separater Befehl nötig).')}
+            </span>
           </div>
         )}
 
