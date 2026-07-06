@@ -356,10 +356,18 @@ export const api = {
 
   voice: {
     config: () => req<import('./types').VoiceConfig>('/api/voice/config'),
-    setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) =>
+    setConfig: (data: Partial<Pick<import('./types').VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts' | 'whisperModel' | 'voices'>>) =>
       req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
     install: () => req<{ ok: boolean; running: boolean }>('/api/voice/install', { method: 'POST' }),
     installStatus: () => req<{ running: boolean; error: string | null; log: string; daemon: boolean }>('/api/voice/install/status'),
+    sttOnce: async (pcm: ArrayBuffer, lang: string): Promise<{ text: string }> => {
+      const res = await fetch(`/api/voice/stt-once?lang=${encodeURIComponent(lang)}`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/octet-stream' }, body: pcm,
+      });
+      if (!res.ok) { const b = await res.json().catch(() => ({})) as { error?: string }; throw new Error(b.error || `HTTP ${res.status}`); }
+      return res.json() as Promise<{ text: string }>;
+    },
   },
 
   cron: {

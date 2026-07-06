@@ -11,49 +11,65 @@ const VOICE_PORT = process.env.VOICE_PORT || '11435';
 const DAEMON = `http://127.0.0.1:${VOICE_PORT}`;
 const OLLAMA = 'http://127.0.0.1:11434';
 
+type Lang = 'de' | 'en' | 'th';
+const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium'];
+
 interface VoiceConfig {
   enabled: boolean;
   wakeword: string;
-  lang: 'de' | 'en' | 'th';
+  lang: Lang;
   tts: boolean;
+  whisperModel: string;
+  voices: { de?: string; en?: string; th?: string };
 }
+
+interface VoiceOpt { id: string; label: string; installed: boolean }
+type Catalog = Record<string, VoiceOpt[]>;
 
 function readConfig(): VoiceConfig {
   const g = (k: string) => appSettingsQueries.get.get(k)?.value;
-  const lang = (g('voice_lang') as VoiceConfig['lang']) || 'de';
+  const lang = (g('voice_lang') as Lang) || 'de';
+  const model = g('voice_whisper_model') || 'base';
   return {
     enabled: g('voice_enabled') === '1',
     wakeword: (g('voice_wakeword') || 'computer').trim(),
-    lang: (['de', 'en', 'th'].includes(lang) ? lang : 'de') as VoiceConfig['lang'],
+    lang: (['de', 'en', 'th'].includes(lang) ? lang : 'de') as Lang,
     tts: g('voice_tts') !== '0',
+    whisperModel: WHISPER_MODELS.includes(model) ? model : 'base',
+    voices: { de: g('voice_voice_de') || undefined, en: g('voice_voice_en') || undefined, th: g('voice_voice_th') || undefined },
   };
 }
 
-async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; voices: string[]; model?: string }> {
+/** Für die aktuelle Sprache gewählte TTS-Stimme (oder leer = Daemon-Default). */
+function voiceFor(cfg: VoiceConfig): string {
+  return cfg.voices[cfg.lang] || '';
+}
+
+async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog }> {
   try {
     const r = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(2000) });
-    if (!r.ok) return { ok: false, stt: false, tts: false, voices: [] };
-    return await r.json() as { ok: boolean; stt: boolean; tts: boolean; voices: string[]; model?: string };
+    if (!r.ok) return { ok: false, stt: false, tts: false };
+    return await r.json() as { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog };
   } catch {
-    return { ok: false, stt: false, tts: false, voices: [] };
+    return { ok: false, stt: false, tts: false };
   }
 }
 
-async function transcribe(pcm: Buffer, lang: string): Promise<string> {
-  const r = await fetch(`${DAEMON}/transcribe?lang=${encodeURIComponent(lang)}`, {
+async function transcribe(pcm: Buffer, lang: string, model = 'base'): Promise<string> {
+  const r = await fetch(`${DAEMON}/transcribe?lang=${encodeURIComponent(lang)}&model=${encodeURIComponent(model)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/octet-stream' },
     body: pcm,
-    signal: AbortSignal.timeout(30000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!r.ok) throw new Error(`STT ${r.status}`);
   const j = await r.json() as { text?: string };
   return (j.text || '').trim();
 }
 
-async function tts(text: string, lang: string): Promise<Buffer | null> {
+async function tts(text: string, lang: string, voice = ''): Promise<Buffer | null> {
   try {
-    const r = await fetch(`${DAEMON}/tts?lang=${encodeURIComponent(lang)}`, {
+    const r = await fetch(`${DAEMON}/tts?lang=${encodeURIComponent(lang)}&voice=${encodeURIComponent(voice)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       body: Buffer.from(text, 'utf-8'),
@@ -85,10 +101,11 @@ const ACK_PHRASE: Record<string, string> = {
   th: 'สักครู่นะคะ',
 };
 const ackCache = new Map<string, Buffer | null>();
-async function ackAudio(lang: string): Promise<Buffer | null> {
-  if (ackCache.has(lang)) return ackCache.get(lang) ?? null;
-  const buf = await tts(ACK_PHRASE[lang] || ACK_PHRASE.de, lang);
-  ackCache.set(lang, buf);
+async function ackAudio(lang: string, voice: string): Promise<Buffer | null> {
+  const key = `${lang}|${voice}`;
+  if (ackCache.has(key)) return ackCache.get(key) ?? null;
+  const buf = await tts(ACK_PHRASE[lang] || ACK_PHRASE.de, lang, voice);
+  ackCache.set(key, buf);
   return buf;
 }
 
@@ -200,6 +217,9 @@ function startVoiceInstall(): { started: boolean; error?: string } {
 
 export async function voiceRoutes(fastify: FastifyInstance) {
 
+  // Roh-Audio (int16 PCM) für /api/voice/stt-once als Buffer entgegennehmen
+  fastify.addContentTypeParser('application/octet-stream', { parseAs: 'buffer' }, (_req, body, done) => done(null, body));
+
   // ── Konfiguration + Verfügbarkeit ──
   fastify.get('/api/voice/config', { preHandler: requireAuth }, async (_req, reply) => {
     const cfg = readConfig();
@@ -207,7 +227,8 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const model = await loadedModel();
     reply.send({
       ...cfg,
-      available: { daemon: health.ok, stt: health.stt, tts: health.tts, voices: health.voices, model: health.model },
+      whisperModels: WHISPER_MODELS,
+      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {} },
       model,
       install: { running: install.running, error: install.error, log: install.log.slice(-1200) },
     });
@@ -218,6 +239,19 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const r = startVoiceInstall();
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
+  });
+
+  // Einmalige Transkription (z.B. um das Weckwort einzusprechen)
+  fastify.post('/api/voice/stt-once', { preHandler: requireAuth, bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
+    const lang = (typeof (req.query as { lang?: string })?.lang === 'string' ? (req.query as { lang?: string }).lang : 'de') as string;
+    const body = req.body as Buffer;
+    if (!Buffer.isBuffer(body) || body.length < 200) return reply.status(400).send({ error: 'Kein Audio empfangen' });
+    try {
+      const text = await transcribe(body, lang, readConfig().whisperModel);
+      reply.send({ text });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'STT fehlgeschlagen' });
+    }
   });
 
   fastify.get('/api/voice/install/status', { preHandler: requireAuth }, async (_req, reply) => {
@@ -234,7 +268,14 @@ export async function voiceRoutes(fastify: FastifyInstance) {
       if (w) appSettingsQueries.set.run('voice_wakeword', w);
     }
     if (b.lang && ['de', 'en', 'th'].includes(b.lang)) appSettingsQueries.set.run('voice_lang', b.lang);
-    ackCache.clear(); // Sprache evtl. geändert → Bestätigungs-Audio neu erzeugen
+    if (typeof b.whisperModel === 'string' && WHISPER_MODELS.includes(b.whisperModel)) appSettingsQueries.set.run('voice_whisper_model', b.whisperModel);
+    if (b.voices && typeof b.voices === 'object') {
+      for (const l of ['de', 'en', 'th'] as const) {
+        const v = b.voices[l];
+        if (typeof v === 'string') appSettingsQueries.set.run(`voice_voice_${l}`, v.slice(0, 80));
+      }
+    }
+    ackCache.clear(); // Sprache/Stimme evtl. geändert → Bestätigungs-Audio neu erzeugen
     reply.send(readConfig());
   });
 
@@ -257,9 +298,10 @@ export async function voiceRoutes(fastify: FastifyInstance) {
         if (on) awakeTimer = setTimeout(() => { awake = false; send({ type: 'sleep' }); }, 8000);
       };
 
+      const voice = voiceFor(cfg);
       const speak = async (seq: number, text: string, lang: string) => {
         if (!cfg.tts) return;
-        const wav = seq === 0 ? await ackAudio(lang) : await tts(text, lang);
+        const wav = seq === 0 ? await ackAudio(lang, voice) : await tts(text, lang, voice);
         if (wav) send({ type: 'audio', seq, b64: wav.toString('base64') });
       };
 
@@ -310,7 +352,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
       ws.on('message', (data: Buffer, isBinary: boolean) => {
         if (isBinary) {
           if (processing) return; // während Verarbeitung/Ausgabe kein neues Audio
-          transcribe(data, cfg.lang).then(handleTranscript).catch(() => { /* */ });
+          transcribe(data, cfg.lang, cfg.whisperModel).then(handleTranscript).catch(() => { /* */ });
         }
         // Textframes derzeit nicht benötigt
       });

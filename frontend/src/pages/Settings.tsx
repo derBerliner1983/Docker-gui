@@ -7,6 +7,7 @@ import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
 import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
+import { recordPcm } from '../lib/voice';
 import { formatUptime, timeAgo } from '../lib/utils';
 import { useI18n, LANGUAGES, tt } from '../lib/i18n';
 import type { NotificationItem, NotificationConfig, VersionInfo, VoiceConfig } from '../lib/types';
@@ -638,7 +639,22 @@ function VoicePanel() {
 
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState('');
+  const [recording, setRecording] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const recordWake = async () => {
+    if (!cfg) return;
+    setRecording(true); setMsg(tt('Sprich jetzt dein Weckwort …'));
+    try {
+      const pcm = await recordPcm(2500);
+      const { text } = await api.voice.sttOnce(pcm, cfg.lang);
+      const w = text.trim().replace(/[.,!?;:]+$/, '');
+      if (w) { setWake(w); setMsg(tt('Erkannt: ') + w); }
+      else setMsg(tt('Nichts verstanden – bitte erneut versuchen.'));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : 'Fehler bei der Aufnahme');
+    } finally { setRecording(false); }
+  };
 
   const load = useCallback(async () => {
     try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); if (c.install?.running) setInstalling(true); } catch { /* */ }
@@ -664,7 +680,7 @@ function VoicePanel() {
     }, 4000);
   };
 
-  const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts'>>) => {
+  const save = async (patch: Partial<Pick<VoiceConfig, 'enabled' | 'wakeword' | 'lang' | 'tts' | 'whisperModel' | 'voices'>>) => {
     setBusy(true); setMsg('');
     try { const c = await api.voice.setConfig(patch); setCfg((prev) => (prev ? { ...prev, ...c } : c)); setMsg(tt('Gespeichert')); }
     catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
@@ -690,7 +706,7 @@ function VoicePanel() {
             {av.daemon ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachdienst')}
           </span>
           <span className={`badge badge--${av.tts ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
-            {av.tts ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachausgabe')} {av.voices.length > 0 ? `(${av.voices.join(', ')})` : ''}
+            {av.tts ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {tt('Sprachausgabe')}
           </span>
           <span className={`badge badge--${cfg.model ? 'running' : 'stopped'}`} style={{ height: 24, padding: '0 10px' }}>
             {cfg.model ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {cfg.model ? cfg.model.split('/').pop() : tt('kein Modell geladen')}
@@ -729,13 +745,16 @@ function VoicePanel() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Weckwort')}</div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <input className="input" style={{ flex: 1, fontSize: 13 }} value={wake} disabled={busy}
+            <input className="input" style={{ flex: 1, fontSize: 13 }} value={wake} disabled={busy || recording}
               placeholder={tt('z.B. Computer, Jarvis, Hey Core')}
               onChange={(e) => setWake(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && wake.trim() && save({ wakeword: wake.trim() })} />
-            <button className="btn btn--primary btn--sm" disabled={busy || !wake.trim() || wake.trim() === cfg.wakeword} onClick={() => save({ wakeword: wake.trim() })}>{tt('Speichern')}</button>
+            <button className="btn btn--outline btn--sm" disabled={busy || recording || !av.stt} title={tt('Weckwort einsprechen')} onClick={() => void recordWake()}>
+              {recording ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Aufnahme …')}</> : <><Mic size={13} /> {tt('Einsprechen')}</>}
+            </button>
+            <button className="btn btn--primary btn--sm" disabled={busy || recording || !wake.trim() || wake.trim() === cfg.wakeword} onClick={() => save({ wakeword: wake.trim() })}>{tt('Speichern')}</button>
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Nach dem Weckwort wird zugehört und dein Befehl an das geladene KI-Modell geschickt.')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Tippen oder „Einsprechen" (2,5 s aufnehmen). Nach dem Weckwort wird dein Befehl an das geladene KI-Modell geschickt.')}</div>
         </div>
 
         {/* Sprache */}
@@ -746,6 +765,42 @@ function VoicePanel() {
               <button key={l.code} className={`btn btn--sm ${cfg.lang === l.code ? 'btn--primary' : 'btn--outline'}`} disabled={busy} onClick={() => save({ lang: l.code })}>{l.label}</button>
             ))}
           </div>
+        </div>
+
+        {/* TTS-Stimme (für die gewählte Sprache) */}
+        {(() => {
+          const opts = av.catalog?.[cfg.lang] ?? [];
+          const cur = cfg.voices?.[cfg.lang] ?? '';
+          return (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Stimme')} <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}>({cfg.lang.toUpperCase()})</span></div>
+              {opts.length === 0 ? (
+                <div style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{tt('Für diese Sprache ist derzeit keine Stimme verfügbar.')}</div>
+              ) : (
+                <select className="input" style={{ fontSize: 13, maxWidth: 320 }} value={cur} disabled={busy}
+                  onChange={(e) => save({ voices: { [cfg.lang]: e.target.value } })}>
+                  <option value="">{tt('Standard')}{opts[0] ? ` (${opts[0].label})` : ''}</option>
+                  {opts.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}{o.installed ? '' : ' – ' + tt('lädt beim ersten Mal')}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Whisper-Modell (Genauigkeit vs. Tempo) */}
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Erkennungsmodell (Whisper)')}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {(cfg.whisperModels ?? ['tiny', 'base', 'small', 'medium']).map((m) => (
+              <button key={m} className={`btn btn--sm ${cfg.whisperModel === m ? 'btn--primary' : 'btn--outline'}`} disabled={busy}
+                onClick={() => save({ whisperModel: m })} title={av.loaded?.includes(m) ? tt('geladen') : undefined}>
+                {m}{av.loaded?.includes(m) ? ' ●' : ''}
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Kleiner = schneller, größer = genauer. „medium" braucht mehr RAM/Zeit. Ein neues Modell wird beim ersten Mal geladen.')}</div>
         </div>
 
         {/* Sprachausgabe */}

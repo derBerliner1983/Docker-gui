@@ -290,6 +290,10 @@ Font: Inter.
 | Gefühlt schnell: sofortiges „Verstanden"-Feedback, Antwort wird **satzweise** vorgelesen (kein Warten auf die Gesamtantwort) | ✅ |
 | Einstellungen → Sprachsteuerung: An/Aus, Weckwort, Sprache, Vorlesen | ✅ |
 | Installer: `sudo bash install.sh --voice` bzw. `--with-voice`; danach bei jedem Update automatisch mit aktualisiert (systemd-Dienst `core-hub-voice`) | ✅ |
+| Sprachdienst per Button aus dem Tool installierbar (`/api/voice/install`, kein Shell-Zugriff nötig) | ✅ |
+| KI-Zentrale: automatisches Zuhören (Auto-Reconnect), Mute-Schalter; Wellen-Visualisierung (mittig nach außen, nur bei Weckwort/Antwort sichtbar) | ✅ |
+| Weckwort einsprechen (Aufnahme → Whisper), TTS-Stimme je Sprache wählbar, Whisper-Modell (tiny/base/small/medium) umschaltbar | ✅ |
+| Geplant: eigene Stimme klonen (XTTS/Coqui), Sprachmodelle löschen | ⏳ |
 
 ### ⏳ Geplant / Ideen
 

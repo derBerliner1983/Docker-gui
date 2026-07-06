@@ -259,6 +259,48 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
   );
 }
 
+// ── Wellen-Visualisierung (mittig nach außen, nach Lautstärke) ──────────────────
+// Sichtbar nur, wenn ein Weckwort erkannt wurde (Zuhören) bzw. beim Antworten –
+// sonst gibt die Komponente nichts aus („ausgeblendet"). Reagiert live auf den
+// Pegel des jeweiligen AnalyserNode (Mikrofon beim Verstehen, Ausgabe beim Reden).
+function Waveform({ analyser, active }: { analyser: React.RefObject<AnalyserNode | null>; active: boolean }) {
+  const ref = useRef<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = ref.current; if (!canvas) return;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = 360, H = 150;
+    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    const data = new Uint8Array(128);
+    let raf = 0;
+    const draw = () => {
+      const an = analyser.current;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+      const accent = (getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#10B981');
+      if (an) an.getByteFrequencyData(data);
+      const K = 26, bw = 4, gap = 4, cx = W / 2, cy = H / 2;
+      for (let k = 0; k <= K; k++) {
+        const v = an ? (data[Math.min(127, k * 2)] / 255) : 0;
+        const shape = Math.cos((k / K) * (Math.PI / 2));           // Mitte hoch, Ränder niedrig
+        const h = Math.max(3, H * 0.92 * shape * (0.12 + 0.88 * v));
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = 0.35 + 0.6 * (1 - k / K);
+        const y = cy - h / 2;
+        ctx.fillRect(cx + k * (bw + gap) - bw / 2, y, bw, h);
+        if (k > 0) ctx.fillRect(cx - k * (bw + gap) - bw / 2, y, bw, h);
+      }
+      ctx.globalAlpha = 1;
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => cancelAnimationFrame(raf);
+  }, [active, analyser]);
+  if (!active) return null;
+  return <canvas ref={ref} style={{ display: 'block' }} />;
+}
+
 // Summe der Ablauf-Zeitpunkte – steigt, wenn Ollama nach einer Anfrage den
 // keep_alive-Timer neu setzt → daran erkennen wir „die KI macht etwas".
 function activitySignature(models: OllamaPsModel[]): number {
@@ -296,6 +338,12 @@ export function AiHub() {
   const [voiceCfg, setVoiceCfg] = useState<VoiceConfig | null>(null);
   const voice = useVoice((b) => setBusy(b));
   useEffect(() => { api.voice.config().then(setVoiceCfg).catch(() => {}); }, []);
+  // Ohne Klick zuhören: automatisch verbinden, sobald aktiviert & Dienst da ist
+  useEffect(() => {
+    if (voiceCfg?.enabled && voiceCfg.available.daemon && voice.state.supported) void voice.start();
+    // start() ist idempotent; stop() beim Verlassen der Seite übernimmt der Hook
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceCfg?.enabled, voiceCfg?.available.daemon]);
 
   const load = useCallback(async () => {
     try {
@@ -351,8 +399,16 @@ export function AiHub() {
             <div className="aihub-layout">
 
               {/* Große Weltkugel füllt den Platz (immer sichtbar) */}
-              <div className="aihub-globe">
+              <div className="aihub-globe" style={{ position: 'relative' }}>
                 <AiSphere online={online} busy={busy} />
+                {(voice.state.awake || voice.state.speaking) && (
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
+                    <Waveform analyser={voice.state.speaking ? voice.outAnalyser : voice.micAnalyser} active={voice.state.awake || voice.state.speaking} />
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-accent)' }}>
+                      {voice.state.speaking ? tt('Antwortet …') : tt('Ich höre …')}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Rechte Spalte: Status + welches Modell */}
@@ -405,19 +461,22 @@ export function AiHub() {
                   <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{tt('Sprachsteuerung')}</span>
-                      <button
-                        className={`btn btn--sm ${voice.state.active ? 'btn--primary' : 'btn--outline'}`}
-                        disabled={!voice.state.supported || !voiceCfg.available.daemon}
-                        onClick={() => (voice.state.active ? voice.stop() : void voice.start())}
-                        title={!voiceCfg.available.daemon ? tt('Sprachdienst läuft nicht') : undefined}
-                      >
-                        {voice.state.active ? <MicOff size={13} /> : <Mic size={13} />}
-                        {voice.state.active ? tt('Stopp') : tt('Zuhören')}
-                      </button>
+                      {voice.state.active ? (
+                        <button className={`btn btn--sm ${voice.state.muted ? 'btn--outline' : 'btn--primary'}`} onClick={() => voice.toggleMute()} title={voice.state.muted ? tt('Mikrofon an') : tt('Mikrofon aus')}>
+                          {voice.state.muted ? <MicOff size={13} /> : <Mic size={13} />}
+                          {voice.state.muted ? tt('Aus') : tt('An')}
+                        </button>
+                      ) : voice.state.connecting ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--color-muted)' }}><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Verbinde …')}</span>
+                      ) : (
+                        <button className="btn btn--sm btn--outline" disabled={!voice.state.supported || !voiceCfg.available.daemon} onClick={() => void voice.start()}>
+                          <Mic size={13} /> {tt('Aktivieren')}
+                        </button>
+                      )}
                     </div>
-                    {voice.state.active && (
+                    {(voice.state.active || voice.state.connecting) && (
                       <div style={{ fontSize: 11.5, color: voice.state.awake ? 'var(--color-accent)' : 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: voice.state.awake || voice.state.speaking ? 'var(--color-accent)' : 'var(--color-faint)', boxShadow: voice.state.awake || voice.state.speaking ? '0 0 6px var(--color-accent)' : 'none' }} />
+                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: voice.state.awake || voice.state.speaking ? 'var(--color-accent)' : voice.state.muted ? 'var(--color-faint)' : 'var(--color-success)', boxShadow: voice.state.awake || voice.state.speaking ? '0 0 6px var(--color-accent)' : 'none' }} />
                         {voice.state.status}
                       </div>
                     )}

@@ -6,74 +6,84 @@ Ein einzelner, schlanker HTTP-Dienst (nur Python-Standardbibliothek als Server)
 für Spracherkennung (STT) und Sprachausgabe (TTS):
 
   * STT: faster-whisper (Whisper lokal, multilingual inkl. Deutsch/Englisch/Thai)
-  * TTS: Piper (lokal, schnelle neuronale Stimmen)
+  * TTS: Piper (lokal, schnelle neuronale Stimmen; Stimme je Sprache wählbar)
 
-Der Node-Backend (routes/voice.ts) spricht diesen Dienst über 127.0.0.1 an.
-Es werden KEINE Daten in die Cloud geschickt.
+Das Node-Backend (routes/voice.ts) übergibt Whisper-Modell und Stimme je Anfrage
+(Quelle der Wahrheit sind die App-Einstellungen). Es werden KEINE Daten in die
+Cloud geschickt.
 
 Endpunkte:
-  GET  /health                 -> {ok, stt, tts, voices:[...], model}
-  POST /transcribe?lang=de     -> Body: raw int16le, 16 kHz, mono  -> {text, lang}
-  POST /tts?lang=de            -> Body: UTF-8 Text                 -> audio/wav (16-bit PCM)
+  GET  /health                         -> {ok, stt, tts, model, catalog, ...}
+  GET  /voices                         -> Stimmen-Katalog je Sprache (+ installiert)
+  POST /transcribe?lang=de&model=base  -> Body: int16le 16 kHz mono -> {text, lang}
+  POST /tts?lang=de&voice=<id>         -> Body: UTF-8 Text          -> audio/wav
 
-Konfiguration über Umgebungsvariablen:
-  VOICE_PORT        (Default 11435)
-  WHISPER_MODEL     (Default "base"; z.B. tiny/base/small/medium)
-  WHISPER_DEVICE    (Default "auto"; cpu/cuda)
-  WHISPER_COMPUTE   (Default "int8")
-  VOICE_CACHE       (Default ~/.cache/core-hub-voice)  – Ablage der Piper-Stimmen
+Umgebungsvariablen:
+  VOICE_PORT (11435), WHISPER_MODEL (base), WHISPER_DEVICE (auto),
+  WHISPER_COMPUTE (int8), VOICE_CACHE (~/.cache/core-hub-voice)
 """
 import io
 import os
 import json
 import wave
-import struct
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 PORT = int(os.environ.get("VOICE_PORT", "11435"))
-WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "base")
+DEFAULT_MODEL = os.environ.get("WHISPER_MODEL", "base")
 WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 CACHE = os.environ.get("VOICE_CACHE", os.path.expanduser("~/.cache/core-hub-voice"))
 os.makedirs(CACHE, exist_ok=True)
 
-# ── Piper-Stimmen je Sprache (rhasspy/piper-voices auf HuggingFace) ──────────────
+# ── Piper-Stimmen-Katalog (rhasspy/piper-voices auf HuggingFace) ─────────────────
 # Thai: Piper bietet (Stand jetzt) keine offizielle Stimme. STT (Verstehen) läuft
-# trotzdem; für TTS kann hier eine eigene .onnx/.json-Stimme hinterlegt werden.
+# trotzdem; eine eigene .onnx/.json-Stimme kann hier ergänzt werden.
 PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
-VOICES = {
-    "de": "de/de_DE/thorsten/medium/de_DE-thorsten-medium",
-    "en": "en/en_US/amy/medium/en_US-amy-medium",
-    # "th": "<pfad-zur-thai-stimme>",  # optional selbst hinterlegen
+CATALOG = {
+    "de": [
+        {"id": "de_DE-thorsten-medium", "label": "Thorsten (mittel)", "rel": "de/de_DE/thorsten/medium/de_DE-thorsten-medium"},
+        {"id": "de_DE-thorsten-high",   "label": "Thorsten (hoch)",   "rel": "de/de_DE/thorsten/high/de_DE-thorsten-high"},
+        {"id": "de_DE-eva_k-x_low",     "label": "Eva",               "rel": "de/de_DE/eva_k/x_low/de_DE-eva_k-x_low"},
+        {"id": "de_DE-kerstin-low",     "label": "Kerstin",           "rel": "de/de_DE/kerstin/low/de_DE-kerstin-low"},
+        {"id": "de_DE-karlsson-low",    "label": "Karlsson",          "rel": "de/de_DE/karlsson/low/de_DE-karlsson-low"},
+    ],
+    "en": [
+        {"id": "en_US-amy-medium",    "label": "Amy (US)",    "rel": "en/en_US/amy/medium/en_US-amy-medium"},
+        {"id": "en_US-lessac-medium", "label": "Lessac (US)", "rel": "en/en_US/lessac/medium/en_US-lessac-medium"},
+        {"id": "en_US-ryan-high",     "label": "Ryan (US)",   "rel": "en/en_US/ryan/high/en_US-ryan-high"},
+        {"id": "en_GB-alan-medium",   "label": "Alan (GB)",   "rel": "en/en_GB/alan/medium/en_GB-alan-medium"},
+    ],
+    "th": [],
 }
+REL_BY_ID = {v["id"]: v["rel"] for langs in CATALOG.values() for v in langs}
 
-_whisper = None
-_piper = {}   # lang -> PiperVoice
+_whisper = {}   # size -> WhisperModel
+_piper = {}     # voice_id -> PiperVoice
 
 
 def log(*a):
     print("[voiced]", *a, flush=True)
 
 
-# ── STT: faster-whisper (lazy laden) ─────────────────────────────────────────────
-def get_whisper():
-    global _whisper
-    if _whisper is None:
+# ── STT: faster-whisper (je Modellgröße gecacht) ─────────────────────────────────
+def get_whisper(size: str):
+    size = size or DEFAULT_MODEL
+    if size not in _whisper:
         from faster_whisper import WhisperModel  # type: ignore
-        log(f"lade Whisper-Modell '{WHISPER_MODEL}' (device={WHISPER_DEVICE}, compute={WHISPER_COMPUTE})")
-        _whisper = WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
-        log("Whisper bereit")
-    return _whisper
+        log(f"lade Whisper-Modell '{size}' (device={WHISPER_DEVICE}, compute={WHISPER_COMPUTE})")
+        _whisper[size] = WhisperModel(size, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+        log(f"Whisper '{size}' bereit")
+    return _whisper[size]
 
 
-def transcribe(pcm: bytes, lang: str) -> str:
+def transcribe(pcm: bytes, lang: str, size: str) -> str:
     import numpy as np  # type: ignore
     audio = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
     if audio.size == 0:
         return ""
-    model = get_whisper()
+    model = get_whisper(size)
     segments, _info = model.transcribe(
         audio, language=lang, beam_size=1, vad_filter=True,
         condition_on_previous_text=False,
@@ -81,7 +91,12 @@ def transcribe(pcm: bytes, lang: str) -> str:
     return "".join(s.text for s in segments).strip()
 
 
-# ── TTS: Piper (lazy laden + Stimme bei Bedarf herunterladen) ─────────────────────
+# ── TTS: Piper (Stimme je Sprache; bei Bedarf herunterladen) ─────────────────────
+def _voice_paths(voice_id: str):
+    name = voice_id
+    return os.path.join(CACHE, name + ".onnx"), os.path.join(CACHE, name + ".onnx.json")
+
+
 def _download(url: str, dest: str):
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return
@@ -91,32 +106,35 @@ def _download(url: str, dest: str):
     os.replace(tmp, dest)
 
 
-def get_piper(lang: str):
-    if lang in _piper:
-        return _piper[lang]
-    rel = VOICES.get(lang)
+def default_voice(lang: str):
+    opts = CATALOG.get(lang) or []
+    return opts[0]["id"] if opts else None
+
+
+def get_piper(voice_id: str):
+    if voice_id in _piper:
+        return _piper[voice_id]
+    rel = REL_BY_ID.get(voice_id)
     if not rel:
-        _piper[lang] = None
+        _piper[voice_id] = None
         return None
     from piper import PiperVoice  # type: ignore
-    name = os.path.basename(rel)
-    onnx = os.path.join(CACHE, name + ".onnx")
-    conf = os.path.join(CACHE, name + ".onnx.json")
+    onnx, conf = _voice_paths(voice_id)
     _download(f"{PIPER_BASE}/{rel}.onnx", onnx)
     _download(f"{PIPER_BASE}/{rel}.onnx.json", conf)
     voice = PiperVoice.load(onnx, config_path=conf)
-    _piper[lang] = voice
-    log(f"Piper-Stimme geladen: {name}")
+    _piper[voice_id] = voice
+    log(f"Piper-Stimme geladen: {voice_id}")
     return voice
 
 
-def synthesize(text: str, lang: str) -> bytes:
-    voice = get_piper(lang)
+def synthesize(text: str, lang: str, voice_id: str) -> bytes:
+    vid = voice_id or default_voice(lang)
+    voice = get_piper(vid) if vid else None
     if voice is None:
         raise RuntimeError(f"keine TTS-Stimme für '{lang}'")
     buf = io.BytesIO()
     with wave.open(buf, "wb") as wf:
-        # Neuere piper-tts-Versionen setzen die WAV-Parameter selbst; ältere nicht.
         try:
             wf.setnchannels(1)
             wf.setsampwidth(2)
@@ -127,11 +145,13 @@ def synthesize(text: str, lang: str) -> bytes:
     return buf.getvalue()
 
 
-def voices_available():
-    out = []
-    for lang, rel in VOICES.items():
-        if rel:
-            out.append(lang)
+def catalog_with_state():
+    out = {}
+    for lang, opts in CATALOG.items():
+        out[lang] = []
+        for v in opts:
+            onnx, _ = _voice_paths(v["id"])
+            out[lang].append({"id": v["id"], "label": v["label"], "installed": os.path.exists(onnx)})
     return out
 
 
@@ -149,18 +169,20 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, json.dumps(obj).encode("utf-8"))
 
     def log_message(self, *a):
-        pass  # eigenes Logging via log()
+        pass
 
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/health":
             self._json(200, {
-                "ok": True,
-                "stt": True,
-                "tts": len(voices_available()) > 0,
-                "voices": voices_available(),
-                "model": WHISPER_MODEL,
+                "ok": True, "stt": True,
+                "tts": any(CATALOG.values()),
+                "model": DEFAULT_MODEL,
+                "loaded": list(_whisper.keys()),
+                "catalog": catalog_with_state(),
             })
+        elif p == "/voices":
+            self._json(200, {"catalog": catalog_with_state()})
         else:
             self._json(404, {"error": "not found"})
 
@@ -172,10 +194,11 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         try:
             if u.path == "/transcribe":
-                text = transcribe(body, lang)
-                self._json(200, {"text": text, "lang": lang})
+                size = qs.get("model", [DEFAULT_MODEL])[0] or DEFAULT_MODEL
+                self._json(200, {"text": transcribe(body, lang, size), "lang": lang})
             elif u.path == "/tts":
-                wav = synthesize(body.decode("utf-8", "ignore"), lang)
+                voice_id = qs.get("voice", [""])[0]
+                wav = synthesize(body.decode("utf-8", "ignore"), lang, voice_id)
                 self._send(200, wav, ctype="audio/wav")
             else:
                 self._json(404, {"error": "not found"})
@@ -186,13 +209,11 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     log(f"starte auf 127.0.0.1:{PORT}")
-    # Whisper vorab laden, damit die erste Erkennung nicht wartet
     try:
-        get_whisper()
+        get_whisper(DEFAULT_MODEL)
     except Exception as e:  # noqa: BLE001
         log("Whisper konnte nicht vorgeladen werden:", repr(e))
-    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    srv.serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
