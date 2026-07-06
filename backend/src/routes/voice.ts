@@ -261,6 +261,33 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Stimme klonen (Qwen zero-shot): Referenz-PCM (base64) + Transkript
+  fastify.post<{ Body: { name?: string; text?: string; pcmB64?: string } }>('/api/voice/clone', { preHandler: requireAdmin, bodyLimit: 16 * 1024 * 1024 }, async (req, reply) => {
+    const b = req.body || {};
+    if (!b.name?.trim() || !b.pcmB64) return reply.status(400).send({ error: 'Name und Aufnahme nötig' });
+    try {
+      const r = await fetch(`${DAEMON}/clone`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: b.name.trim().slice(0, 40), text: (b.text || '').slice(0, 400), pcm_b64: b.pcmB64 }),
+        signal: AbortSignal.timeout(30000),
+      });
+      const j = await r.json().catch(() => ({})) as { error?: string; id?: string };
+      if (!r.ok) return reply.status(500).send({ error: j.error || 'Klonen fehlgeschlagen (läuft Qwen? → „Qwen-Stimme installieren")' });
+      reply.send(j);
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'Fehler' });
+    }
+  });
+
+  fastify.delete<{ Params: { id: string } }>('/api/voice/clone/:id', { preHandler: requireAdmin }, async (req, reply) => {
+    try {
+      await fetch(`${DAEMON}/clone/${encodeURIComponent(req.params.id)}`, { method: 'DELETE', signal: AbortSignal.timeout(5000) });
+      reply.send({ ok: true });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'Fehler' });
+    }
+  });
+
   fastify.get('/api/voice/install/status', { preHandler: requireAuth }, async (_req, reply) => {
     const health = await daemonHealth();
     reply.send({ running: install.running, error: install.error, log: install.log.slice(-4000), daemon: health.ok });

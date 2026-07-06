@@ -295,7 +295,8 @@ Font: Inter.
 | Weckwort einsprechen (Aufnahme → Whisper), TTS-Stimme je Sprache wählbar, Whisper-Modell (tiny/base/small/medium) umschaltbar | ✅ |
 | TTS-Motor **Kokoro** zusätzlich (sehr gute Englisch-Stimmen; Deutsch/Thai bleiben Piper). Stimmen-ID mit Motor-Präfix `piper:` / `kokoro:` | ✅ |
 | TTS-Motor **Qwen3-TTS** (1.7B, optional) für **Deutsch** in Studioqualität – `sudo bash install.sh --voice-qwen` oder Button in den Einstellungen (schwer: PyTorch, GPU empfohlen) | ✅ |
-| Geplant: eigene Stimme klonen (Qwen/Chatterbox), Sprachmodelle löschen | ⏳ |
+| **Eigene Stimme klonen** (Qwen zero-shot): ~6 s aufnehmen → automatisch transkribiert → als Stimme wählbar/löschbar (DE/EN) | ✅ |
+| Geplant: Sprachmodelle/Stimmen aus dem Cache löschen | ⏳ |
 
 ### ⏳ Geplant / Ideen
 
