@@ -15,11 +15,11 @@ function shortName(name: string): string {
   return name.split('/').pop() || name;
 }
 
+type RGB = { r: number; g: number; b: number };
 // CSS-Farb-Token (#RRGGBB) in {r,g,b} umwandeln – für die Canvas-Kugel.
-function readAccentRgb(): { r: number; g: number; b: number } {
-  const fallback = { r: 16, g: 185, b: 129 }; // #10B981
+function readVarRgb(name: string, fallback: RGB): RGB {
   try {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim();
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     const hex = raw.replace('#', '');
     if (hex.length === 6) {
       return { r: parseInt(hex.slice(0, 2), 16), g: parseInt(hex.slice(2, 4), 16), b: parseInt(hex.slice(4, 6), 16) };
@@ -28,6 +28,11 @@ function readAccentRgb(): { r: number; g: number; b: number } {
     if (m) { const [r, g, b] = m[1].split(',').map((s) => parseInt(s, 10)); return { r, g, b }; }
   } catch { /* */ }
   return fallback;
+}
+const readAccentRgb = () => readVarRgb('--color-accent', { r: 16, g: 185, b: 129 });        // #10B981
+const readAccentStrongRgb = () => readVarRgb('--color-accent-strong', { r: 5, g: 150, b: 105 }); // #059669
+function isLightTheme(): boolean {
+  return document.documentElement.getAttribute('data-theme') !== 'dark';
 }
 
 // ── Grobe Kontinent-Maske (Land = Vereinigung von Lat/Lon-Rechtecken) ───────────
@@ -64,6 +69,8 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const accent = useRef(readAccentRgb());
+  const accentStrong = useRef(readAccentStrongRgb());
+  const light = useRef(isLightTheme());
   const onlineRef = useRef(online);
   const busyRef = useRef(busy);
   useEffect(() => { onlineRef.current = online; }, [online]);
@@ -76,7 +83,11 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const mo = new MutationObserver(() => { accent.current = readAccentRgb(); });
+    const mo = new MutationObserver(() => {
+      accent.current = readAccentRgb();
+      accentStrong.current = readAccentStrongRgb();
+      light.current = isLightTheme();
+    });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     // ── Erdkugel-Punkte (Fibonacci) mit Land-Klassifikation ──
@@ -128,10 +139,23 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
     let angle = 0.6, act = 0, netFade = 0;
 
     const render = () => {
-      const { r, g, b } = accent.current;
-      // Linienfarbe: gedämpfte, leicht kühlere Variante des Akzents, damit die
-      // Knotenpunkte klarer hervortreten (Linien dezenter als die Punkte).
-      const lr = Math.round(r * 0.55 + 40), lg = Math.round(g * 0.55 + 50), lb = Math.round(b * 0.55 + 55);
+      const lt = light.current;
+      // Im Hellmodus kräftigeren, dunkleren Akzent nehmen (auf Weiß gut sichtbar),
+      // im Dunkelmodus den hellen Akzent.
+      const { r, g, b } = lt ? accentStrong.current : accent.current;
+      // Linienfarbe: dezenter als die Punkte. Hell = dunkler Akzent (nicht
+      // ausgewaschen), Dunkel = gedämpfte, leicht kühlere Akzent-Variante.
+      const AA = accent.current;
+      const lr = lt ? accentStrong.current.r : Math.round(AA.r * 0.55 + 40);
+      const lg = lt ? accentStrong.current.g : Math.round(AA.g * 0.55 + 50);
+      const lb = lt ? accentStrong.current.b : Math.round(AA.b * 0.55 + 55);
+      // Themenabhängige Deckkräfte
+      const glow0 = lt ? 0.05 : 0.12, glow1 = lt ? 0.02 : 0.045;
+      const oceanA = lt ? 0.10 : 0.03, oceanAd = lt ? 0.16 : 0.07;
+      const landA0 = lt ? 0.50 : 0.45;
+      const lineBase = lt ? 0.07 : 0.02, lineDepth = lt ? 0.16 : 0.085, lineCap = lt ? 0.55 : 0.5;
+      const nodeA0 = lt ? 0.50 : 0.22, nodeShadow = lt ? 2 : 5;
+      const pulse = lt ? accentStrong.current : { r: 255, g: 255, b: 255 };
       const on = onlineRef.current;
       act += ((on && busyRef.current ? 1 : 0) - act) * 0.06;   // Aktivitätsintensität
       netFade += ((on ? 1 : 0) - netFade) * 0.08;              // Netz sanft ein-/ausblenden
@@ -158,8 +182,8 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
 
       // Hintergrund-Glühen (stärker bei Aktivität)
       const glow = ctx.createRadialGradient(cx, cy, Rg * 0.1, cx, cy, Rg * 1.7);
-      glow.addColorStop(0, `rgba(${r},${g},${b},${0.12 + act * 0.14})`);
-      glow.addColorStop(0.55, `rgba(${r},${g},${b},${0.045 + act * 0.05})`);
+      glow.addColorStop(0, `rgba(${r},${g},${b},${glow0 + act * 0.14})`);
+      glow.addColorStop(0.55, `rgba(${r},${g},${b},${glow1 + act * 0.05})`);
       glow.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, size, size);
@@ -169,12 +193,12 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
         if (!p.keep) continue;
         const q = rot(p, Rg);
         if (p.land) {
-          const a = (0.45 + q.depth * 0.5) * (1 + act * 0.3);
+          const a = (landA0 + q.depth * 0.45) * (1 + act * 0.3);
           ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(1, a)})`;
           const s = (1.0 + q.depth * 1.9) + act * 0.5;
           ctx.fillRect(q.sx, q.sy, s, s);
         } else {
-          ctx.fillStyle = `rgba(${r},${g},${b},${0.03 + q.depth * 0.07})`;
+          ctx.fillStyle = `rgba(${r},${g},${b},${oceanA + q.depth * oceanAd})`;
           const s = 0.5 + q.depth * 0.7;
           ctx.fillRect(q.sx, q.sy, s, s);
         }
@@ -187,16 +211,16 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
         for (const [i, j] of edges) {
           const a = proj[i], c = proj[j];
           const d = (a.depth + c.depth) / 2;
-          const alpha = (0.02 + d * 0.085) * (1 + act * 0.9) * netFade;
-          ctx.strokeStyle = `rgba(${lr},${lg},${lb},${Math.min(0.5, alpha)})`;
+          const alpha = (lineBase + d * lineDepth) * (1 + act * 0.9) * netFade;
+          ctx.strokeStyle = `rgba(${lr},${lg},${lb},${Math.min(lineCap, alpha)})`;
           ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(c.sx, c.sy); ctx.stroke();
         }
         for (const p of proj) {
           const rad = (0.7 + p.depth * 1.7) + act * 0.6;
-          const alpha = (0.22 + p.depth * 0.6) * (1 + act * 0.4) * netFade;
+          const alpha = (nodeA0 + p.depth * 0.6) * (1 + act * 0.4) * netFade;
           ctx.beginPath();
           ctx.fillStyle = `rgba(${r},${g},${b},${Math.min(1, alpha)})`;
-          ctx.shadowBlur = (5 + act * 8) * p.depth;
+          ctx.shadowBlur = (nodeShadow + act * 8) * p.depth;
           ctx.shadowColor = `rgba(${r},${g},${b},0.9)`;
           ctx.arc(p.sx, p.sy, rad, 0, Math.PI * 2); ctx.fill();
         }
@@ -210,7 +234,7 @@ function AiSphere({ online, busy }: { online: boolean; busy: boolean }) {
           const py = a.sy + (c.sy - a.sy) * pu.t;
           const d = a.depth + (c.depth - a.depth) * pu.t;
           ctx.beginPath();
-          ctx.fillStyle = `rgba(255,255,255,${(0.3 + d * 0.5) * (0.7 + act * 0.6) * netFade})`;
+          ctx.fillStyle = `rgba(${pulse.r},${pulse.g},${pulse.b},${(0.35 + d * 0.5) * (0.7 + act * 0.6) * netFade})`;
           ctx.shadowBlur = 8 + act * 6;
           ctx.shadowColor = `rgba(${r},${g},${b},1)`;
           ctx.arc(px, py, 1.4 + d * 1.2 + act * 0.8, 0, Math.PI * 2); ctx.fill();
