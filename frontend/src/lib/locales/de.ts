@@ -27,6 +27,7 @@ export const de: Record<string, string> = {
   'nav.users': 'Benutzer',
   'nav.settings': 'Einstellungen',
   'nav.ai': 'KI-Modelle',
+  'nav.aihub': 'KI-Zentrale',
 
   // ── Sidebar / Chrome ──
   'sidebar.updateAvailable': 'Update verfügbar',
@@ -75,6 +76,7 @@ export const de: Record<string, string> = {
   'page.backups.subtitle': '{n} Backups · {size} · {dir}',
   'page.packages.subtitle': '{manager} · {n} installiert · {size}',
   'page.ai.subtitle': '{n} Modelle · {size} belegt',
+  'page.aihub.subtitle.active': '{n} Modell(e) aktiv im Arbeitsspeicher',
   'page.notFound': 'Container nicht gefunden',
   'page.back': '← Zurück',
 

@@ -26,6 +26,7 @@ export const en: Record<string, string> = {
   'nav.users': 'Users',
   'nav.settings': 'Settings',
   'nav.ai': 'AI Models',
+  'nav.aihub': 'AI Center',
 
   // ── Sidebar / chrome ──
   'sidebar.updateAvailable': 'Update available',
@@ -74,6 +75,14 @@ export const en: Record<string, string> = {
   'page.backups.subtitle': '{n} backups · {size} · {dir}',
   'page.packages.subtitle': '{manager} · {n} installed · {size}',
   'page.ai.subtitle': '{n} models · {size} used',
+  'page.aihub.subtitle.active': '{n} model(s) active in memory',
+  'Keine KI aktiv': 'No AI active',
+  'KI aktiv im Arbeitsspeicher': 'AI active in memory',
+  '1 Sprachmodell ist geladen und einsatzbereit.': '1 language model is loaded and ready.',
+  '{n} Sprachmodelle sind geladen und einsatzbereit.': '{n} language models are loaded and ready.',
+  'Aktuell keine KI in den Arbeitsspeicher geladen': 'No AI currently loaded into memory',
+  'Lade unter „KI-Modelle" ein Sprachmodell in den Arbeitsspeicher (RAM oder GPU), damit die KI-Visualisierung erscheint.': 'Load a language model into memory (RAM or GPU) under “AI Models” to make the AI visualization appear.',
+  'Hinweis: Ollama ist derzeit gestoppt.': 'Note: Ollama is currently stopped.',
   'page.notFound': 'Container not found',
   'page.back': '← Back',
 
