@@ -1,9 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Globe, Server, Box, Cable, ShieldCheck, ShieldX, Activity, MonitorPlay } from 'lucide-react';
+import { Globe, Server, Box, Cable, ShieldCheck, ShieldX, Activity, MonitorPlay, Router, Monitor, HardDrive, Plus, Trash2, X } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { tt } from '../lib/i18n';
 import { api } from '../lib/api';
+import { usePrefs } from '../lib/prefs';
 import type { DockerNetwork, Container } from '../lib/types';
+
+// Selbst angelegte Geräte (Router/Fritzbox, PC, NAS …), pro Benutzer gespeichert.
+interface MapDevice { id: string; name: string; type: 'router' | 'pc' | 'nas' | 'server'; ip?: string }
+const DEV_META: Record<MapDevice['type'], { label: string; Icon: React.ElementType }> = {
+  router: { label: tt('Router/Gateway'), Icon: Router },
+  pc:     { label: 'PC', Icon: Monitor },
+  nas:    { label: 'NAS', Icon: HardDrive },
+  server: { label: tt('Server'), Icon: Server },
+};
 
 // ── Datenaufbereitung ────────────────────────────────────────────────────────────
 function isRealIp(ip: string): boolean {
@@ -14,9 +24,10 @@ function lanSubnetOf(ip?: string): string | undefined {
   const p = ip.split('.'); p[3] = '0'; return p.join('.') + '/24';
 }
 
+type NodeKind = 'internet' | 'tunnel' | 'host' | 'docker' | 'vm' | 'router' | 'pc' | 'nas' | 'server';
 interface MapNode {
   id: string;
-  kind: 'internet' | 'tunnel' | 'host' | 'docker' | 'vm';
+  kind: NodeKind;
   label: string;
   sub?: string;
   ip?: string;
@@ -25,12 +36,16 @@ interface MapNode {
   x: number; y: number;
 }
 
-const KIND_META: Record<MapNode['kind'], { color: string; Icon: React.ElementType }> = {
+const KIND_META: Record<NodeKind, { color: string; Icon: React.ElementType }> = {
   internet: { color: 'var(--color-warning)', Icon: Globe },
   tunnel:   { color: '#38bdf8', Icon: Cable },
   host:     { color: 'var(--color-success)', Icon: Server },
   docker:   { color: 'var(--color-accent)', Icon: Box },
   vm:       { color: '#c084fc', Icon: MonitorPlay },
+  router:   { color: '#f59e0b', Icon: Router },
+  pc:       { color: '#94a3b8', Icon: Monitor },
+  nas:      { color: '#94a3b8', Icon: HardDrive },
+  server:   { color: '#94a3b8', Icon: Server },
 };
 
 type Reach = Record<string, { open: number[]; scanning: boolean; checked: boolean }>;
@@ -45,6 +60,10 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   const [sel, setSel] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [dName, setDName] = useState('');
+  const [dType, setDType] = useState<MapDevice['type']>('router');
+  const [dIp, setDIp] = useState('');
 
   // Host-LAN-IP + veröffentlichte Ports je Container aus den Port-Mappings ableiten
   const { hostLanIp, pubByName, pubAddrByName } = useMemo(() => {
@@ -77,13 +96,26 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   }, [networks]);
 
   const tunnel = containers.find((c) => /newt|pangolin|wireguard|tailscale|wg-easy|zerotier/i.test(`${c.name} ${c.image || ''}`));
-  const dockerNames = useMemo(() => [...new Set(networks.flatMap((n) => n.name === 'none' ? [] : n.containers.map((c) => c.name)))], [networks]);
+  const tunnelName = tunnel?.name;
+  // Container ohne den Tunnel-Container (der wird separat als Tunnel-Knoten gezeigt → nicht doppelt)
+  const dockerNames = useMemo(
+    () => [...new Set(networks.flatMap((n) => n.name === 'none' ? [] : n.containers.map((c) => c.name)))].filter((n) => n !== tunnelName),
+    [networks, tunnelName],
+  );
   const reachOf = (name: string): string | undefined => (pubAddrByName.get(name)?.find((a) => isRealIp(a.ip))?.ip) || hostLanIp;
 
-  // ── Layout (Ebenen: Internet → Tunnel/Host → Container) ──
+  // Selbst angelegte Geräte (Fritzbox/Router, PC, NAS …)
+  const { prefs, setPref } = usePrefs();
+  const devices = (prefs.netMapDevices as MapDevice[] | undefined) || [];
+  const addDevice = (d: MapDevice) => setPref('netMapDevices', [...devices, d]);
+  const removeDevice = (id: string) => { setPref('netMapDevices', devices.filter((d) => d.id !== id)); setSel((s) => s === `dev:${id}` ? null : s); };
+
+  // ── Layout (Ebenen: Internet → Tunnel/Host → Container → eigene Geräte) ──
   const cols = Math.max(dockerNames.length, 1);
-  const W = Math.max(880, cols * 190 + 120);
-  const H = 470;
+  const W = Math.max(880, cols * 190 + 120, devices.length * 190 + 120);
+  const yContainers = 340;
+  const yDevices = 480;
+  const H = devices.length ? 560 : 420;
 
   const nodes: MapNode[] = [];
   nodes.push({ id: 'internet', kind: 'internet', label: tt('Internet'), x: W / 2, y: 50 });
@@ -91,7 +123,11 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   nodes.push({ id: 'host', kind: 'host', label: 'Host', sub: tt('Server'), ip: hostLanIp, x: W / 2, y: 190 });
   dockerNames.forEach((name, i) => {
     const x = cols === 1 ? W / 2 : 100 + (i * (W - 200)) / (cols - 1);
-    nodes.push({ id: `docker:${name}`, kind: 'docker', label: name, ip: ipByName.get(name), ports: pubByName.get(name), reachIp: reachOf(name), x, y: 370 });
+    nodes.push({ id: `docker:${name}`, kind: 'docker', label: name, ip: ipByName.get(name), ports: pubByName.get(name), reachIp: reachOf(name), x, y: yContainers });
+  });
+  devices.forEach((d, i) => {
+    const x = devices.length === 1 ? W / 2 : 100 + (i * (W - 200)) / (devices.length - 1);
+    nodes.push({ id: `dev:${d.id}`, kind: d.type, label: d.name, sub: DEV_META[d.type].label, ip: d.ip, x, y: yDevices });
   });
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
@@ -100,6 +136,10 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   if (tunnel) { edges.push({ a: 'internet', b: 'tunnel', label: tt('Tunnel'), dashed: true }); edges.push({ a: 'tunnel', b: 'host', dashed: true }); }
   edges.push({ a: 'internet', b: 'host', label: tt('direkt (nur mit Portfreigabe)') });
   dockerNames.forEach((name) => edges.push({ a: 'host', b: `docker:${name}` }));
+  devices.forEach((d) => {
+    if (d.type === 'router') { edges.push({ a: 'internet', b: `dev:${d.id}`, dashed: true }); edges.push({ a: `dev:${d.id}`, b: 'host' }); }
+    else edges.push({ a: 'host', b: `dev:${d.id}` });
+  });
 
   // ── Live-Erreichbarkeit ──
   const scanNode = async (name: string) => {
@@ -148,11 +188,26 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
       subtitle={tt('Wer erreicht wen · welcher Port offen ist · direkt Firewall schalten')}
       storageKey="net-map"
       actions={
-        <button className="btn btn--primary btn--sm" onClick={() => void scanAll()}>
-          <Activity size={12} /> {tt('Live prüfen')}
-        </button>
+        <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+          <button className="btn btn--outline btn--sm" onClick={() => setShowAdd((v) => !v)}><Plus size={12} /> {tt('Gerät')}</button>
+          <button className="btn btn--primary btn--sm" onClick={() => void scanAll()}><Activity size={12} /> {tt('Live prüfen')}</button>
+        </div>
       }
     >
+      {showAdd && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10, padding: '10px 12px', background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+          <input className="input input--rect" style={{ width: 170 }} placeholder={tt('Name (z.B. FRITZ!Box)')} value={dName} onChange={(e) => setDName(e.target.value)} />
+          <select className="input input--rect" style={{ width: 150, cursor: 'pointer' }} value={dType} onChange={(e) => setDType(e.target.value as MapDevice['type'])}>
+            <option value="router">{tt('Router/Gateway')}</option>
+            <option value="pc">PC</option>
+            <option value="nas">NAS</option>
+            <option value="server">{tt('Server')}</option>
+          </select>
+          <input className="input input--rect" style={{ width: 150, fontFamily: 'var(--font-mono)' }} placeholder={tt('IP (optional)')} value={dIp} onChange={(e) => setDIp(e.target.value)} />
+          <button className="btn btn--primary btn--sm" disabled={!dName.trim()} onClick={() => { addDevice({ id: 'd' + Date.now(), name: dName.trim(), type: dType, ip: dIp.trim() || undefined }); setDName(''); setDIp(''); setShowAdd(false); }}>{tt('Hinzufügen')}</button>
+          <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setShowAdd(false)}><X size={13} /></button>
+        </div>
+      )}
       <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
         <div style={{ position: 'relative', width: W, height: H, margin: '4px auto', minWidth: W }}>
           {/* Verbindungslinien */}
@@ -224,6 +279,9 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
             {(() => { const M = KIND_META[selNode.kind]; return <M.Icon size={16} color={M.color} />; })()}
             <span style={{ fontSize: 13.5, fontWeight: 700 }}>{selNode.label}</span>
             {selNode.ip && <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--color-accent)' }}>{selNode.ip}</span>}
+            {selNode.id.startsWith('dev:') && (
+              <button className="btn btn--ghost btn--icon btn--sm" style={{ marginLeft: 'auto', color: 'var(--color-error)' }} title={tt('Gerät entfernen')} onClick={() => removeDevice(selNode.id.slice('dev:'.length))}><Trash2 size={13} /></button>
+            )}
           </div>
 
           {selNode.kind === 'docker' && selNode.ports && selNode.ports.length > 0 ? (
