@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Server, Globe, Box, LayoutGrid, Table, Terminal } from 'lucide-react';
+import { Network, Plus, Trash2, Shield, Link2, Unlink, Lock, Cable, MonitorPlay, Play, Square, Star, Link, Pencil, RefreshCw, X, Activity, Download, AlertTriangle, ShieldPlus, Server, Globe, Box, LayoutGrid, Table, Terminal, RotateCcw } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
@@ -220,6 +220,22 @@ function FirewallPanel() {
       defaultCollapsed
       actions={available && (
         <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            className="btn btn--outline btn--sm"
+            title={tt('Alle Regeln löschen und nur SSH/HTTPS fürs LAN neu setzen')}
+            onClick={async () => {
+              if (!confirm(
+                'Firewall auf Standard zurücksetzen?\n\n' +
+                'ALLE ufw-Regeln werden gelöscht. Danach sind NUR SSH (Port 22) und HTTPS (Port 443) ' +
+                'für dein lokales Netz (LAN) offen – alles andere ist gesperrt (jederzeit wieder freischaltbar).\n\n' +
+                'Fortfahren?'
+              )) return;
+              await api.firewall.reset().catch((e: Error) => alert(e.message));
+              load();
+            }}
+          >
+            <RotateCcw size={12} /> {tt('Zurücksetzen')}
+          </button>
           <Switch checked={active} onChange={async (v) => {
             if (v) {
               const ok = confirm(

@@ -463,20 +463,30 @@ export function buildFirewallAnalysis() {
   return { active, ruleCount: rules.length, defaultIncoming: def, listeningCount: listening.size, findings, counts };
 }
 
-// Garantiert, dass die Web-Oberfläche IMMER aus dem LAN erreichbar bleibt –
-// aber nur aus dem LAN. Nur Web-Ports (443 HTTPS, 80 HTTP→HTTPS-Weiterleitung),
-// bewusst NICHT SSH (22). Läuft beim Start (idempotent, ufw überspringt bereits
-// vorhandene Regeln). Verhindert, dass man sich per „Sperren" aussperrt.
-export function ensureLanWebAccess(): void {
+// Stellt NUR die beiden essenziellen LAN-Regeln sicher: SSH (22) und Web-UI (443)
+// aus dem lokalen Netz – und das auch nur, wenn es für den Port noch KEINE Regel
+// gibt (existiert bereits eine, wird sie unangetastet gelassen). Es werden bewusst
+// KEINE weiteren Regeln (80, OpenSSH/Internet, „Notfall") angelegt.
+// `force` überspringt die Aktiv-Prüfung (z.B. direkt vor dem Aktivieren/Reset).
+export function ensureLanWebAccess(force = false): void {
   try {
     if (!hasBinary('ufw')) return;
-    const status = safeExec('ufw status 2>/dev/null') || privExecSafe('ufw status');
-    if (!/Status:\s*active/i.test(status)) return; // ufw inaktiv → nichts erzwingen
+    if (!force) {
+      const st = safeExec('ufw status 2>/dev/null') || privExecSafe('ufw status');
+      if (!/Status:\s*active/i.test(st)) return; // ufw inaktiv → nichts erzwingen
+    }
+    const statusNum = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
+    const rules = parseUfw(statusNum);
+    const hasRuleFor = (port: string) => rules.some((r) => {
+      const pp = rulePort(r.to);
+      return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
+    });
     const lans = hostLanSubnets();
     const ranges = lans.length ? lans : ['192.168.0.0/16', '10.0.0.0/8', '172.16.0.0/12'];
-    for (const port of ['443', '80']) {
+    for (const port of ['22', '443']) {
+      if (hasRuleFor(port)) continue; // bereits eine Regel vorhanden → nichts tun
       for (const lan of ranges) {
-        try { privExec(`ufw allow from ${lan} to any port ${port} comment 'Core-Hub Web LAN (immer erreichbar)'`, { timeout: 8000 }); } catch { /* */ }
+        try { privExec(`ufw allow from ${lan} to any port ${port} proto tcp comment 'Core-Hub LAN (nur SSH/HTTPS)'`, { timeout: 8000 }); } catch { /* */ }
       }
     }
   } catch { /* ufw nicht verfügbar */ }
@@ -656,29 +666,30 @@ export async function firewallRoutes(fastify: FastifyInstance) {
     if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
     try {
       if (req.body?.enable) {
-        // Aussperr-Schutz: SSH (22) und Web-UI (443) bekommen – falls noch keine
-        // Regel existiert – eine Freigabe NUR für das echte LAN-Subnetz des PCs.
-        // Niemals „Anywhere"/Internet. Gibt es kein erkennbares LAN, wird nichts
-        // angelegt (dann muss der Admin die Regel selbst setzen).
-        const currentStatus = safeExec('ufw status numbered 2>/dev/null') || privExecSafe('ufw status numbered');
-        const currentRules = parseUfw(currentStatus);
-        const hasRuleFor = (port: string) => currentRules.some((r) => {
-          const pp = rulePort(r.to);
-          return pp?.port === port && (r.action === 'ALLOW' || r.action === 'LIMIT');
-        });
-        const lanSubnets = hostLanSubnets();
-        if (lanSubnets.length) {
-          for (const port of ['22', '443']) {
-            if (!hasRuleFor(port)) {
-              for (const subnet of lanSubnets) {
-                try { privExec(`ufw allow from ${subnet} to any port ${port} proto tcp comment 'LAN-only Auto'`, { timeout: 8000 }); } catch { /* ignorieren */ }
-              }
-            }
-          }
-        }
+        // Aussperr-Schutz: nur SSH (22) + Web-UI (443) fürs LAN, und nur falls
+        // dafür noch keine Regel existiert. Sonst wird nichts angelegt.
+        ensureLanWebAccess(true);
       }
       privExec(`bash -c "yes | ufw ${req.body?.enable ? 'enable' : 'disable'}"`, { timeout: 8000 });
       auditQueries.log.run(req.user.id, 'firewall.toggle', String(req.body?.enable));
+      reply.send({ ok: true });
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'ufw-Fehler' });
+    }
+  });
+
+  // Zurücksetzen: ALLE Regeln löschen und nur die beiden Grundregeln neu setzen
+  // (SSH 22 + HTTPS 443, jeweils nur fürs LAN). Alles andere bleibt deaktiviert.
+  fastify.post('/api/firewall/reset', { preHandler: requireAdmin }, async (req, reply) => {
+    if (!hasBinary('ufw')) return reply.status(503).send({ error: 'ufw nicht installiert' });
+    try {
+      privExec('bash -c "yes | ufw --force reset"', { timeout: 15000 });
+      privExec('ufw default deny incoming', { timeout: 8000 });
+      privExec('ufw default allow outgoing', { timeout: 8000 });
+      ensureLanWebAccess(true);                       // nur 22 + 443 fürs LAN
+      privExec('bash -c "yes | ufw enable"', { timeout: 8000 });
+      try { db.exec('DELETE FROM firewall_disabled'); } catch { /* */ }
+      auditQueries.log.run(req.user.id, 'firewall.reset', null);
       reply.send({ ok: true });
     } catch (err: unknown) {
       reply.status(500).send({ error: err instanceof Error ? err.message : 'ufw-Fehler' });
