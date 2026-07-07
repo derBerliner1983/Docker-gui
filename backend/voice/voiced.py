@@ -541,11 +541,23 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     log(f"starte auf 127.0.0.1:{PORT} (Kokoro verfügbar: {kokoro_available()})")
-    try:
-        get_whisper(DEFAULT_MODEL)
-    except Exception as e:  # noqa: BLE001
-        log("Whisper konnte nicht vorgeladen werden:", repr(e))
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    # Wichtig: den HTTP-Server SOFORT starten, damit /health erreichbar ist.
+    # Das Whisper-Modell wird NICHT blockierend vorgeladen (das ließ /health
+    # hängen → „nicht installiert") und auch nicht fest 'base', sondern erst
+    # bei der ersten Transkription in der in der GUI gewählten Größe.
+    import threading
+    srv = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+
+    def _preload():
+        # optionales Vorladen NUR wenn ausdrücklich gewünscht (WHISPER_PRELOAD=1)
+        if os.environ.get("WHISPER_PRELOAD") == "1":
+            try:
+                get_whisper(DEFAULT_MODEL)
+            except Exception as e:  # noqa: BLE001
+                log("Vorladen fehlgeschlagen:", repr(e))
+    threading.Thread(target=_preload, daemon=True).start()
+    log("HTTP-Server bereit (Modell lädt beim ersten Sprechen).")
+    srv.serve_forever()
 
 
 if __name__ == "__main__":

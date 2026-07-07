@@ -47,7 +47,7 @@ function voiceFor(cfg: VoiceConfig): string {
 
 async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean }> {
   try {
-    const r = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(2000) });
+    const r = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return { ok: false, stt: false, tts: false };
     return await r.json() as { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean };
   } catch {
