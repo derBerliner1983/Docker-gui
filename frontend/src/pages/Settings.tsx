@@ -628,33 +628,36 @@ function ProxyVisibilityPanel() {
 const VOICE_LANGS: { code: VoiceConfig['lang']; label: string }[] = [
   { code: 'de', label: 'Deutsch' },
   { code: 'en', label: 'English' },
-  { code: 'th', label: 'ไทย (Thai)' },
 ];
 
 export function VoicePanel() {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
-  const [wake, setWake] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
 
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState('');
-  const [recording, setRecording] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const previewAudio = useRef<HTMLAudioElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const playPreview = async (voice: string) => {
     if (!cfg) return;
-    setPreviewing(true); setMsg('');
+    setPreviewing(true); setMsg(tt('Erzeuge Hörprobe … (Stimme wird evtl. erst geladen)'));
     try {
       previewAudio.current?.pause();
-      const a = new Audio(api.voice.previewUrl(voice, cfg.lang));
+      // Als Blob laden (mit Cookie), damit Fehler sichtbar werden und die
+      // Wiedergabe zuverlässig startet (statt stiller <audio src>-Fehler).
+      const res = await fetch(api.voice.previewUrl(voice, cfg.lang), { credentials: 'include' });
+      if (!res.ok) { const b = await res.json().catch(() => ({})) as { error?: string }; throw new Error(b.error || `HTTP ${res.status}`); }
+      const url = URL.createObjectURL(await res.blob());
+      const a = new Audio(url);
       previewAudio.current = a;
-      a.onended = () => setPreviewing(false);
-      a.onerror = () => { setPreviewing(false); setMsg(tt('Hörprobe fehlgeschlagen (Stimme wird evtl. erst geladen).')); };
+      a.onended = () => { setPreviewing(false); URL.revokeObjectURL(url); };
+      a.onerror = () => { setPreviewing(false); setMsg(tt('Hörprobe konnte nicht abgespielt werden.')); };
+      setMsg('');
       await a.play();
-    } catch { setPreviewing(false); setMsg(tt('Hörprobe fehlgeschlagen (Stimme wird evtl. erst geladen).')); }
+    } catch (e) { setPreviewing(false); setMsg(e instanceof Error ? e.message : tt('Hörprobe fehlgeschlagen (Stimme wird evtl. erst geladen).')); }
   };
 
   // Stimme klonen (Qwen)
@@ -692,20 +695,6 @@ export function VoicePanel() {
     try { await api.voice.deleteClone(id); await load(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
   };
 
-  const recordWake = async () => {
-    if (!cfg) return;
-    setRecording(true); setMsg(tt('Sprich jetzt dein Weckwort …'));
-    try {
-      const pcm = await recordPcm(2500);
-      const { text } = await api.voice.sttOnce(pcm, cfg.lang);
-      const w = text.trim().replace(/[.,!?;:]+$/, '');
-      if (w) { setWake(w); setMsg(tt('Erkannt: ') + w); }
-      else setMsg(tt('Nichts verstanden – bitte erneut versuchen.'));
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : 'Fehler bei der Aufnahme');
-    } finally { setRecording(false); }
-  };
-
   const [cacheItems, setCacheItems] = useState<{ id: string; label: string; kind: string; bytes: number }[]>([]);
   const [cacheBusy, setCacheBusy] = useState('');
 
@@ -713,7 +702,7 @@ export function VoicePanel() {
     try { const r = await api.voice.cache(); setCacheItems(r.items); } catch { /* */ }
   }, []);
   const load = useCallback(async () => {
-    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); if (c.install?.running) setInstalling(true); if (c.available.daemon) void loadCache(); } catch { /* */ }
+    try { const c = await api.voice.config(); setCfg(c); if (c.install?.running) setInstalling(true); if (c.available.daemon) void loadCache(); } catch { /* */ }
   }, [loadCache]);
   useEffect(() => { void load(); }, [load]);
 
@@ -806,20 +795,9 @@ export function VoicePanel() {
           <Switch checked={cfg.enabled} disabled={busy} onChange={(v) => save({ enabled: v })} />
         </label>
 
-        {/* Weckwort */}
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Weckwort')}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input className="input" style={{ flex: 1, fontSize: 13 }} value={wake} disabled={busy || recording}
-              placeholder={tt('z.B. Computer, Jarvis, Hey Core')}
-              onChange={(e) => setWake(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && wake.trim() && save({ wakeword: wake.trim() })} />
-            <button className="btn btn--outline btn--sm" disabled={busy || recording || !av.stt} title={tt('Weckwort einsprechen')} onClick={() => void recordWake()}>
-              {recording ? <><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Aufnahme …')}</> : <><Mic size={13} /> {tt('Einsprechen')}</>}
-            </button>
-            <button className="btn btn--primary btn--sm" disabled={busy || recording || !wake.trim() || wake.trim() === cfg.wakeword} onClick={() => save({ wakeword: wake.trim() })}>{tt('Speichern')}</button>
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Tippen oder „Einsprechen" (2,5 s aufnehmen). Nach dem Weckwort wird dein Befehl an das geladene KI-Modell geschickt.')}</div>
+        {/* Bedienung: Push-to-Talk (kein Weckwort mehr) */}
+        <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6, background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px' }}>
+          {tt('Bedienung: In der KI-Zentrale die Leertaste gedrückt halten und sprechen – loslassen sendet an die KI (Push-to-Talk, kein Weckwort nötig).')}
         </div>
 
         {/* Sprache */}

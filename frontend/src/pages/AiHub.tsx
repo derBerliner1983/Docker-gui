@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MemoryStick, Cpu, Activity, Mic, MicOff } from 'lucide-react';
+import { MemoryStick, Cpu, Activity, Mic } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { api } from '../lib/api';
-import { useVoice } from '../lib/voice';
+import { usePushToTalk } from '../lib/voice';
 import type { OllamaStatus, OllamaPsModel, VoiceConfig } from '../lib/types';
 
 // ── Hilfsfunktionen ────────────────────────────────────────────────────────────
@@ -301,36 +301,6 @@ function Waveform({ analyser, active }: { analyser: React.RefObject<AnalyserNode
   return <canvas ref={ref} style={{ display: 'block' }} />;
 }
 
-// Schmaler Live-Pegel des Mikrofons – zeigt, dass wirklich zugehört wird.
-function MicMeter({ analyser, active }: { analyser: React.RefObject<AnalyserNode | null>; active: boolean }) {
-  const ref = useRef<HTMLCanvasElement | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    const canvas = ref.current; if (!canvas) return;
-    const ctx = canvas.getContext('2d'); if (!ctx) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const W = 240, H = 8;
-    canvas.width = W * dpr; canvas.height = H * dpr; canvas.style.width = '100%'; canvas.style.height = H + 'px';
-    const data = new Uint8Array(1024);
-    let raf = 0;
-    const draw = () => {
-      const an = analyser.current;
-      let level = 0;
-      if (an) { an.getByteTimeDomainData(data); let s = 0; for (let i = 0; i < data.length; i++) { const v = (data[i] - 128) / 128; s += v * v; } level = Math.min(1, Math.sqrt(s / data.length) * 3.2); }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, W, H);
-      const accent = getComputedStyle(document.documentElement).getPropertyValue('--color-accent').trim() || '#10B981';
-      ctx.fillStyle = 'rgba(127,127,127,0.18)'; ctx.fillRect(0, H / 2 - 1.5, W, 3);
-      ctx.fillStyle = accent; ctx.fillRect(0, H / 2 - 1.5, W * level, 3);
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, [active, analyser]);
-  if (!active) return null;
-  return <canvas ref={ref} style={{ display: 'block', width: '100%' }} />;
-}
-
 // Summe der Ablauf-Zeitpunkte – steigt, wenn Ollama nach einer Anfrage den
 // keep_alive-Timer neu setzt → daran erkennen wir „die KI macht etwas".
 function activitySignature(models: OllamaPsModel[]): number {
@@ -366,14 +336,32 @@ export function AiHub() {
 
   // Sprachsteuerung (nur wenn in den Einstellungen aktiviert)
   const [voiceCfg, setVoiceCfg] = useState<VoiceConfig | null>(null);
-  const voice = useVoice((b) => setBusy(b));
-  useEffect(() => { api.voice.config().then(setVoiceCfg).catch(() => {}); }, []);
-  // Ohne Klick zuhören: automatisch verbinden, sobald aktiviert & Dienst da ist
+  const voiceCfgRef = useRef<VoiceConfig | null>(null);
+  const ptt = usePushToTalk(() => voiceCfgRef.current ? { lang: voiceCfgRef.current.lang } : null, (b) => setBusy(b));
+  useEffect(() => { api.voice.config().then((c) => { setVoiceCfg(c); voiceCfgRef.current = c; }).catch(() => {}); }, []);
+
+  // Push-to-Talk per Leertaste: gedrückt halten = aufnehmen, loslassen = senden.
+  const voiceReady = !!voiceCfg?.enabled && !!voiceCfg?.available.daemon && ptt.state.supported;
   useEffect(() => {
-    if (voiceCfg?.enabled && voiceCfg.available.daemon && voice.state.supported) void voice.start();
-    // start() ist idempotent; stop() beim Verlassen der Seite übernimmt der Hook
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceCfg?.enabled, voiceCfg?.available.daemon]);
+    if (!voiceReady) return;
+    const isTyping = () => {
+      const el = document.activeElement as HTMLElement | null;
+      return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || e.repeat || isTyping()) return;
+      e.preventDefault();
+      void ptt.start();
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || isTyping()) return;
+      e.preventDefault();
+      void ptt.stop();
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+  }, [voiceReady, ptt]);
 
   const load = useCallback(async () => {
     try {
@@ -431,11 +419,11 @@ export function AiHub() {
               {/* Große Weltkugel füllt den Platz (immer sichtbar) */}
               <div className="aihub-globe" style={{ position: 'relative' }}>
                 <AiSphere online={online} busy={busy} />
-                {(voice.state.awake || voice.state.speaking) && (
+                {(ptt.state.recording || ptt.state.speaking) && (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, pointerEvents: 'none' }}>
-                    <Waveform analyser={voice.state.speaking ? voice.outAnalyser : voice.micAnalyser} active={voice.state.awake || voice.state.speaking} />
+                    <Waveform analyser={ptt.state.speaking ? ptt.outAnalyser : ptt.micAnalyser} active={ptt.state.recording || ptt.state.speaking} />
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-accent)' }}>
-                      {voice.state.speaking ? tt('Antwortet …') : tt('Ich höre …')}
+                      {ptt.state.speaking ? tt('Antwortet …') : tt('Ich höre …')}
                     </div>
                   </div>
                 )}
@@ -486,58 +474,53 @@ export function AiHub() {
                   </div>
                 )}
 
-                {/* Sprachsteuerung */}
+                {/* Sprachsteuerung – Push-to-Talk per Leertaste */}
                 {voiceCfg?.enabled && (
                   <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{tt('Sprachsteuerung')}</span>
-                      {voice.state.active ? (
-                        <button className={`btn btn--sm ${voice.state.muted ? 'btn--outline' : 'btn--primary'}`} onClick={() => voice.toggleMute()} title={voice.state.muted ? tt('Mikrofon an') : tt('Mikrofon aus')}>
-                          {voice.state.muted ? <MicOff size={13} /> : <Mic size={13} />}
-                          {voice.state.muted ? tt('Aus') : tt('An')}
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.07em' }}>{tt('Sprachsteuerung')}</span>
+
+                    {voiceCfg.available.daemon ? (
+                      <>
+                        <button
+                          className={`btn btn--sm ${ptt.state.recording ? 'btn--primary' : 'btn--outline'}`}
+                          disabled={!ptt.state.supported || ptt.state.busy}
+                          onMouseDown={() => void ptt.start()}
+                          onMouseUp={() => void ptt.stop()}
+                          onMouseLeave={() => { if (ptt.state.recording) void ptt.stop(); }}
+                          title={tt('Gedrückt halten und sprechen (oder Leertaste)')}
+                        >
+                          <Mic size={13} /> {ptt.state.recording ? tt('Loslassen zum Senden') : tt('Sprechen (Leertaste)')}
                         </button>
-                      ) : voice.state.connecting ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--color-muted)' }}><span className="spinner" style={{ width: 11, height: 11 }} /> {tt('Verbinde …')}</span>
-                      ) : (
-                        <button className="btn btn--sm btn--outline" disabled={!voice.state.supported || !voiceCfg.available.daemon} onClick={() => void voice.start()}>
-                          <Mic size={13} /> {tt('Aktivieren')}
-                        </button>
-                      )}
-                    </div>
-                    {(voice.state.active || voice.state.connecting) && (
-                      <div style={{ fontSize: 11.5, color: voice.state.awake ? 'var(--color-accent)' : 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: '50%', background: voice.state.awake || voice.state.speaking ? 'var(--color-accent)' : voice.state.muted ? 'var(--color-faint)' : 'var(--color-success)', boxShadow: voice.state.awake || voice.state.speaking ? '0 0 6px var(--color-accent)' : 'none' }} />
-                        {voice.state.status}
-                      </div>
-                    )}
-                    {voice.state.active && !voice.state.muted && !voice.state.speaking && (
-                      <MicMeter analyser={voice.micAnalyser} active={voice.state.active && !voice.state.speaking} />
-                    )}
-                    {voice.state.active && voice.state.heard && (
-                      <div style={{ fontSize: 11, color: 'var(--color-faint)' }} title={tt('zuletzt erkannt')}>
-                        {tt('Gehört')}: „{voice.state.heard}"
-                      </div>
-                    )}
-                    {voice.state.error && <div style={{ fontSize: 11.5, color: 'var(--color-error)' }}>{voice.state.error}</div>}
-                    {voice.state.lines.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
-                        {voice.state.lines.map((ln, i) => (
-                          <div key={i} style={{
-                            fontSize: 12, lineHeight: 1.45, padding: '6px 10px', borderRadius: 8,
-                            background: ln.role === 'you' ? 'var(--color-accent-soft)' : ln.role === 'sys' ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
-                            border: '1px solid var(--color-border)',
-                            color: ln.role === 'sys' ? 'var(--color-error)' : 'var(--color-fg)',
-                          }}>
-                            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 6 }}>
-                              {ln.role === 'you' ? tt('Du') : ln.role === 'ai' ? 'KI' : '!'}
-                            </span>
-                            {ln.text}
+                        <div style={{ fontSize: 11, color: 'var(--color-faint)' }}>
+                          {tt('Leertaste gedrückt halten und sprechen – loslassen sendet an die KI.')}
+                        </div>
+                        {(ptt.state.recording || ptt.state.busy || ptt.state.speaking || ptt.state.status) && (
+                          <div style={{ fontSize: 11.5, color: ptt.state.recording ? 'var(--color-accent)' : 'var(--color-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 7, height: 7, borderRadius: '50%', background: (ptt.state.recording || ptt.state.speaking) ? 'var(--color-accent)' : 'var(--color-faint)', boxShadow: (ptt.state.recording || ptt.state.speaking) ? '0 0 6px var(--color-accent)' : 'none' }} />
+                            {ptt.state.status}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                    {!voiceCfg.available.daemon && (
-                      <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>{tt('Sprachdienst nicht erreichbar – siehe Einstellungen.')}</div>
+                        )}
+                        {ptt.state.error && <div style={{ fontSize: 11.5, color: 'var(--color-error)' }}>{ptt.state.error}</div>}
+                        {ptt.state.lines.length > 0 && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+                            {ptt.state.lines.map((ln, i) => (
+                              <div key={i} style={{
+                                fontSize: 12, lineHeight: 1.45, padding: '6px 10px', borderRadius: 8,
+                                background: ln.role === 'you' ? 'var(--color-accent-soft)' : ln.role === 'sys' ? 'var(--color-surface-sunken)' : 'var(--color-surface)',
+                                border: '1px solid var(--color-border)',
+                                color: ln.role === 'sys' ? 'var(--color-error)' : 'var(--color-fg)',
+                              }}>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--color-faint)', textTransform: 'uppercase', letterSpacing: '.06em', marginRight: 6 }}>
+                                  {ln.role === 'you' ? tt('Du') : ln.role === 'ai' ? 'KI' : '!'}
+                                </span>
+                                {ln.text}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--color-warning)' }}>{tt('Sprachdienst nicht erreichbar – siehe KI-Modelle → Sprachsteuerung.')}</div>
                     )}
                   </div>
                 )}
