@@ -12,7 +12,7 @@ const DAEMON = `http://127.0.0.1:${VOICE_PORT}`;
 const OLLAMA = 'http://127.0.0.1:11434';
 
 type Lang = 'de' | 'en' | 'th';
-const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium'];
+const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v3'];
 
 interface VoiceConfig {
   enabled: boolean;
