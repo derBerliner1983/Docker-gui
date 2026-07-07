@@ -143,7 +143,7 @@ if [ "${1:-}" = "--voice" ]; then
   setup_voice
   info "Sprache & Weckwort in Core-Hub unter 'Einstellungen → Sprachsteuerung' festlegen."
   info "Ab jetzt wird die Sprachsteuerung bei jedem Update automatisch mit aktualisiert."
-  info "Ein größeres/besseres Modell: 'WHISPER_MODEL=small' in /etc/systemd/system/core-hub-voice.service."
+  info "Erkennungsmodell wählst du in der GUI (Einstellungen → Sprachsteuerung → Whisper): small/medium = schnell+genau, large-v3 = beste Genauigkeit (lädt beim ersten Mal ~3 GB)."
   exit 0
 fi
 

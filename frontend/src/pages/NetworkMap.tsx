@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Globe, Server, Box, Cable, ShieldCheck, ShieldX, Activity, MonitorPlay, Router, Monitor, HardDrive, Plus, Trash2, X } from 'lucide-react';
 import { Panel } from '../components/ui/Panel';
 import { tt } from '../lib/i18n';
@@ -64,9 +64,22 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   const [dName, setDName] = useState('');
   const [dType, setDType] = useState<MapDevice['type']>('router');
   const [dIp, setDIp] = useState('');
+  const [hostIp, setHostIp] = useState('');
+  // Objekte frei verschieben (Positionen pro Benutzer gespeichert)
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [livePos, setLivePos] = useState<Record<string, { x: number; y: number }>>({});
+  const drag = useRef<{ id: string; cl: number; ct: number; dx: number; dy: number; moved: boolean } | null>(null);
+  const wasDragging = useRef(false);
+
+  useEffect(() => {
+    api.networks.interfaces().then((r) => {
+      const lan = (r.interfaces || []).map((i) => i.ip4).find((ip) => /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(ip || ''));
+      if (lan) setHostIp(lan);
+    }).catch(() => {});
+  }, []);
 
   // Host-LAN-IP + veröffentlichte Ports je Container aus den Port-Mappings ableiten
-  const { hostLanIp, pubByName, pubAddrByName } = useMemo(() => {
+  const { hostLanIp: hostLanIpDerived, pubByName, pubAddrByName } = useMemo(() => {
     const pub = new Map<string, string[]>();
     const pubAddr = new Map<string, { ip: string; port: string }[]>();
     let host: string | undefined;
@@ -88,6 +101,7 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
     }
     return { hostLanIp: host, pubByName: pub, pubAddrByName: pubAddr };
   }, [containers]);
+  const hostLanIp = hostLanIpDerived || hostIp || undefined;
 
   const ipByName = useMemo(() => {
     const m = new Map<string, string>();
@@ -109,6 +123,31 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
   const devices = (prefs.netMapDevices as MapDevice[] | undefined) || [];
   const addDevice = (d: MapDevice) => setPref('netMapDevices', [...devices, d]);
   const removeDevice = (id: string) => { setPref('netMapDevices', devices.filter((d) => d.id !== id)); setSel((s) => s === `dev:${id}` ? null : s); };
+  const savedPos = (prefs.netMapPos as Record<string, { x: number; y: number }> | undefined) || {};
+  const posOf = (id: string) => livePos[id] || savedPos[id];
+
+  // ── Verschieben (Drag) ──
+  useEffect(() => {
+    const move = (e: MouseEvent) => {
+      const d = drag.current; if (!d) return;
+      d.moved = true; wasDragging.current = true;
+      setLivePos((l) => ({ ...l, [d.id]: { x: Math.max(24, (e.clientX - d.cl) - d.dx), y: Math.max(24, (e.clientY - d.ct) - d.dy) } }));
+    };
+    const up = () => {
+      const d = drag.current;
+      if (d && d.moved) setLivePos((l) => { const p = l[d.id]; if (p) setPref('netMapPos', { ...savedPos, [d.id]: p }); return l; });
+      drag.current = null;
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  }, [savedPos, setPref]);
+
+  const onNodeDown = (e: React.MouseEvent, id: string, cx: number, cy: number) => {
+    const c = canvasRef.current?.getBoundingClientRect(); if (!c) return;
+    wasDragging.current = false;
+    drag.current = { id, cl: c.left, ct: c.top, dx: (e.clientX - c.left) - cx, dy: (e.clientY - c.top) - cy, moved: false };
+  };
 
   // ── Layout (Ebenen: Internet → Tunnel/Host → Container → eigene Geräte) ──
   const cols = Math.max(dockerNames.length, 1);
@@ -129,6 +168,10 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
     const x = devices.length === 1 ? W / 2 : 100 + (i * (W - 200)) / (devices.length - 1);
     nodes.push({ id: `dev:${d.id}`, kind: d.type, label: d.name, sub: DEV_META[d.type].label, ip: d.ip, x, y: yDevices });
   });
+  // Gespeicherte/aktive Drag-Positionen überschreiben das Auto-Layout
+  for (const n of nodes) { const p = posOf(n.id); if (p) { n.x = p.x; n.y = p.y; } }
+  const Wc = Math.max(W, ...nodes.map((n) => n.x + 100));
+  const Hc = Math.max(H, ...nodes.map((n) => n.y + 80));
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
   // Verbindungen (Quelle → Ziel, Beschriftung)
@@ -208,10 +251,10 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
           <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setShowAdd(false)}><X size={13} /></button>
         </div>
       )}
-      <div style={{ overflowX: 'auto', paddingBottom: 6 }}>
-        <div style={{ position: 'relative', width: W, height: H, margin: '4px auto', minWidth: W }}>
+      <div style={{ overflow: 'auto', paddingBottom: 6, maxHeight: '70vh' }}>
+        <div ref={canvasRef} style={{ position: 'relative', width: Wc, height: Hc, margin: '4px auto', minWidth: Wc }}>
           {/* Verbindungslinien */}
-          <svg width={W} height={H} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <svg width={Wc} height={Hc} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
             {edges.map((e, i) => {
               const a = nodeById.get(e.a), b = nodeById.get(e.b);
               if (!a || !b) return null;
@@ -235,10 +278,11 @@ export function NetworkMap({ networks, containers }: { networks: DockerNetwork[]
             return (
               <div
                 key={n.id}
-                onClick={() => setSel(n.id === sel ? null : n.id)}
+                onMouseDown={(e) => onNodeDown(e, n.id, n.x, n.y)}
+                onClick={() => { if (wasDragging.current) { wasDragging.current = false; return; } setSel(n.id === sel ? null : n.id); }}
                 style={{
                   position: 'absolute', left: n.x, top: n.y, transform: 'translate(-50%,-50%)',
-                  width: 156, cursor: 'pointer', userSelect: 'none',
+                  width: 156, cursor: 'grab', userSelect: 'none',
                   background: 'var(--color-surface)', border: `1.5px solid ${sel === n.id ? 'var(--color-accent)' : color}`,
                   borderRadius: 10, padding: '8px 10px', boxShadow: sel === n.id ? '0 0 0 3px var(--color-accent-soft)' : '0 2px 8px rgba(0,0,0,.25)',
                 }}
