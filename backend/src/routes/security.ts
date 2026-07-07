@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { safeExec, privExec, hasBinary } from '../lib/privilege';
 import { userQueries, auditQueries } from '../db/index';
+import { ensureLanWebAccess } from './firewall';
 
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 
@@ -486,8 +487,14 @@ export async function securityRoutes(fastify: FastifyInstance) {
             break;
           }
           case 'firewall-install-enable':
+            // Firewall aktivieren mit sicherer Grundeinstellung: alles eingehend
+            // gesperrt, nur SSH (22) und HTTPS (443) fürs LAN offen. Bewusst KEIN
+            // OpenSSH/„Anywhere" (das öffnet 22 fürs Internet) und keine weiteren Regeln.
             if (!hasBinary('ufw')) privExec('apt-get install -y ufw', { timeout: 180000 });
-            privExec('bash -c "ufw default deny incoming; ufw default allow outgoing; ufw allow OpenSSH 2>/dev/null || ufw allow 22/tcp; yes | ufw enable"', { timeout: 30000 });
+            privExec('ufw default deny incoming', { timeout: 8000 });
+            privExec('ufw default allow outgoing', { timeout: 8000 });
+            ensureLanWebAccess(true);
+            privExec('bash -c "yes | ufw enable"', { timeout: 30000 });
             break;
           case 'fail2ban-install':
             privExec('apt-get install -y fail2ban', { timeout: 180000 });

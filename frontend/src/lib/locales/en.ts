@@ -133,6 +133,8 @@ export const en: Record<string, string> = {
   'Sprich ~6 Sekunden natürlich …': 'Speak naturally for ~6 seconds …',
   'Aufnahme fertig – Text prüfen und „Klonen".': 'Recording done – check the text and click “Clone”.',
   'Stimme geklont – unter „Stimme" auswählbar.': 'Voice cloned – selectable under “Voice”.',
+  'Zurücksetzen': 'Reset',
+  'Alle Regeln löschen und nur SSH/HTTPS fürs LAN neu setzen': 'Delete all rules and re-create only SSH/HTTPS for the LAN',
   'Speicher (Cache)': 'Storage (cache)',
   'Nichts im Cache.': 'Nothing cached.',
   'Gelöschte Modelle/Stimmen werden bei Bedarf automatisch neu geladen.': 'Deleted models/voices are re-downloaded automatically when needed.',

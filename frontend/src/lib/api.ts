@@ -300,6 +300,7 @@ export const api = {
     enableDisabled: (id: number) => req(`/api/firewall/disabled/${id}/enable`, { method: 'POST' }),
     removeDisabled: (id: number) => req(`/api/firewall/disabled/${id}`, { method: 'DELETE' }),
     toggle: (enable: boolean) => req('/api/firewall/toggle', { method: 'POST', body: JSON.stringify({ enable }) }),
+    reset: () => req<{ ok: boolean }>('/api/firewall/reset', { method: 'POST' }),
     setLogging: (enable: boolean, level?: string) => req<{ ok: boolean; logging: boolean; level?: string }>('/api/firewall/logging', { method: 'POST', body: JSON.stringify({ enable, level }) }),
     log: (limit = 500) => req<{ available: boolean; logging: boolean; level?: string; source?: string; entries: FirewallLogEntry[]; total?: number; blocked?: number; message?: string }>(`/api/firewall/log?limit=${limit}`),
     clearLog: () => req('/api/firewall/log', { method: 'DELETE' }),
