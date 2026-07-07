@@ -137,7 +137,6 @@ export const en: Record<string, string> = {
   'Aufnahme fertig – Text prüfen und „Klonen".': 'Recording done – check the text and click “Clone”.',
   'Stimme geklont – unter „Stimme" auswählbar.': 'Voice cloned – selectable under “Voice”.',
   'Zurücksetzen': 'Reset',
-  'Gruppe': 'Group',
   'Bridge-Gruppe erstellen': 'Create bridge group',
   'Gruppe erstellen': 'Create group',
   'Gruppenname': 'Group name',
