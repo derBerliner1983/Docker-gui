@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic, Volume2 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -631,7 +631,7 @@ const VOICE_LANGS: { code: VoiceConfig['lang']; label: string }[] = [
   { code: 'th', label: 'ไทย (Thai)' },
 ];
 
-function VoicePanel() {
+export function VoicePanel() {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
   const [wake, setWake] = useState('');
   const [busy, setBusy] = useState(false);
@@ -640,7 +640,22 @@ function VoicePanel() {
   const [installing, setInstalling] = useState(false);
   const [installLog, setInstallLog] = useState('');
   const [recording, setRecording] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const previewAudio = useRef<HTMLAudioElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const playPreview = async (voice: string) => {
+    if (!cfg) return;
+    setPreviewing(true); setMsg('');
+    try {
+      previewAudio.current?.pause();
+      const a = new Audio(api.voice.previewUrl(voice, cfg.lang));
+      previewAudio.current = a;
+      a.onended = () => setPreviewing(false);
+      a.onerror = () => { setPreviewing(false); setMsg(tt('Hörprobe fehlgeschlagen (Stimme wird evtl. erst geladen).')); };
+      await a.play();
+    } catch { setPreviewing(false); setMsg(tt('Hörprobe fehlgeschlagen (Stimme wird evtl. erst geladen).')); }
+  };
 
   // Stimme klonen (Qwen)
   const [clName, setClName] = useState('');
@@ -827,13 +842,18 @@ function VoicePanel() {
               {opts.length === 0 ? (
                 <div style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{tt('Für diese Sprache ist derzeit keine Stimme verfügbar.')}</div>
               ) : (
-                <select className="input" style={{ fontSize: 13, maxWidth: 320 }} value={cur} disabled={busy}
-                  onChange={(e) => save({ voices: { [cfg.lang]: e.target.value } })}>
-                  <option value="">{tt('Standard')}{opts[0] ? ` (${opts[0].label})` : ''}</option>
-                  {opts.map((o) => (
-                    <option key={o.id} value={o.id}>{o.label}{o.installed ? '' : ' – ' + tt('lädt beim ersten Mal')}</option>
-                  ))}
-                </select>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <select className="input" style={{ fontSize: 13, maxWidth: 320, flex: 1 }} value={cur} disabled={busy}
+                    onChange={(e) => save({ voices: { [cfg.lang]: e.target.value } })}>
+                    <option value="">{tt('Standard')}{opts[0] ? ` (${opts[0].label})` : ''}</option>
+                    {opts.map((o) => (
+                      <option key={o.id} value={o.id}>{o.label}{o.installed ? '' : ' – ' + tt('lädt beim ersten Mal')}</option>
+                    ))}
+                  </select>
+                  <button className="btn btn--outline btn--sm" disabled={previewing} title={tt('Stimme anhören')} onClick={() => void playPreview(cur || opts[0]?.id || '')}>
+                    {previewing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Volume2 size={13} />} {tt('Hörprobe')}
+                  </button>
+                </div>
               )}
               {/* Qwen3-TTS: sehr gute Stimme inkl. Deutsch (schwer, optional) */}
               {av.daemon && !av.qwen && (
@@ -964,7 +984,6 @@ export function Settings() {
           { id: '2fa', node: <TwoFactorPanel /> },
           { id: 'smtp', node: <SmtpPanel /> },
           { id: 'notifications', node: <NotificationsPanel /> },
-          { id: 'voice', node: <VoicePanel /> },
           { id: 'migration', node: <MigrationPanel /> },
           { id: 'sysinfo', node: (
         <Panel title={tt('System-Info')} icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>

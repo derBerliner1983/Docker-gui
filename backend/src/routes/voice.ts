@@ -248,6 +248,20 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({ ok: true, running: install.running });
   });
 
+  // Hörprobe einer Stimme (kurzer Beispielsatz → WAV)
+  fastify.get<{ Querystring: { voice?: string; lang?: string } }>('/api/voice/preview', { preHandler: requireAuth }, async (req, reply) => {
+    const q = req.query || {};
+    const lang = (['de', 'en', 'th'].includes(q.lang || '') ? q.lang : 'de') as string;
+    const sample: Record<string, string> = {
+      de: 'Hallo, so klingt diese Stimme in der Sprachsteuerung.',
+      en: 'Hello, this is how this voice sounds.',
+      th: 'สวัสดีค่ะ นี่คือเสียงของระบบสั่งงานด้วยเสียง',
+    };
+    const wav = await tts(sample[lang] || sample.de, lang, q.voice || '');
+    if (!wav) return reply.status(500).send({ error: 'Für diese Stimme ist keine Ausgabe möglich' });
+    reply.header('Content-Type', 'audio/wav').send(wav);
+  });
+
   // Einmalige Transkription (z.B. um das Weckwort einzusprechen)
   fastify.post('/api/voice/stt-once', { preHandler: requireAuth, bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
     const lang = (typeof (req.query as { lang?: string })?.lang === 'string' ? (req.query as { lang?: string }).lang : 'de') as string;

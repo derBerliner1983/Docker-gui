@@ -368,6 +368,7 @@ export const api = {
       return req<{ id: string }>('/api/voice/clone', { method: 'POST', body: JSON.stringify({ name, text, pcmB64: btoa(s) }) });
     },
     deleteClone: (id: string) => req<{ ok: boolean }>(`/api/voice/clone/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewUrl: (voice: string, lang: string) => `/api/voice/preview?voice=${encodeURIComponent(voice)}&lang=${encodeURIComponent(lang)}`,
     cache: () => req<{ items: { id: string; label: string; kind: string; bytes: number }[] }>('/api/voice/cache'),
     deleteCache: (id: string) => req<{ ok: boolean }>(`/api/voice/cache?id=${encodeURIComponent(id)}`, { method: 'DELETE' }),
     sttOnce: async (pcm: ArrayBuffer, lang: string): Promise<{ text: string }> => {
