@@ -114,6 +114,27 @@ async function ackAudio(lang: string, voice: string): Promise<Buffer | null> {
  * Satz wird onSentence() aufgerufen – so kann sofort mit dem Vorlesen begonnen
  * werden, ohne auf die komplette Antwort zu warten.
  */
+const SYS_PROMPT: Record<string, string> = {
+  de: 'Du bist ein hilfreicher Sprachassistent. Antworte sehr kurz, in ein bis zwei Sätzen, klar gesprochen und ohne Aufzählungen oder Sonderzeichen.',
+  en: 'You are a helpful voice assistant. Answer very briefly, in one or two spoken sentences, no lists or special characters.',
+  th: 'คุณเป็นผู้ช่วยด้วยเสียงที่เป็นประโยชน์ ตอบสั้นๆ หนึ่งถึงสองประโยค',
+};
+
+// Fallback über /api/generate – funktioniert auch bei GGUF-Modellen ohne
+// Chat-Template (bei denen /api/chat leer bleibt).
+async function generateReply(model: string, userText: string, lang: string): Promise<string> {
+  try {
+    const res = await fetch(`${OLLAMA}/api/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, system: SYS_PROMPT[lang] || '', prompt: userText, stream: false, options: { num_predict: 220, temperature: 0.4 } }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) return '';
+    const j = await res.json() as { response?: string };
+    return (j.response || '').trim();
+  } catch { return ''; }
+}
+
 async function chatStream(
   model: string,
   userText: string,
@@ -121,11 +142,7 @@ async function chatStream(
   onToken: (t: string) => void,
   onSentence: (s: string) => Promise<void>,
 ): Promise<string> {
-  const sys = {
-    de: 'Du bist ein hilfreicher Sprachassistent. Antworte sehr kurz, in ein bis zwei Sätzen, klar gesprochen und ohne Aufzählungen oder Sonderzeichen.',
-    en: 'You are a helpful voice assistant. Answer very briefly, in one or two spoken sentences, no lists or special characters.',
-    th: 'คุณเป็นผู้ช่วยด้วยเสียงที่เป็นประโยชน์ ตอบสั้นๆ หนึ่งถึงสองประโยค',
-  }[lang] || '';
+  const sys = SYS_PROMPT[lang] || '';
 
   const res = await fetch(`${OLLAMA}/api/chat`, {
     method: 'POST',
@@ -257,11 +274,13 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const model = await loadedModel();
     if (!model) return reply.status(400).send({ error: 'Keine KI im Speicher geladen.' });
     try {
-      const answer = await chatStream(model, text, lang, () => {}, async () => {});
+      let answer = await chatStream(model, text, lang, () => {}, async () => {}).catch(() => '');
+      if (!answer) answer = await generateReply(model, text, lang); // Fallback für GGUF ohne Chat-Template
       const cfg = readConfig();
       let audio: string | undefined;
       if (cfg.tts && answer) { const wav = await tts(answer, lang, voiceFor(cfg)); if (wav) audio = wav.toString('base64'); }
-      reply.send({ answer, audio });
+      const shown = answer || (lang === 'en' ? 'The AI model returned no answer (check the model in the AI hub).' : 'Das KI-Modell hat keine Antwort geliefert (Modell in der KI-Zentrale prüfen).');
+      reply.send({ answer: shown, audio });
     } catch (e) {
       reply.status(500).send({ error: e instanceof Error ? e.message : 'Fehler' });
     }
@@ -405,11 +424,13 @@ export async function voiceRoutes(fastify: FastifyInstance) {
           // Sofortiges gesprochenes Feedback (gecacht → praktisch ohne Verzögerung)
           void speak(0, ACK_PHRASE[cfg.lang] || '', cfg.lang);
           let seq = 1;
-          const answer = await chatStream(
+          let answer = await chatStream(
             model, text, cfg.lang,
             (tok) => send({ type: 'token', text: tok }),
             async (s) => { const my = seq++; send({ type: 'sentence', seq: my, text: s }); await speak(my, s, cfg.lang); },
-          );
+          ).catch(() => '');
+          // Fallback für GGUF-Modelle ohne Chat-Template
+          if (!answer) { answer = await generateReply(model, text, cfg.lang); if (answer) { send({ type: 'sentence', seq: seq++, text: answer }); await speak(0, answer, cfg.lang); } }
           send({ type: 'answer', text: answer });
         } catch (e) {
           send({ type: 'error', message: e instanceof Error ? e.message : 'Fehler' });
