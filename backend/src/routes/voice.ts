@@ -288,6 +288,28 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // Cache-Verwaltung: heruntergeladene Modelle/Stimmen anzeigen & löschen
+  fastify.get('/api/voice/cache', { preHandler: requireAuth }, async (_req, reply) => {
+    try {
+      const r = await fetch(`${DAEMON}/cache`, { signal: AbortSignal.timeout(8000) });
+      if (!r.ok) return reply.send({ items: [] });
+      reply.send(await r.json());
+    } catch { reply.send({ items: [] }); }
+  });
+
+  fastify.delete<{ Querystring: { id?: string } }>('/api/voice/cache', { preHandler: requireAdmin }, async (req, reply) => {
+    const id = (req.query?.id || '').trim();
+    if (!id) return reply.status(400).send({ error: 'id fehlt' });
+    try {
+      const r = await fetch(`${DAEMON}/cache?id=${encodeURIComponent(id)}`, { method: 'DELETE', signal: AbortSignal.timeout(15000) });
+      const j = await r.json().catch(() => ({})) as { error?: string };
+      if (!r.ok) return reply.status(500).send({ error: j.error || 'Löschen fehlgeschlagen' });
+      reply.send({ ok: true });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'Fehler' });
+    }
+  });
+
   fastify.get('/api/voice/install/status', { preHandler: requireAuth }, async (_req, reply) => {
     const health = await daemonHealth();
     reply.send({ running: install.running, error: install.error, log: install.log.slice(-4000), daemon: health.ok });

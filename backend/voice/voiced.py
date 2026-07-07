@@ -26,6 +26,7 @@ import json
 import time
 import wave
 import base64
+import shutil
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -36,6 +37,9 @@ WHISPER_DEVICE = os.environ.get("WHISPER_DEVICE", "auto")
 WHISPER_COMPUTE = os.environ.get("WHISPER_COMPUTE", "int8")
 CACHE = os.environ.get("VOICE_CACHE", os.path.expanduser("~/.cache/core-hub-voice"))
 os.makedirs(CACHE, exist_ok=True)
+# HuggingFace-Downloads (Whisper, Qwen) in den Voice-Cache lenken, damit die
+# Cache-Verwaltung alles an einem Ort findet und löschen kann.
+os.environ.setdefault("HF_HOME", os.path.join(CACHE, "hf"))
 
 # ── Piper-Stimmen (rhasspy/piper-voices) ─────────────────────────────────────────
 PIPER_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
@@ -365,6 +369,92 @@ def catalog_with_state():
     return out
 
 
+# ── Cache-Verwaltung (heruntergeladene Modelle/Stimmen anzeigen & löschen) ───────
+def _dir_size(path: str) -> int:
+    total = 0
+    for root, _dirs, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.path.getsize(os.path.join(root, f))
+            except Exception:
+                pass
+    return total
+
+
+def _hub_dirs():
+    dirs = [os.path.join(os.environ.get("HF_HOME", os.path.join(CACHE, "hf")), "hub"),
+            os.path.expanduser("~/.cache/huggingface/hub")]
+    seen, out = set(), []
+    for d in dirs:
+        if d not in seen and os.path.isdir(d):
+            seen.add(d); out.append(d)
+    return out
+
+
+def _hf_label(dirname: str) -> str:
+    if "faster-whisper" in dirname:
+        return "Whisper " + dirname.rsplit("-", 1)[-1]
+    if "Qwen3-TTS" in dirname:
+        size = "1.7B" if "1.7B" in dirname else "0.6B" if "0.6B" in dirname else ""
+        return ("Qwen3-TTS " + size).strip()
+    return dirname[len("models--"):].replace("--", "/") if dirname.startswith("models--") else dirname
+
+
+def list_cache():
+    items = []
+    for hub in _hub_dirs():
+        for d in os.listdir(hub):
+            full = os.path.join(hub, d)
+            if os.path.isdir(full) and d.startswith("models--"):
+                items.append({"id": "hf:" + d, "label": _hf_label(d), "kind": "modell", "bytes": _dir_size(full)})
+    for f in sorted(os.listdir(CACHE)):
+        if f.endswith(".onnx") and not f.startswith("kokoro"):
+            vid = f[:-5]
+            b = os.path.getsize(os.path.join(CACHE, f))
+            j = os.path.join(CACHE, f + ".json")
+            if os.path.exists(j):
+                b += os.path.getsize(j)
+            items.append({"id": "piper:" + vid, "label": vid + " (Piper)", "kind": "stimme", "bytes": b})
+    kf = [os.path.join(CACHE, "kokoro-v1.0.onnx"), os.path.join(CACHE, "voices-v1.0.bin")]
+    if any(os.path.exists(x) for x in kf):
+        items.append({"id": "kokoro", "label": "Kokoro-Modell", "kind": "modell",
+                      "bytes": sum(os.path.getsize(x) for x in kf if os.path.exists(x))})
+    if os.path.isdir(CLONES_DIR) and os.listdir(CLONES_DIR):
+        items.append({"id": "clones", "label": "Geklonte Stimmen", "kind": "stimme", "bytes": _dir_size(CLONES_DIR)})
+    items.sort(key=lambda x: -x["bytes"])
+    return items
+
+
+def delete_cache(cid: str):
+    global _kokoro, _qwen
+    if cid.startswith("hf:"):
+        name = cid[3:]
+        for hub in _hub_dirs():
+            full = os.path.join(hub, name)
+            if os.path.isdir(full):
+                shutil.rmtree(full, ignore_errors=True)
+        _whisper.clear(); _qwen = None
+    elif cid.startswith("piper:"):
+        vid = cid[6:]
+        for ext in (".onnx", ".onnx.json"):
+            try:
+                os.remove(os.path.join(CACHE, vid + ext))
+            except Exception:
+                pass
+        _piper.pop(vid, None)
+    elif cid == "kokoro":
+        for x in ("kokoro-v1.0.onnx", "voices-v1.0.bin"):
+            try:
+                os.remove(os.path.join(CACHE, x))
+            except Exception:
+                pass
+        _kokoro = None
+    elif cid == "clones":
+        shutil.rmtree(CLONES_DIR, ignore_errors=True)
+        os.makedirs(CLONES_DIR, exist_ok=True)
+        _clones.clear(); save_clones(_clones)
+
+
 # ── HTTP-Server ──────────────────────────────────────────────────────────────────
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code, body=b"", ctype="application/json"):
@@ -398,14 +488,23 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"catalog": catalog_with_state()})
         elif p == "/clones":
             self._json(200, {"clones": [{"id": k, "name": v.get("name"), "text": v.get("text")} for k, v in _clones.items()]})
+        elif p == "/cache":
+            self._json(200, {"items": list_cache()})
         else:
             self._json(404, {"error": "not found"})
 
     def do_DELETE(self):
-        p = urlparse(self.path).path
-        if p.startswith("/clone/"):
-            remove_clone(p.rsplit("/", 1)[-1])
+        u = urlparse(self.path)
+        if u.path.startswith("/clone/"):
+            remove_clone(u.path.rsplit("/", 1)[-1])
             self._json(200, {"ok": True})
+        elif u.path == "/cache":
+            cid = parse_qs(u.query).get("id", [""])[0]
+            if cid:
+                delete_cache(cid)
+                self._json(200, {"ok": True})
+            else:
+                self._json(400, {"error": "id fehlt"})
         else:
             self._json(404, {"error": "not found"})
 
