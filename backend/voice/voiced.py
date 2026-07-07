@@ -121,9 +121,11 @@ def transcribe(pcm: bytes, lang: str, size: str) -> str:
     if audio.size == 0:
         return ""
     model = get_whisper(size)
+    # beam_size=5 deutlich genauer als greedy (1); temperature=0 stabil;
+    # language erzwungen (kein Fehl-Erkennen der Sprache).
     segments, _info = model.transcribe(
-        audio, language=lang, beam_size=1, vad_filter=True,
-        condition_on_previous_text=False,
+        audio, language=lang or None, beam_size=5, best_of=5, temperature=0.0,
+        vad_filter=True, condition_on_previous_text=False,
     )
     return "".join(s.text for s in segments).strip()
 

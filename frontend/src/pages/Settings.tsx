@@ -884,14 +884,14 @@ export function VoicePanel() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Erkennungsmodell (Whisper)')}</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {(cfg.whisperModels ?? ['tiny', 'base', 'small', 'medium']).map((m) => (
+            {(cfg.whisperModels ?? ['tiny', 'base', 'small', 'medium', 'large-v3']).map((m) => (
               <button key={m} className={`btn btn--sm ${cfg.whisperModel === m ? 'btn--primary' : 'btn--outline'}`} disabled={busy}
                 onClick={() => save({ whisperModel: m })} title={av.loaded?.includes(m) ? tt('geladen') : undefined}>
                 {m}{av.loaded?.includes(m) ? ' ●' : ''}
               </button>
             ))}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Kleiner = schneller, größer = genauer. „medium" braucht mehr RAM/Zeit. Ein neues Modell wird beim ersten Mal geladen.')}</div>
+          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 5 }}>{tt('Kleiner = schneller, größer = genauer. Für gutes Deutsch „small" oder „medium"; bei starker Hardware (viel RAM/CPU) „large-v3" für beste Genauigkeit. Ein neues Modell wird beim ersten Mal geladen.')}</div>
         </div>
 
         {/* Sprachausgabe */}
