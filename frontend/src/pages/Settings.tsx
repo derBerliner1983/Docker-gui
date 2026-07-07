@@ -691,10 +691,25 @@ function VoicePanel() {
     } finally { setRecording(false); }
   };
 
-  const load = useCallback(async () => {
-    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); if (c.install?.running) setInstalling(true); } catch { /* */ }
+  const [cacheItems, setCacheItems] = useState<{ id: string; label: string; kind: string; bytes: number }[]>([]);
+  const [cacheBusy, setCacheBusy] = useState('');
+
+  const loadCache = useCallback(async () => {
+    try { const r = await api.voice.cache(); setCacheItems(r.items); } catch { /* */ }
   }, []);
+  const load = useCallback(async () => {
+    try { const c = await api.voice.config(); setCfg(c); setWake(c.wakeword); if (c.install?.running) setInstalling(true); if (c.available.daemon) void loadCache(); } catch { /* */ }
+  }, [loadCache]);
   useEffect(() => { void load(); }, [load]);
+
+  const fmtMB = (b: number) => (b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : (b / 1e6).toFixed(0) + ' MB');
+  const delCache = async (id: string, label: string) => {
+    if (!confirm(tt('Wirklich löschen? ') + label + tt(' (wird bei Bedarf neu geladen)'))) return;
+    setCacheBusy(id);
+    try { await api.voice.deleteCache(id); await loadCache(); await load(); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setCacheBusy(''); }
+  };
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   const startInstall = async (kind: 'voice' | 'qwen' = 'voice') => {
@@ -889,6 +904,37 @@ function VoicePanel() {
           </span>
           <Switch checked={cfg.tts} disabled={busy} onChange={(v) => save({ tts: v })} />
         </label>
+
+        {/* Speicher / Cache */}
+        {av.daemon && (
+          <div style={{ paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {tt('Speicher (Cache)')}
+                {cacheItems.length > 0 && <span style={{ color: 'var(--color-faint)', fontWeight: 400 }}> · {fmtMB(cacheItems.reduce((s, i) => s + i.bytes, 0))}</span>}
+              </span>
+              <button className="btn btn--outline btn--sm" onClick={() => void loadCache()}><RefreshCw size={12} /> {tt('Aktualisieren')}</button>
+            </div>
+            {cacheItems.length === 0 ? (
+              <div style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{tt('Nichts im Cache.')}</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {cacheItems.map((it) => (
+                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, padding: '6px 10px', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 8 }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{it.label}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                      <span style={{ color: 'var(--color-muted)', fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{fmtMB(it.bytes)}</span>
+                      <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--color-error)' }} disabled={cacheBusy === it.id} title={tt('Löschen')} onClick={() => void delCache(it.id, it.label)}>
+                        {cacheBusy === it.id ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Trash2 size={13} />}
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 6 }}>{tt('Gelöschte Modelle/Stimmen werden bei Bedarf automatisch neu geladen.')}</div>
+          </div>
+        )}
 
         {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
       </div>

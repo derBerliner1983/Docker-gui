@@ -296,7 +296,7 @@ Font: Inter.
 | TTS-Motor **Kokoro** zusätzlich (sehr gute Englisch-Stimmen; Deutsch/Thai bleiben Piper). Stimmen-ID mit Motor-Präfix `piper:` / `kokoro:` | ✅ |
 | TTS-Motor **Qwen3-TTS** (1.7B, optional) für **Deutsch** in Studioqualität – `sudo bash install.sh --voice-qwen` oder Button in den Einstellungen (schwer: PyTorch, GPU empfohlen) | ✅ |
 | **Eigene Stimme klonen** (Qwen zero-shot): ~6 s aufnehmen → automatisch transkribiert → als Stimme wählbar/löschbar (DE/EN) | ✅ |
-| Geplant: Sprachmodelle/Stimmen aus dem Cache löschen | ⏳ |
+| **Cache-Verwaltung**: heruntergeladene Whisper-/Qwen-Modelle, Piper/Kokoro & geklonte Stimmen mit Größe anzeigen und einzeln löschen (werden bei Bedarf neu geladen) | ✅ |
 
 ### ⏳ Geplant / Ideen
 
