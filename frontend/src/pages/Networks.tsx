@@ -8,6 +8,7 @@ import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { usePrefs } from '../lib/prefs';
 import { portInfo } from '../lib/utils';
+import { NetworkMap } from './NetworkMap';
 import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry, NetscanJob } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
@@ -116,6 +117,55 @@ function ConnectModal({ net, open, onClose, onDone, containers }: { net: DockerN
         <div className="form-hint">Muss im Subnetz {net?.subnet || '—'} liegen.</div></div>
       <div className="form-group"><label className="form-label">Alias-Namen / weitere IPs (Komma-getrennt)</label>
         <input className="input input--rect" placeholder={tt('web, api, db')} value={aliases} onChange={(e) => setAliases(e.target.value)} /></div>
+    </Modal>
+  );
+}
+
+// Bridge-Gruppe: ein Bridge-Netz anlegen und mehrere Container in einem Schritt
+// hinzufügen. Container derselben Gruppe erreichen sich (per Name), andere sind getrennt.
+function CreateGroupModal({ open, onClose, onDone, containers }: { open: boolean; onClose: () => void; onDone: () => void; containers: { id: string; name: string }[] }) {
+  const [name, setName] = useState('');
+  const [sel, setSel] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  useEffect(() => { if (open) { setName(''); setSel([]); setError(''); } }, [open]);
+  const toggle = (id: string) => setSel((s) => s.includes(id) ? s.filter((x) => x !== id) : [...s, id]);
+
+  const save = async () => {
+    const nm = name.trim().replace(/[^a-zA-Z0-9_.-]/g, '');
+    if (!nm) { setError('Name erforderlich'); return; }
+    setLoading(true); setError('');
+    try {
+      await api.networks.create({ name: nm, driver: 'bridge' });
+      const net = (await api.networks.list()).networks.find((n) => n.name === nm);
+      if (net) { for (const c of sel) { try { await api.networks.connect(net.id, c); } catch { /* einzelner Container evtl. schon verbunden */ } } }
+      onDone(); onClose();
+    } catch (err) { setError(err instanceof Error ? err.message : 'Fehler'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Modal open={open} title={tt('Bridge-Gruppe erstellen')} onClose={onClose}
+      footer={<>
+        <button className="btn btn--ghost btn--sm" onClick={onClose}>{tt('Abbrechen')}</button>
+        <button className="btn btn--primary btn--sm" onClick={save} disabled={loading}>
+          {loading && <span className="spinner" style={{ width: 12, height: 12 }} />} {tt('Gruppe erstellen')}
+        </button>
+      </>}>
+      {error && <div className="login-error">{error}</div>}
+      <div className="form-group"><label className="form-label">{tt('Gruppenname')}</label>
+        <input className="input input--rect" placeholder={tt('z.B. web-stack')} value={name} onChange={(e) => setName(e.target.value)} /></div>
+      <div className="form-group"><label className="form-label">{tt('Container in dieser Gruppe')}</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 220, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 8, padding: '8px 10px' }}>
+          {containers.length === 0 ? <span className="text-muted text-sm">{tt('Keine Container vorhanden.')}</span> :
+            containers.map((c) => (
+              <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggle(c.id)} /> {c.name}
+              </label>
+            ))}
+        </div>
+        <div className="form-hint">{tt('Container derselben Gruppe erreichen sich gegenseitig (per Container-Name). Andere Gruppen sind voneinander getrennt.')}</div>
+      </div>
     </Modal>
   );
 }
@@ -2223,7 +2273,7 @@ function FirewallView({ networks, containers, onChanged }: { networks: DockerNet
   );
 }
 
-type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
+type NetTab = 'docker' | 'vm' | 'firewall' | 'karte' | 'connections' | 'vips';
 
 export function Networks() {
   const t = useT();
@@ -2233,6 +2283,7 @@ export function Networks() {
   const [containers, setContainers] = useState<Container[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [connectNet, setConnectNet] = useState<DockerNetwork | null>(null);
 
   const load = useCallback(async () => {
@@ -2264,19 +2315,26 @@ export function Networks() {
         subtitle={t('page.networks.subtitle', { n: networks.length })}
         onRefresh={load}
         refreshing={refreshing}
-        actions={view === 'docker' && <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> {tt('Netzwerk')}</button>}
+        actions={view === 'docker' && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button className="btn btn--outline btn--sm" onClick={() => setCreateGroupOpen(true)}><Box size={13} /> {tt('Gruppe')}</button>
+            <button className="btn btn--primary btn--sm" onClick={() => setCreateOpen(true)}><Plus size={13} /> {tt('Netzwerk')}</button>
+          </div>
+        )}
       />
       <main className="page">
         <div className="filter-tabs">
           <button className={`filter-tab${view === 'docker' ? ' filter-tab--active' : ''}`} onClick={() => setView('docker')}>{tt('Docker')}</button>
           <button className={`filter-tab${view === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setView('vm')}>VMs</button>
           <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>{tt('Firewall')}</button>
+          <button className={`filter-tab${view === 'karte' ? ' filter-tab--active' : ''}`} onClick={() => setView('karte')}>{tt('Live-Karte')}</button>
           <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>{tt('Verbindungen')}</button>
           <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>{tt('Virtuelle IPs')}</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
         {view === 'firewall' && <FirewallView networks={networks} containers={containers} onChanged={load} />}
+        {view === 'karte' && <NetworkMap networks={networks} containers={containers} />}
         {view === 'connections' && <ConnectionsPanel />}
         {view === 'vips' && <VirtualIpsPanel />}
         {view === 'docker' && networks.map((n) => (
@@ -2325,6 +2383,7 @@ export function Networks() {
       </main>
 
       <CreateNetModal open={createOpen} onClose={() => setCreateOpen(false)} onDone={load} interfaces={interfaces} />
+      <CreateGroupModal open={createGroupOpen} onClose={() => setCreateGroupOpen(false)} onDone={load} containers={containers} />
       <ConnectModal net={connectNet} open={!!connectNet} onClose={() => setConnectNet(null)} onDone={load} containers={containers} />
     </>
   );
