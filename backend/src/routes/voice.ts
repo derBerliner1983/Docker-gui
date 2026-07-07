@@ -114,11 +114,34 @@ async function ackAudio(lang: string, voice: string): Promise<Buffer | null> {
  * Satz wird onSentence() aufgerufen – so kann sofort mit dem Vorlesen begonnen
  * werden, ohne auf die komplette Antwort zu warten.
  */
-const SYS_PROMPT: Record<string, string> = {
-  de: 'Du bist ein hilfreicher Sprachassistent. Antworte sehr kurz, in ein bis zwei Sätzen, klar gesprochen und ohne Aufzählungen oder Sonderzeichen.',
-  en: 'You are a helpful voice assistant. Answer very briefly, in one or two spoken sentences, no lists or special characters.',
+const SYS_BASE: Record<string, string> = {
+  de: 'Du bist ein hilfreicher Sprachassistent. Antworte sehr kurz, in ein bis zwei Sätzen, klar gesprochen und ohne Aufzählungen oder Sonderzeichen. Denke nicht laut nach, gib direkt die Antwort.',
+  en: 'You are a helpful voice assistant. Answer very briefly, in one or two spoken sentences, no lists or special characters. Do not think out loud, give the answer directly.',
   th: 'คุณเป็นผู้ช่วยด้วยเสียงที่เป็นประโยชน์ ตอบสั้นๆ หนึ่งถึงสองประโยค',
 };
+// System-Prompt inkl. aktuellem Datum/Uhrzeit (damit Datums-/Zeitfragen stimmen).
+function sysPrompt(lang: string): string {
+  const now = new Date();
+  const de = now.toLocaleString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const dateLine = lang === 'en'
+    ? ` Current date and time: ${now.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}. Use it for date/time questions.`
+    : ` Aktuelles Datum und Uhrzeit: ${de}. Nutze das für Datums- und Zeitfragen.`;
+  return (SYS_BASE[lang] || SYS_BASE.de) + dateLine;
+}
+
+// „Thinking"-Modelle (gpt-oss/harmony, deepseek-r1 …) geben Denk-Tokens aus.
+// Diese hier herausfiltern und nur die eigentliche Antwort behalten.
+function cleanReply(raw: string): string {
+  let s = raw || '';
+  s = s.replace(/<think>[\s\S]*?<\/think>/gi, ' ');           // <think>…</think>
+  if (/<\|[^>]*\|?>/.test(s)) {                                // harmony/gpt-oss Kanäle
+    const parts = s.split(/<\|message\|?>/);                   // nur nach letztem message-Marker
+    if (parts.length > 1) s = parts[parts.length - 1];
+    s = s.replace(/<\|[^>]*\|?>/g, ' ');                       // Rest-Steuertokens
+  }
+  s = s.replace(/^\s*(analysis|thought|assistant\s*final|final|assistantfinal)\b[:\s]*/i, '');
+  return s.replace(/\s+/g, ' ').trim();
+}
 
 // Fallback über /api/generate – funktioniert auch bei GGUF-Modellen ohne
 // Chat-Template (bei denen /api/chat leer bleibt).
@@ -126,12 +149,12 @@ async function generateReply(model: string, userText: string, lang: string): Pro
   try {
     const res = await fetch(`${OLLAMA}/api/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system: SYS_PROMPT[lang] || '', prompt: userText, stream: false, options: { num_predict: 220, temperature: 0.4 } }),
+      body: JSON.stringify({ model, system: sysPrompt(lang), prompt: userText, stream: false, think: false, options: { num_predict: 260, temperature: 0.4 } }),
       signal: AbortSignal.timeout(60000),
     });
     if (!res.ok) return '';
     const j = await res.json() as { response?: string };
-    return (j.response || '').trim();
+    return cleanReply(j.response || '');
   } catch { return ''; }
 }
 
@@ -142,7 +165,7 @@ async function chatStream(
   onToken: (t: string) => void,
   onSentence: (s: string) => Promise<void>,
 ): Promise<string> {
-  const sys = SYS_PROMPT[lang] || '';
+  const sys = sysPrompt(lang);
 
   const res = await fetch(`${OLLAMA}/api/chat`, {
     method: 'POST',
@@ -150,6 +173,7 @@ async function chatStream(
     body: JSON.stringify({
       model,
       messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }],
+      think: false,
       stream: true,
       options: { num_predict: 220, temperature: 0.4 },
     }),
@@ -184,7 +208,7 @@ async function chatStream(
     }
   }
   await flush(true);
-  return full.trim();
+  return cleanReply(full);
 }
 
 function normalize(s: string): string {
