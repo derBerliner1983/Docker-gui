@@ -8,6 +8,7 @@ import { Switch } from '../components/ui/Switch';
 import { api } from '../lib/api';
 import { usePrefs } from '../lib/prefs';
 import { portInfo } from '../lib/utils';
+import { NetworkMap } from './NetworkMap';
 import type { DockerNetwork, HostInterface, FirewallRule, FirewallDisabledRule, FirewallLogEntry, Container, VmNetwork, VM, ContainerNetworkEntry, VmIpEntry, NetscanJob } from '../lib/types';
 
 function CreateNetModal({ open, onClose, onDone, interfaces }: { open: boolean; onClose: () => void; onDone: () => void; interfaces: HostInterface[] }) {
@@ -2272,7 +2273,7 @@ function FirewallView({ networks, containers, onChanged }: { networks: DockerNet
   );
 }
 
-type NetTab = 'docker' | 'vm' | 'firewall' | 'connections' | 'vips';
+type NetTab = 'docker' | 'vm' | 'firewall' | 'karte' | 'connections' | 'vips';
 
 export function Networks() {
   const t = useT();
@@ -2326,12 +2327,14 @@ export function Networks() {
           <button className={`filter-tab${view === 'docker' ? ' filter-tab--active' : ''}`} onClick={() => setView('docker')}>{tt('Docker')}</button>
           <button className={`filter-tab${view === 'vm' ? ' filter-tab--active' : ''}`} onClick={() => setView('vm')}>VMs</button>
           <button className={`filter-tab${view === 'firewall' ? ' filter-tab--active' : ''}`} onClick={() => setView('firewall')}>{tt('Firewall')}</button>
+          <button className={`filter-tab${view === 'karte' ? ' filter-tab--active' : ''}`} onClick={() => setView('karte')}>{tt('Live-Karte')}</button>
           <button className={`filter-tab${view === 'connections' ? ' filter-tab--active' : ''}`} onClick={() => setView('connections')}>{tt('Verbindungen')}</button>
           <button className={`filter-tab${view === 'vips' ? ' filter-tab--active' : ''}`} onClick={() => setView('vips')}>{tt('Virtuelle IPs')}</button>
         </div>
 
         {view === 'vm' && <VmNetworksView />}
         {view === 'firewall' && <FirewallView networks={networks} containers={containers} onChanged={load} />}
+        {view === 'karte' && <NetworkMap networks={networks} containers={containers} />}
         {view === 'connections' && <ConnectionsPanel />}
         {view === 'vips' && <VirtualIpsPanel />}
         {view === 'docker' && networks.map((n) => (
