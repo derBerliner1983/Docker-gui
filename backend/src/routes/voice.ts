@@ -248,6 +248,25 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({ ok: true, running: install.running });
   });
 
+  // Push-to-Talk: Text → Antwort des geladenen Modells (+ optional TTS-Audio).
+  // Reines HTTP (kein WebSocket) – robust auch hinter Reverse-Proxy/Tunnel.
+  fastify.post<{ Body: { text?: string; lang?: string } }>('/api/voice/ask', { preHandler: requireAuth }, async (req, reply) => {
+    const text = (req.body?.text || '').trim();
+    const lang = (['de', 'en', 'th'].includes(req.body?.lang || '') ? req.body!.lang! : 'de');
+    if (!text) return reply.status(400).send({ error: 'Kein Text' });
+    const model = await loadedModel();
+    if (!model) return reply.status(400).send({ error: 'Keine KI im Speicher geladen.' });
+    try {
+      const answer = await chatStream(model, text, lang, () => {}, async () => {});
+      const cfg = readConfig();
+      let audio: string | undefined;
+      if (cfg.tts && answer) { const wav = await tts(answer, lang, voiceFor(cfg)); if (wav) audio = wav.toString('base64'); }
+      reply.send({ answer, audio });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'Fehler' });
+    }
+  });
+
   // Hörprobe einer Stimme (kurzer Beispielsatz → WAV)
   fastify.get<{ Querystring: { voice?: string; lang?: string } }>('/api/voice/preview', { preHandler: requireAuth }, async (req, reply) => {
     const q = req.query || {};

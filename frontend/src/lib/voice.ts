@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { api } from './api';
 
 // ── Audio-Hilfen ─────────────────────────────────────────────────────────────────
 function floatTo16kInt16(input: Float32Array, inRate: number): Int16Array {
@@ -31,6 +32,102 @@ export async function recordPcm(ms = 2500): Promise<ArrayBuffer> {
   const merged = new Float32Array(total);
   let off = 0; for (const b of chunks) { merged.set(b, off); off += b.length; }
   return floatTo16kInt16(merged, inRate).buffer as ArrayBuffer;
+}
+
+// ── Push-to-Talk (Leertaste): aufnehmen → STT → LLM → Antwort vorlesen ───────────
+// Reines HTTP (kein WebSocket), daher robust hinter Reverse-Proxy/Tunnel.
+export interface PttState {
+  supported: boolean;
+  recording: boolean;   // Leertaste gedrückt, nimmt auf
+  busy: boolean;        // erkennt / denkt
+  speaking: boolean;    // liest Antwort vor
+  status: string;
+  lines: { role: 'you' | 'ai' | 'sys'; text: string }[];
+  error: string | null;
+}
+
+export function usePushToTalk(getCfg: () => { lang: string } | null, onBusyChange?: (b: boolean) => void) {
+  const [state, setState] = useState<PttState>({
+    supported: typeof navigator !== 'undefined' && !!navigator.mediaDevices && !!window.AudioContext,
+    recording: false, busy: false, speaking: false, status: '', lines: [], error: null,
+  });
+  const micAnalyser = useRef<AnalyserNode | null>(null);
+  const outAnalyser = useRef<AnalyserNode | null>(null);
+  const rec = useRef<{ stream: MediaStream; ac: AudioContext; node: ScriptProcessorNode; src: MediaStreamAudioSourceNode; chunks: Float32Array[]; rate: number } | null>(null);
+  const playCtx = useRef<AudioContext | null>(null);
+  const patch = (p: Partial<PttState>) => setState((s) => ({ ...s, ...p }));
+  const addLine = (l: PttState['lines'][number]) => setState((s) => ({ ...s, lines: [...s.lines.slice(-20), l] }));
+
+  const setBusy = useCallback((b: boolean) => onBusyChange?.(b), [onBusyChange]);
+
+  const start = useCallback(async () => {
+    if (rec.current || state.recording) return;
+    patch({ error: null });
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      const ac = new AudioContext();
+      const src = ac.createMediaStreamSource(stream);
+      const analyser = ac.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = 0.75;
+      src.connect(analyser); micAnalyser.current = analyser;
+      const node = ac.createScriptProcessor(4096, 1, 1);
+      const chunks: Float32Array[] = [];
+      node.onaudioprocess = (e) => chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      src.connect(node); node.connect(ac.destination);
+      rec.current = { stream, ac, node, src, chunks, rate: ac.sampleRate };
+      patch({ recording: true, status: 'Ich höre … (Leertaste loslassen zum Senden)' });
+      setBusy(true);
+    } catch (err) {
+      patch({ error: err instanceof Error ? err.message : 'Mikrofon-Zugriff verweigert', recording: false });
+      setBusy(false);
+    }
+  }, [state.recording, setBusy]);
+
+  const playAudio = useCallback(async (b64: string) => {
+    try {
+      const bin = atob(b64); const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      if (!playCtx.current) playCtx.current = new AudioContext();
+      const pc = playCtx.current;
+      if (!outAnalyser.current) { const an = pc.createAnalyser(); an.fftSize = 256; an.connect(pc.destination); outAnalyser.current = an; }
+      const buf = await pc.decodeAudioData(bytes.buffer);
+      const s = pc.createBufferSource(); s.buffer = buf; s.connect(outAnalyser.current);
+      patch({ speaking: true }); setBusy(true);
+      s.onended = () => { patch({ speaking: false }); setBusy(false); };
+      s.start();
+    } catch { patch({ speaking: false }); setBusy(false); }
+  }, [setBusy]);
+
+  const stop = useCallback(async () => {
+    const r = rec.current;
+    if (!r) return;
+    rec.current = null;
+    try { r.node.disconnect(); r.src.disconnect(); r.stream.getTracks().forEach((t) => t.stop()); } catch { /* */ }
+    const total = r.chunks.reduce((n, b) => n + b.length, 0);
+    const merged = new Float32Array(total);
+    let off = 0; for (const b of r.chunks) { merged.set(b, off); off += b.length; }
+    try { void r.ac.close(); } catch { /* */ }
+    micAnalyser.current = null;
+    patch({ recording: false });
+    const cfg = getCfg();
+    if (!cfg || total / r.rate < 0.3) { patch({ status: 'Zu kurz – nochmal', busy: false }); setBusy(false); return; }
+    const pcm = floatTo16kInt16(merged, r.rate).buffer as ArrayBuffer;
+    patch({ busy: true, status: 'Erkenne …' });
+    try {
+      const { text } = await api.voice.sttOnce(pcm, cfg.lang);
+      if (!text) { patch({ busy: false, status: 'Nichts verstanden – nochmal' }); setBusy(false); return; }
+      addLine({ role: 'you', text });
+      patch({ status: 'Denkt nach …' });
+      const { answer, audio } = await api.voice.ask(text, cfg.lang);
+      addLine({ role: 'ai', text: answer });
+      patch({ busy: false, status: 'Antwort' });
+      if (audio) await playAudio(audio); else setBusy(false);
+    } catch (e) {
+      addLine({ role: 'sys', text: e instanceof Error ? e.message : 'Fehler' });
+      patch({ busy: false, status: 'Fehler' }); setBusy(false);
+    }
+  }, [getCfg, playAudio, setBusy]);
+
+  return { state, start, stop, micAnalyser, outAnalyser };
 }
 
 export interface VoiceLine { role: 'you' | 'ai' | 'sys'; text: string }
