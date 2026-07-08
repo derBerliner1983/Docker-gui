@@ -642,16 +642,16 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
   const previewAudio = useRef<HTMLAudioElement | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [qwenLoading, setQwenLoading] = useState(false);
+  const [qwenLog, setQwenLog] = useState<string[]>([]);
   const qwenPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const startQwenLoad = async () => {
-    setQwenLoading(true); setMsg('');
-    try { await api.voice.qwenLoad(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setQwenLoading(false); return; }
+  const pollQwen = () => {
     if (qwenPollRef.current) clearInterval(qwenPollRef.current);
     qwenPollRef.current = setInterval(async () => {
       try {
-        const c = await api.voice.config();
+        const [c, l] = await Promise.all([api.voice.config(), api.voice.logs().catch(() => ({ lines: [] }))]);
         setCfg(c);
+        setQwenLog(l.lines.slice(-8));
         if (c.available.qwenReady) {
           if (qwenPollRef.current) { clearInterval(qwenPollRef.current); qwenPollRef.current = null; }
           setQwenLoading(false);
@@ -659,6 +659,12 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
         }
       } catch { /* */ }
     }, 3000);
+  };
+
+  const startQwenLoad = async () => {
+    setQwenLoading(true); setMsg('');
+    try { await api.voice.qwenLoad(); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setQwenLoading(false); return; }
+    pollQwen();
   };
 
   const playPreview = async (voice: string) => {
@@ -739,18 +745,8 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
   // Läuft im Daemon bereits ein Qwen-Ladevorgang (z.B. durch Hörprobe angestoßen),
   // dann Fortschritt automatisch mitverfolgen.
   useEffect(() => {
-    if (cfg?.available.qwenLoading && !qwenPollRef.current) {
-      qwenPollRef.current = setInterval(async () => {
-        try {
-          const c = await api.voice.config();
-          setCfg(c);
-          if (!c.available.qwenLoading && (c.available.qwenReady || !c.available.qwen)) {
-            if (qwenPollRef.current) { clearInterval(qwenPollRef.current); qwenPollRef.current = null; }
-            setQwenLoading(false);
-          }
-        } catch { /* */ }
-      }, 3000);
-    }
+    if (cfg?.available.qwenLoading && !qwenPollRef.current) { setQwenLoading(true); pollQwen(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg?.available.qwenLoading]);
 
   const startInstall = async (kind: 'voice' | 'qwen' = 'voice') => {
@@ -896,14 +892,25 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                           <span className="spinner" style={{ width: 11, height: 11 }} />
-                          <span>{tt('Qwen-Modell wird geladen …')} {fmtMB(bytes)} / {fmtMB(total)} ({pct}%)</span>
+                          <span>
+                            {bytes > 0
+                              ? <>{tt('Qwen-Modell wird geladen …')} {fmtMB(bytes)} / {fmtMB(total)} ({pct}%)</>
+                              : tt('Qwen wird vorbereitet … (PyTorch startet, Download beginnt gleich)')}
+                          </span>
                         </div>
                         <div style={{ height: 6, borderRadius: 3, background: 'var(--color-surface)', overflow: 'hidden' }}>
-                          <div style={{ height: '100%', width: pct + '%', background: 'var(--color-accent)', transition: 'width .4s' }} />
+                          <div style={{ height: '100%', width: (bytes > 0 ? pct : 3) + '%', background: 'var(--color-accent)', transition: 'width .4s' }} />
                         </div>
+                        {qwenLog.length > 0 && (
+                          <pre style={{
+                            marginTop: 8, maxHeight: 120, overflowY: 'auto', fontSize: 10.5, lineHeight: 1.5,
+                            background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)',
+                            borderRadius: 6, padding: '8px 10px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          }}>{qwenLog.join('\n')}</pre>
+                        )}
                       </div>
                     )}
-                    <div style={{ marginTop: 5 }}>{tt('Wird einmalig heruntergeladen/vorgeladen. Danach sind die „… · Qwen"-Stimmen sofort nutzbar.')}</div>
+                    <div style={{ marginTop: 5 }}>{tt('Wird einmalig heruntergeladen/vorgeladen (mehrere GB, kann bei langsamer Leitung dauern). Der Verlauf oben zeigt live, was passiert.')}</div>
                   </div>
                 );
               })()}

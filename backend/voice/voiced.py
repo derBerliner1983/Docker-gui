@@ -21,6 +21,7 @@ Endpunkte:
 """
 import io
 import os
+import collections
 import re
 import json
 import time
@@ -93,8 +94,13 @@ _qwen_loading = False  # läuft gerade ein Qwen-Modell-Download/Ladevorgang?
 QWEN_EST_BYTES = 3_800_000_000  # grober Richtwert (~3,8 GB) für die Fortschrittsanzeige
 
 
+_LOG_RING = collections.deque(maxlen=200)
+
+
 def log(*a):
-    print("[voiced]", *a, flush=True)
+    line = " ".join(str(x) for x in a)
+    _LOG_RING.append(time.strftime("%H:%M:%S ") + line)
+    print("[voiced]", line, flush=True)
 
 
 def _download(url: str, dest: str):
@@ -260,12 +266,20 @@ def qwen_available() -> bool:
 
 def qwen_model_bytes() -> int:
     # Wie viel vom Qwen-Modell liegt schon auf der Platte (für Fortschrittsanzeige)?
+    # Zählt sowohl fertige Modell-Ordner als auch laufende Downloads (HuggingFace
+    # legt Teildateien als *.incomplete unter blobs/ ab bzw. in temporären Ordnern).
     total = 0
     try:
         for hub in _hub_dirs():
             for d in os.listdir(hub):
-                if d.startswith("models--") and "Qwen3-TTS" in d:
-                    total += _dir_size(os.path.join(hub, d))
+                full = os.path.join(hub, d)
+                dl = d.lower()
+                # Fertiger/teilweiser Modell-Ordner (models--Qwen--Qwen3-TTS-…)
+                if d.startswith("models--") and ("qwen3-tts" in dl or ("qwen" in dl and "tts" in dl)):
+                    total += _dir_size(full)
+                # Laufender Download in einem temporären Ordner des Hubs
+                elif d.startswith((".", "tmp")) and os.path.isdir(full):
+                    total += _dir_size(full)
     except Exception:
         pass
     return total
@@ -571,6 +585,8 @@ class Handler(BaseHTTPRequestHandler):
                 "qwen_total": QWEN_EST_BYTES,
                 "catalog": cat,
             })
+        elif p == "/logs":
+            self._json(200, {"lines": list(_LOG_RING)})
         elif p == "/voices":
             self._json(200, {"catalog": catalog_with_state()})
         elif p == "/clones":

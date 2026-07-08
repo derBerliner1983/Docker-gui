@@ -314,6 +314,17 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({ ok: true, running: install.running });
   });
 
+  // Live-Log des Sprachdienstes (Download-/Ladefortschritt, Fehler) für die GUI
+  fastify.get('/api/voice/logs', { preHandler: requireAuth }, async (_req, reply) => {
+    try {
+      const r = await fetch(`${DAEMON}/logs`, { signal: AbortSignal.timeout(4000) });
+      if (!r.ok) return reply.send({ lines: [] });
+      reply.send(await r.json());
+    } catch {
+      reply.send({ lines: [] });
+    }
+  });
+
   // Qwen3-TTS-Modell (~3–4 GB) im Hintergrund vorladen – der Daemon lädt/holt
   // es und meldet den Fortschritt über /api/voice/config (qwenBytes/qwenTotal).
   fastify.post('/api/voice/qwen-load', { preHandler: requireAdmin }, async (_req, reply) => {
