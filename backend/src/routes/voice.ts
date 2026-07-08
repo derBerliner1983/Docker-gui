@@ -319,8 +319,15 @@ export async function voiceRoutes(fastify: FastifyInstance) {
   fastify.post('/api/voice/qwen-load', { preHandler: requireAdmin }, async (_req, reply) => {
     try {
       const r = await fetch(`${DAEMON}/qwen/load`, { method: 'POST', signal: AbortSignal.timeout(5000) });
-      if (!r.ok) return reply.status(502).send({ error: `Daemon ${r.status}` });
-      reply.send(await r.json());
+      if (r.ok) return reply.send(await r.json());
+      if (r.status !== 404) return reply.status(502).send({ error: `Daemon ${r.status}` });
+      // Älterer Daemon ohne /qwen/load: Modell durch eine erste TTS-Anfrage mit
+      // einer Qwen-Stimme warmladen (funktioniert bei jeder Daemon-Version).
+      const health = await daemonHealth();
+      const qwenVoice = Object.values(health.catalog ?? {}).flat().find((v) => v.id?.startsWith('qwen:'))?.id;
+      if (!qwenVoice) return reply.status(502).send({ error: 'Keine Qwen-Stimme verfügbar. Bitte „sudo bash install.sh --voice-qwen" ausführen.' });
+      void tts('Hallo.', 'de', qwenVoice).catch(() => {}); // Fire-and-forget: stößt den Download an
+      reply.send({ ok: true, loading: true, ready: false, warm: true });
     } catch {
       reply.status(502).send({ error: 'Sprachdienst nicht erreichbar' });
     }
