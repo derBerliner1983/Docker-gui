@@ -5,6 +5,7 @@ import fs from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { isRoot } from '../lib/privilege';
 import { appSettingsQueries } from '../db/index';
+import { obsidianContext } from './obsidian';
 
 // ── lokaler Voice-Daemon (Whisper STT + Piper TTS) ───────────────────────────────
 const VOICE_PORT = process.env.VOICE_PORT || '11435';
@@ -150,10 +151,18 @@ function cleanReply(raw: string): string {
 
 type ChatMsg = { role: 'user' | 'assistant'; text: string };
 
+// Wissensbasis (Obsidian) als Kontextblock an den System-Prompt hängen.
+function knowledgeBlock(knowledge: string, lang: string): string {
+  if (!knowledge) return '';
+  return lang === 'en'
+    ? `\n\nRelevant notes from the user's Obsidian knowledge base (use them if helpful, do not invent):\n${knowledge}`
+    : `\n\nRelevante Notizen aus der Obsidian-Wissensbasis des Nutzers (nutze sie, wenn hilfreich, erfinde nichts dazu):\n${knowledge}`;
+}
+
 // Fallback über /api/generate – funktioniert auch bei GGUF-Modellen ohne
 // Chat-Template (bei denen /api/chat leer bleibt). Gesprächsverlauf wird in den
 // Prompt gefaltet, damit auch hier Kontext erhalten bleibt.
-async function generateReply(model: string, userText: string, lang: string, history: ChatMsg[] = []): Promise<string> {
+async function generateReply(model: string, userText: string, lang: string, history: ChatMsg[] = [], knowledge = ''): Promise<string> {
   const uLabel = lang === 'en' ? 'User' : 'Nutzer';
   const aLabel = lang === 'en' ? 'Assistant' : 'Assistent';
   const convo = history.map((m) => `${m.role === 'user' ? uLabel : aLabel}: ${m.text}`).join('\n');
@@ -161,7 +170,7 @@ async function generateReply(model: string, userText: string, lang: string, hist
   try {
     const res = await fetch(`${OLLAMA}/api/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system: sysPrompt(lang), prompt, stream: false, think: false, options: { num_predict: 260, temperature: 0.4 } }),
+      body: JSON.stringify({ model, system: sysPrompt(lang) + knowledgeBlock(knowledge, lang), prompt, stream: false, think: false, options: { num_predict: 260, temperature: 0.4 } }),
       signal: AbortSignal.timeout(60000),
     });
     if (!res.ok) return '';
@@ -177,8 +186,9 @@ async function chatStream(
   onToken: (t: string) => void,
   onSentence: (s: string) => Promise<void>,
   history: ChatMsg[] = [],
+  knowledge = '',
 ): Promise<string> {
-  const sys = sysPrompt(lang);
+  const sys = sysPrompt(lang) + knowledgeBlock(knowledge, lang);
   const prior = history.map((m) => ({ role: m.role, content: m.text }));
 
   const res = await fetch(`${OLLAMA}/api/chat`, {
@@ -329,8 +339,9 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const model = await loadedModel();
     if (!model) return reply.status(400).send({ error: 'Keine KI im Speicher geladen.' });
     try {
-      let answer = await chatStream(model, text, lang, () => {}, async () => {}, history).catch(() => '');
-      if (!answer) answer = await generateReply(model, text, lang, history); // Fallback für GGUF ohne Chat-Template
+      const knowledge = obsidianContext(text); // Obsidian-Wissensbasis (falls aktiv)
+      let answer = await chatStream(model, text, lang, () => {}, async () => {}, history, knowledge).catch(() => '');
+      if (!answer) answer = await generateReply(model, text, lang, history, knowledge); // Fallback für GGUF ohne Chat-Template
       const cfg = readConfig();
       let audio: string | undefined;
       if (cfg.tts && answer) { const wav = await tts(answer, lang, voiceFor(cfg)); if (wav) audio = wav.toString('base64'); }

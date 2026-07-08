@@ -11,7 +11,7 @@ import { SortablePanels } from '../components/ui/SortablePanels';
 import { Switch } from '../components/ui/Switch';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
-import { VoicePanel } from './Settings';
+import { VoicePanel, ObsidianPanel } from './Settings';
 import type { OllamaStatus, OllamaModel, OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel } from '../lib/types';
 
 // ── capability inference from model name/family ──────────────────────────────
@@ -980,6 +980,7 @@ export function Ai() {
         </Panel>
           ) },
           { id: 'voice', node: <VoicePanel /> },
+          { id: 'obsidian', node: <ObsidianPanel /> },
         ]} />
       </main>
 

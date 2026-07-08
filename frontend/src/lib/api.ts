@@ -383,6 +383,14 @@ export const api = {
     },
   },
 
+  obsidian: {
+    status: () => req<import('./types').ObsidianStatus>('/api/obsidian/status'),
+    setConfig: (data: { vault?: string; enabled?: boolean }) =>
+      req<import('./types').ObsidianStatus>('/api/obsidian/config', { method: 'POST', body: JSON.stringify(data) }),
+    reindex: () => req<import('./types').ObsidianStatus>('/api/obsidian/reindex', { method: 'POST' }),
+    search: (q: string) => req<{ hits: { path: string; title: string; body: string }[] }>(`/api/obsidian/search?q=${encodeURIComponent(q)}`),
+  },
+
   cron: {
     list: () => req<{ jobs: CronJob[]; raw: string }>('/api/cron'),
     add: (schedule: string, command: string, comment?: string) =>

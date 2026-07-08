@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic, Volume2 } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic, Volume2, BrainCircuit } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -994,6 +994,84 @@ export function VoicePanel() {
               </div>
             )}
             <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 6 }}>{tt('Gelöschte Modelle/Stimmen werden bei Bedarf automatisch neu geladen.')}</div>
+          </div>
+        )}
+
+        {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
+      </div>
+    </Panel>
+  );
+}
+
+// ── Obsidian als „Gehirn" (lokale Wissensbasis / RAG) ────────────────────────────
+export function ObsidianPanel() {
+  const [st, setSt] = useState<import('../lib/types').ObsidianStatus | null>(null);
+  const [vault, setVault] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const load = useCallback(async () => {
+    try { const s = await api.obsidian.status(); setSt(s); setVault(s.vault); } catch { /* */ }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const sub = st?.connected
+    ? `${tt('verbunden')} · ${st.chunks} ${tt('Infos')}`
+    : (st?.enabled ? tt('aktiv, aber leer') : tt('aus'));
+
+  const toggle = async (enabled: boolean) => {
+    setBusy(true); setMsg('');
+    try { const s = await api.obsidian.setConfig({ enabled, vault: vault.trim() || undefined }); setSt(s); setVault(s.vault); setMsg(enabled ? tt('Wissensbasis eingelesen.') : ''); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+  const saveVault = async () => {
+    setBusy(true); setMsg('');
+    try { const s = await api.obsidian.setConfig({ vault: vault.trim() }); setSt(s); setMsg(tt('Gespeichert & neu eingelesen.')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+  const reindex = async () => {
+    setBusy(true); setMsg('');
+    try { const s = await api.obsidian.reindex(); setSt(s); setMsg(`${s.files} ${tt('Dateien')}, ${s.chunks} ${tt('Infos')} eingelesen.`); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={tt('Wissensbasis (Obsidian)')} icon={<BrainCircuit size={15} />} subtitle={sub} storageKey="set-obsidian" defaultCollapsed>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
+          {tt('Verbinde deinen Obsidian-Vault (Ordner mit .md-Notizen) als „Gehirn". Die KI zieht bei Fragen automatisch passende Notizen als Kontext heran. Alles bleibt lokal.')}
+        </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!st?.enabled} disabled={busy} onChange={(e) => void toggle(e.target.checked)} />
+          {tt('Als Wissensbasis nutzen')}
+        </label>
+
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{tt('Vault-Ordner')}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="input" style={{ flex: 1, minWidth: 220, fontFamily: 'var(--font-mono)', fontSize: 12 }}
+              value={vault} onChange={(e) => setVault(e.target.value)} placeholder="/pfad/zum/Obsidian-Vault"
+              onKeyDown={(e) => { if (e.key === 'Enter') void saveVault(); }} />
+            <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => void saveVault()}>{tt('Speichern')}</button>
+            <button className="btn btn--outline btn--sm" disabled={busy || !st?.enabled} onClick={() => void reindex()}>
+              <RefreshCw size={13} /> {tt('Neu einlesen')}
+            </button>
+          </div>
+          {st && !st.exists && <div style={{ fontSize: 11.5, color: 'var(--color-warning)', marginTop: 5 }}>{tt('Ordner existiert noch nicht – wird beim Aktivieren angelegt.')}</div>}
+        </div>
+
+        {st?.connected && (
+          <div style={{ display: 'flex', gap: 18, fontSize: 12, color: 'var(--color-muted)', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--color-success)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <CheckCircle2 size={13} /> {tt('verbunden')}
+            </span>
+            <span>{st.files} {tt('Dateien')}</span>
+            <span>{st.chunks} {tt('Infos')}</span>
+            {st.lastIndexed && <span>{tt('Stand')}: {new Date(st.lastIndexed).toLocaleString()}</span>}
           </div>
         )}
 
