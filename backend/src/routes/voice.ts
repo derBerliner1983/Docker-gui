@@ -45,11 +45,13 @@ function voiceFor(cfg: VoiceConfig): string {
   return cfg.voices[cfg.lang] || '';
 }
 
-async function daemonHealth(): Promise<{ ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean }> {
+type Health = { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean; qwen_loading?: boolean; qwen_ready?: boolean; qwen_bytes?: number; qwen_total?: number };
+
+async function daemonHealth(): Promise<Health> {
   try {
     const r = await fetch(`${DAEMON}/health`, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return { ok: false, stt: false, tts: false };
-    return await r.json() as { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean };
+    return await r.json() as Health;
   } catch {
     return { ok: false, stt: false, tts: false };
   }
@@ -281,7 +283,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({
       ...cfg,
       whisperModels: WHISPER_MODELS,
-      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {}, kokoro: !!health.kokoro, qwen: !!health.qwen },
+      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {}, kokoro: !!health.kokoro, qwen: !!health.qwen, qwenLoading: !!health.qwen_loading, qwenReady: !!health.qwen_ready, qwenBytes: health.qwen_bytes ?? 0, qwenTotal: health.qwen_total ?? 0 },
       model,
       install: { running: install.running, error: install.error, log: install.log.slice(-1200) },
     });
@@ -299,6 +301,18 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const r = startVoiceInstall('--voice-qwen');
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
+  });
+
+  // Qwen3-TTS-Modell (~3–4 GB) im Hintergrund vorladen – der Daemon lädt/holt
+  // es und meldet den Fortschritt über /api/voice/config (qwenBytes/qwenTotal).
+  fastify.post('/api/voice/qwen-load', { preHandler: requireAdmin }, async (_req, reply) => {
+    try {
+      const r = await fetch(`${DAEMON}/qwen/load`, { method: 'POST', signal: AbortSignal.timeout(5000) });
+      if (!r.ok) return reply.status(502).send({ error: `Daemon ${r.status}` });
+      reply.send(await r.json());
+    } catch {
+      reply.status(502).send({ error: 'Sprachdienst nicht erreichbar' });
+    }
   });
 
   // Push-to-Talk: Text → Antwort des geladenen Modells (+ optional TTS-Audio).
