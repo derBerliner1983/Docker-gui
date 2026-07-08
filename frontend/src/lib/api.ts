@@ -391,6 +391,13 @@ export const api = {
     search: (q: string) => req<{ hits: { path: string; title: string; body: string }[] }>(`/api/obsidian/search?q=${encodeURIComponent(q)}`),
   },
 
+  websearch: {
+    status: () => req<{ enabled: boolean; maxResults: number }>('/api/websearch/status'),
+    setConfig: (data: { enabled?: boolean; maxResults?: number }) =>
+      req<{ enabled: boolean; maxResults: number }>('/api/websearch/config', { method: 'POST', body: JSON.stringify(data) }),
+    test: (q: string) => req<{ results: { title: string; url: string; snippet: string }[] }>(`/api/websearch/test?q=${encodeURIComponent(q)}`),
+  },
+
   cron: {
     list: () => req<{ jobs: CronJob[]; raw: string }>('/api/cron'),
     add: (schedule: string, command: string, comment?: string) =>

@@ -6,6 +6,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth';
 import { isRoot } from '../lib/privilege';
 import { appSettingsQueries } from '../db/index';
 import { obsidianContext } from './obsidian';
+import { webContext } from './websearch';
 
 // ── lokaler Voice-Daemon (Whisper STT + Piper TTS) ───────────────────────────────
 const VOICE_PORT = process.env.VOICE_PORT || '11435';
@@ -155,8 +156,8 @@ type ChatMsg = { role: 'user' | 'assistant'; text: string };
 function knowledgeBlock(knowledge: string, lang: string): string {
   if (!knowledge) return '';
   return lang === 'en'
-    ? `\n\nRelevant notes from the user's Obsidian knowledge base (use them if helpful, do not invent):\n${knowledge}`
-    : `\n\nRelevante Notizen aus der Obsidian-Wissensbasis des Nutzers (nutze sie, wenn hilfreich, erfinde nichts dazu):\n${knowledge}`;
+    ? `\n\nRelevant knowledge (notes and/or live web results — use if helpful, cite sources, do not invent):\n${knowledge}`
+    : `\n\nRelevantes Wissen (Notizen und/oder aktuelle Web-Ergebnisse – nutze es, wenn hilfreich, nenne Quellen, erfinde nichts dazu):\n${knowledge}`;
 }
 
 // Fallback über /api/generate – funktioniert auch bei GGUF-Modellen ohne
@@ -339,7 +340,9 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const model = await loadedModel();
     if (!model) return reply.status(400).send({ error: 'Keine KI im Speicher geladen.' });
     try {
-      const knowledge = obsidianContext(text); // Obsidian-Wissensbasis (falls aktiv)
+      // Wissensquellen: Obsidian (lokal) + Live-Websuche (falls jeweils aktiv)
+      const [web, notes] = await Promise.all([webContext(text).catch(() => ''), Promise.resolve(obsidianContext(text))]);
+      const knowledge = [notes && `Obsidian-Notizen:\n${notes}`, web && `Web-Ergebnisse:\n${web}`].filter(Boolean).join('\n\n');
       let answer = await chatStream(model, text, lang, () => {}, async () => {}, history, knowledge).catch(() => '');
       if (!answer) answer = await generateReply(model, text, lang, history, knowledge); // Fallback für GGUF ohne Chat-Template
       const cfg = readConfig();

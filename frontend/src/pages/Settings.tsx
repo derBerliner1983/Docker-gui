@@ -1081,6 +1081,67 @@ export function ObsidianPanel() {
   );
 }
 
+// ── Internetzugriff für die KI (Live-Websuche) ───────────────────────────────────
+export function WebAccessPanel() {
+  const [cfg, setCfg] = useState<{ enabled: boolean; maxResults: number } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [testQ, setTestQ] = useState('');
+  const [hits, setHits] = useState<{ title: string; url: string }[] | null>(null);
+
+  useEffect(() => { api.websearch.status().then(setCfg).catch(() => {}); }, []);
+
+  const set = async (patch: { enabled?: boolean; maxResults?: number }) => {
+    setBusy(true); setMsg('');
+    try { setCfg(await api.websearch.setConfig(patch)); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+  const test = async () => {
+    if (!testQ.trim()) return;
+    setBusy(true); setMsg(''); setHits(null);
+    try { const r = await api.websearch.test(testQ.trim()); setHits(r.results.map((x) => ({ title: x.title, url: x.url }))); if (!r.results.length) setMsg(tt('Keine Treffer.')); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Panel title={tt('Internetzugriff (KI)')} icon={<Network size={15} />} subtitle={cfg ? (cfg.enabled ? tt('an') : tt('aus')) : undefined} storageKey="set-websearch" defaultCollapsed>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
+          {tt('Erlaubt der KI, bei Fragen live im Web zu suchen (DuckDuckGo, kein Konto/Schlüssel nötig) und die Treffer als Kontext zu nutzen. So kennt auch ein lokales Modell aktuelle Infos.')}
+        </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={!!cfg?.enabled} disabled={busy} onChange={(e) => void set({ enabled: e.target.checked })} />
+          {tt('Internetzugriff aktivieren')}
+        </label>
+        {cfg && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5 }}>
+            {tt('Trefferanzahl pro Frage')}
+            <select className="input" style={{ width: 70 }} value={cfg.maxResults} disabled={busy} onChange={(e) => void set({ maxResults: Number(e.target.value) })}>
+              {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+        )}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 4 }}>{tt('Testsuche')}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="input" style={{ flex: 1, minWidth: 200 }} value={testQ} onChange={(e) => setTestQ(e.target.value)}
+              placeholder={tt('z. B. Wetter Berlin heute')} onKeyDown={(e) => { if (e.key === 'Enter') void test(); }} />
+            <button className="btn btn--outline btn--sm" disabled={busy || !testQ.trim()} onClick={() => void test()}>{tt('Suchen')}</button>
+          </div>
+          {hits && hits.length > 0 && (
+            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: 12, color: 'var(--color-muted)' }}>
+              {hits.map((h, i) => <li key={i} style={{ marginBottom: 3 }}><a href={h.url} target="_blank" rel="noreferrer" style={{ color: 'var(--color-accent)' }}>{h.title || h.url}</a></li>)}
+            </ul>
+          )}
+        </div>
+        {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
+      </div>
+    </Panel>
+  );
+}
+
 export function Settings() {
   const { t } = useI18n();
   const [info, setInfo] = useState<Awaited<ReturnType<typeof api.settings.info>> | null>(null);

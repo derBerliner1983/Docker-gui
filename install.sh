@@ -213,6 +213,18 @@ EOF
   exit 0
 fi
 
+# ── Web-MCP-Server (Internetzugriff als MCP-Werkzeug für externe Agenten) ────────
+if [ "${1:-}" = "--web-mcp" ]; then
+  info "=== $APP_NAME – Web-MCP-Server (Websuche/Seitenabruf) ==="
+  MCP_DIR="$INSTALL_DIR/mcp/core-hub-web"
+  [ -d "$MCP_DIR" ] || error "MCP-Verzeichnis nicht gefunden: $MCP_DIR"
+  ( cd "$MCP_DIR" && npm install --no-audit --no-fund ) || error "npm install im MCP-Server fehlgeschlagen."
+  info "Fertig. In den MCP-Client eintragen (Beispiel):"
+  info "  \"core-hub-web\": { \"command\": \"node\", \"args\": [\"$MCP_DIR/index.mjs\"] }"
+  info "Details: $MCP_DIR/README.md"
+  exit 0
+fi
+
 # ── Deinstallation ────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--deinstall" ]; then
   info "=== $APP_NAME Deinstallation ==="
