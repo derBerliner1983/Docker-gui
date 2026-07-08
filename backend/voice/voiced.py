@@ -152,19 +152,55 @@ def get_piper(voice_id: str):
     return voice
 
 
+def _chunk_pcm_bytes(ch) -> bytes:
+    """PCM-16LE aus einem Piper-AudioChunk holen (verschiedene API-Versionen)."""
+    if hasattr(ch, "audio_int16_bytes"):
+        return ch.audio_int16_bytes
+    if hasattr(ch, "audio_int16_array"):
+        import numpy as np  # type: ignore
+        return np.asarray(ch.audio_int16_array, dtype="<i2").tobytes()
+    if hasattr(ch, "audio_float_array"):
+        import numpy as np  # type: ignore
+        a = np.clip(np.asarray(ch.audio_float_array, dtype="float32"), -1.0, 1.0)
+        return (a * 32767).astype("<i2").tobytes()
+    return b""
+
+
 def piper_tts(text: str, voice_id: str) -> bytes:
     voice = get_piper(voice_id)
     if voice is None:
         raise RuntimeError(f"unbekannte Piper-Stimme '{voice_id}'")
+    sr = int(getattr(getattr(voice, "config", None), "sample_rate", 22050) or 22050)
+
+    # Neue piper-tts-API: synthesize(text) -> Iterator[AudioChunk]
+    chunks = None
+    try:
+        gen = voice.synthesize(text)
+        # Generator/Iterator? (alte API bräuchte 2 Argumente → TypeError)
+        if hasattr(gen, "__iter__") and not isinstance(gen, (bytes, bytearray)):
+            chunks = list(gen)
+    except TypeError:
+        chunks = None
+
     buf = io.BytesIO()
+    if chunks and any(_chunk_pcm_bytes(c) for c in chunks):
+        first = chunks[0]
+        sr = int(getattr(first, "sample_rate", sr) or sr)
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(int(getattr(first, "sample_channels", 1) or 1))
+            wf.setsampwidth(int(getattr(first, "sample_width", 2) or 2))
+            wf.setframerate(sr)
+            for c in chunks:
+                wf.writeframes(_chunk_pcm_bytes(c))
+        return buf.getvalue()
+
+    # Fallback: alte API synthesize(text, wav_file) bzw. synthesize_wav(...)
     with wave.open(buf, "wb") as wf:
-        try:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(getattr(voice.config, "sample_rate", 22050))
-        except Exception:
-            pass
-        voice.synthesize(text, wf)
+        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(sr)
+        if hasattr(voice, "synthesize_wav"):
+            voice.synthesize_wav(text, wf)
+        else:
+            voice.synthesize(text, wf)
     return buf.getvalue()
 
 
