@@ -1,6 +1,6 @@
 {
   "name": "core-hub-backend",
-  "version": "0.20.3",
+  "version": "0.22.0",
   "private": true,
   "scripts": {
     "dev": "tsx watch src/server.ts",

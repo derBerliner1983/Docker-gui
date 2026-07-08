@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { MemoryStick, Cpu, Activity, Mic } from 'lucide-react';
+import { MemoryStick, Cpu, Activity, Mic, BrainCircuit } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { api } from '../lib/api';
@@ -340,6 +340,10 @@ export function AiHub() {
   const ptt = usePushToTalk(() => voiceCfgRef.current ? { lang: voiceCfgRef.current.lang } : null, (b) => setBusy(b));
   useEffect(() => { api.voice.config().then((c) => { setVoiceCfg(c); voiceCfgRef.current = c; }).catch(() => {}); }, []);
 
+  // Obsidian-Wissensbasis („Gehirn") – Status neben online anzeigen
+  const [brain, setBrain] = useState<import('../lib/types').ObsidianStatus | null>(null);
+  useEffect(() => { api.obsidian.status().then(setBrain).catch(() => {}); }, []);
+
   // Push-to-Talk per Leertaste: gedrückt halten = aufnehmen, loslassen = senden.
   const voiceReady = !!voiceCfg?.enabled && !!voiceCfg?.available.daemon && ptt.state.supported;
   useEffect(() => {
@@ -431,8 +435,17 @@ export function AiHub() {
 
               {/* Rechte Spalte: Status + welches Modell */}
               <aside className="aihub-side">
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <StatusBadge online={online} />
+                  {brain?.connected && (
+                    <span title={tt('Obsidian als Wissensbasis verbunden')} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+                      padding: '3px 10px', borderRadius: 999, color: 'var(--color-success)',
+                      background: 'var(--color-accent-soft)', border: '1px solid var(--color-border)',
+                    }}>
+                      <BrainCircuit size={13} /> {tt('Obsidian')} · {brain.chunks} {tt('Infos')}
+                    </span>
+                  )}
                   {online && busy && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color: 'var(--color-accent)' }}>
                       <Activity size={13} /> {tt('KI arbeitet …')}

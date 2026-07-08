@@ -174,6 +174,57 @@ if [ "${1:-}" = "--voice-qwen" ]; then
   exit 0
 fi
 
+# ── Obsidian als Wissensbasis („Gehirn") ────────────────────────────────────────
+# Legt einen Vault-Ordner an und installiert – falls noch nicht vorhanden und ein
+# Desktop verfügbar ist – die Obsidian-App. Für die KI-Anbindung genügt der Ordner
+# mit .md-Notizen; Core-Hub liest ihn ein (Einstellungen → KI → Wissensbasis).
+if [ "${1:-}" = "--obsidian" ]; then
+  info "=== $APP_NAME – Obsidian als Wissensbasis anbinden ==="
+  VAULT_DIR="${OBSIDIAN_VAULT:-$INSTALL_DIR/data/brain}"
+  mkdir -p "$VAULT_DIR"
+  if [ ! -f "$VAULT_DIR/Willkommen.md" ]; then
+    cat > "$VAULT_DIR/Willkommen.md" <<'EOF'
+# Willkommen in deinem Core-Hub-Gehirn
+
+Lege hier Markdown-Notizen (.md) ab – Core-Hub liest sie ein und die KI nutzt sie
+als Wissensbasis. Verbinde denselben Ordner in der Obsidian-App als Vault.
+EOF
+  fi
+  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VAULT_DIR" 2>/dev/null || true
+
+  if command -v obsidian >/dev/null 2>&1 || [ -f /var/lib/flatpak/exports/bin/md.obsidian.Obsidian ]; then
+    info "Obsidian ist bereits installiert."
+  elif [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && [ ! -d /usr/share/xsessions ]; then
+    info "Kein Desktop erkannt – überspringe die Obsidian-App (Server-Betrieb)."
+    info "Die KI-Anbindung funktioniert trotzdem über den Vault-Ordner: $VAULT_DIR"
+  elif command -v flatpak >/dev/null 2>&1; then
+    info "Installiere Obsidian per Flatpak..."
+    flatpak install -y flathub md.obsidian.Obsidian 2>/dev/null || warn "Flatpak-Installation fehlgeschlagen – Vault-Ordner genügt für die KI."
+  elif command -v snap >/dev/null 2>&1; then
+    info "Installiere Obsidian per Snap..."
+    snap install obsidian --classic 2>/dev/null || warn "Snap-Installation fehlgeschlagen – Vault-Ordner genügt für die KI."
+  else
+    warn "Weder Flatpak noch Snap gefunden – Obsidian-App nicht installiert."
+    info "Die KI-Anbindung funktioniert dennoch über den Vault-Ordner: $VAULT_DIR"
+  fi
+
+  info "Vault-Ordner: $VAULT_DIR"
+  info "In Core-Hub unter 'KI-Modelle → Wissensbasis (Obsidian)' aktivieren und diesen Pfad eintragen."
+  exit 0
+fi
+
+# ── Web-MCP-Server (Internetzugriff als MCP-Werkzeug für externe Agenten) ────────
+if [ "${1:-}" = "--web-mcp" ]; then
+  info "=== $APP_NAME – Web-MCP-Server (Websuche/Seitenabruf) ==="
+  MCP_DIR="$INSTALL_DIR/mcp/core-hub-web"
+  [ -d "$MCP_DIR" ] || error "MCP-Verzeichnis nicht gefunden: $MCP_DIR"
+  ( cd "$MCP_DIR" && npm install --no-audit --no-fund ) || error "npm install im MCP-Server fehlgeschlagen."
+  info "Fertig. In den MCP-Client eintragen (Beispiel):"
+  info "  \"core-hub-web\": { \"command\": \"node\", \"args\": [\"$MCP_DIR/index.mjs\"] }"
+  info "Details: $MCP_DIR/README.md"
+  exit 0
+fi
+
 # ── Deinstallation ────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--deinstall" ]; then
   info "=== $APP_NAME Deinstallation ==="

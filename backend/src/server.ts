@@ -39,6 +39,8 @@ import { voiceRoutes } from './routes/voice';
 import { prefsRoutes } from './routes/prefs';
 import { sshRoutes } from './routes/ssh';
 import { netscanRoutes } from './routes/netscan';
+import { obsidianRoutes } from './routes/obsidian';
+import { webSearchRoutes } from './routes/websearch';
 import { runDueSchedules } from './routes/backups';
 import { startDockerWatcher } from './lib/dockerwatch';
 import { startAlertMonitor } from './lib/alertmonitor';
@@ -106,6 +108,8 @@ async function main() {
   await fastify.register(prefsRoutes);
   await fastify.register(sshRoutes);
   await fastify.register(netscanRoutes);
+  await fastify.register(obsidianRoutes);
+  await fastify.register(webSearchRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {

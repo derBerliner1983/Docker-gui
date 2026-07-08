@@ -469,6 +469,16 @@ export interface VoiceConfig {
   install?: { running: boolean; error: string | null; log: string };
 }
 
+export interface ObsidianStatus {
+  enabled: boolean;
+  vault: string;
+  exists: boolean;
+  connected: boolean;
+  files: number;
+  chunks: number;
+  lastIndexed: string | null;
+}
+
 export interface NetscanJob {
   id: string;
   label: string;
