@@ -89,6 +89,8 @@ _whisper = {}   # size -> WhisperModel
 _piper = {}     # voice_id -> PiperVoice
 _kokoro = None  # Kokoro-Instanz
 _qwen = None    # Qwen3TTSModel-Instanz
+_qwen_loading = False  # läuft gerade ein Qwen-Modell-Download/Ladevorgang?
+QWEN_EST_BYTES = 3_800_000_000  # grober Richtwert (~3,8 GB) für die Fortschrittsanzeige
 
 
 def log(*a):
@@ -256,16 +258,43 @@ def qwen_available() -> bool:
     return _pkg_installed("qwen_tts")
 
 
-def qwen_model_ready() -> bool:
-    # Ist das Qwen3-TTS-Modell schon heruntergeladen? (sonst „lädt beim ersten Mal")
+def qwen_model_bytes() -> int:
+    # Wie viel vom Qwen-Modell liegt schon auf der Platte (für Fortschrittsanzeige)?
+    total = 0
     try:
         for hub in _hub_dirs():
             for d in os.listdir(hub):
                 if d.startswith("models--") and "Qwen3-TTS" in d:
-                    return True
+                    total += _dir_size(os.path.join(hub, d))
     except Exception:
         pass
-    return False
+    return total
+
+
+def qwen_model_ready() -> bool:
+    # geladen (im Speicher) ODER vollständig auf Platte
+    return _qwen is not None or qwen_model_bytes() > QWEN_EST_BYTES * 0.9
+
+
+def start_qwen_load() -> None:
+    # Lädt/downloadet das Qwen-Modell im Hintergrund (blockiert /health nicht).
+    global _qwen_loading
+    if _qwen is not None or _qwen_loading:
+        return
+    _qwen_loading = True
+
+    def _run():
+        global _qwen_loading
+        try:
+            get_qwen()
+            log("Qwen-Modell geladen und bereit.")
+        except Exception as e:  # noqa: BLE001
+            log("Qwen laden fehlgeschlagen:", repr(e))
+        finally:
+            _qwen_loading = False
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def get_qwen():
@@ -528,13 +557,18 @@ class Handler(BaseHTTPRequestHandler):
         p = urlparse(self.path).path
         if p == "/health":
             cat = catalog_with_state()
+            qw_avail = qwen_available()
             self._json(200, {
                 "ok": True, "stt": True,
                 "tts": any(cat.values()),
                 "model": DEFAULT_MODEL,
                 "loaded": list(_whisper.keys()),
                 "kokoro": kokoro_available(),
-                "qwen": qwen_available(),
+                "qwen": qw_avail,
+                "qwen_loading": _qwen_loading,
+                "qwen_ready": (_qwen is not None) or (qwen_model_bytes() > QWEN_EST_BYTES * 0.9),
+                "qwen_bytes": qwen_model_bytes() if qw_avail else 0,
+                "qwen_total": QWEN_EST_BYTES,
                 "catalog": cat,
             })
         elif p == "/voices":
@@ -568,7 +602,10 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length) if length else b""
         try:
-            if u.path == "/transcribe":
+            if u.path == "/qwen/load":
+                start_qwen_load()
+                self._json(200, {"ok": True, "loading": _qwen_loading, "ready": qwen_model_ready()})
+            elif u.path == "/transcribe":
                 size = qs.get("model", [DEFAULT_MODEL])[0] or DEFAULT_MODEL
                 self._json(200, {"text": transcribe(body, lang, size), "lang": lang})
             elif u.path == "/tts":

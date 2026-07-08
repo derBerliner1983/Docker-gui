@@ -361,6 +361,7 @@ export const api = {
       req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
     install: () => req<{ ok: boolean; running: boolean }>('/api/voice/install', { method: 'POST' }),
     installQwen: () => req<{ ok: boolean; running: boolean }>('/api/voice/install-qwen', { method: 'POST' }),
+    qwenLoad: () => req<{ ok: boolean; loading: boolean; ready: boolean }>('/api/voice/qwen-load', { method: 'POST' }),
     installStatus: () => req<{ running: boolean; error: string | null; log: string; daemon: boolean }>('/api/voice/install/status'),
     clone: (name: string, text: string, pcm: ArrayBuffer) => {
       const bytes = new Uint8Array(pcm); let s = ''; const chunk = 0x8000;
