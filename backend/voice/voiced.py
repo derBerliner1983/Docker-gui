@@ -222,12 +222,18 @@ def get_kokoro():
     return _kokoro
 
 
-def kokoro_available() -> bool:
+def _pkg_installed(name: str) -> bool:
+    # Prüft, OB ein Paket installiert ist – OHNE es zu importieren (kein Laden
+    # von PyTorch/onnxruntime). Wichtig, damit /health nicht blockiert.
     try:
-        import kokoro_onnx  # type: ignore  # noqa: F401
-        return True
+        import importlib.util
+        return importlib.util.find_spec(name) is not None
     except Exception:
         return False
+
+
+def kokoro_available() -> bool:
+    return _pkg_installed("kokoro_onnx")
 
 
 def kokoro_tts(text: str, voice_id: str) -> bytes:
@@ -247,11 +253,19 @@ def kokoro_tts(text: str, voice_id: str) -> bytes:
 
 # ── TTS: Qwen3-TTS (optional) ────────────────────────────────────────────────────
 def qwen_available() -> bool:
+    return _pkg_installed("qwen_tts")
+
+
+def qwen_model_ready() -> bool:
+    # Ist das Qwen3-TTS-Modell schon heruntergeladen? (sonst „lädt beim ersten Mal")
     try:
-        import qwen_tts  # type: ignore  # noqa: F401
-        return True
+        for hub in _hub_dirs():
+            for d in os.listdir(hub):
+                if d.startswith("models--") and "Qwen3-TTS" in d:
+                    return True
     except Exception:
-        return False
+        pass
+    return False
 
 
 def get_qwen():
@@ -397,8 +411,9 @@ def catalog_with_state():
             for v in KOKORO_VOICES.get(lang, []):
                 items.append({"id": "kokoro:" + v["id"], "label": v["label"] + " · Kokoro", "installed": _kokoro_files_ready()})
         if qw:
+            qready = qwen_model_ready()
             for v in QWEN_VOICES.get(lang, []):
-                items.append({"id": "qwen:" + v["id"], "label": v["label"] + " · Qwen", "installed": True})
+                items.append({"id": "qwen:" + v["id"], "label": v["label"] + " · Qwen", "installed": qready})
             # Geklonte Stimmen (Qwen) – für Deutsch & Englisch nutzbar
             if lang in ("de", "en"):
                 for cid, e in _clones.items():

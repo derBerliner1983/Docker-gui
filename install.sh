@@ -156,6 +156,8 @@ if [ "${1:-}" = "--voice-qwen" ]; then
     setup_voice
   fi
   [ -d "$VOICE_DIR/venv" ] || error "Voice-venv fehlt. Zuerst: sudo bash install.sh --voice"
+  # SoX wird von qwen-tts für die Audio-Verarbeitung benötigt (sonst „SoX could not be found").
+  apt-get install -y --no-install-recommends sox libsox-fmt-all 2>/dev/null || warn "sox konnte nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
   info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
   "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
   # CPU-PyTorch als robuster Standard. Für NVIDIA/AMD-GPU ggf. passenden Index nutzen:
