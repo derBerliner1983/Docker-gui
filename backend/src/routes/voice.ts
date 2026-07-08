@@ -69,11 +69,14 @@ async function transcribe(pcm: Buffer, lang: string, model = 'base'): Promise<st
 
 async function tts(text: string, lang: string, voice = ''): Promise<Buffer | null> {
   try {
+    // Qwen lädt sein Modell (~3–4 GB) beim ersten Nutzen → viel längeres Timeout,
+    // damit die erste Ausgabe nicht abbricht. Piper/Kokoro sind schnell.
+    const timeout = voice.startsWith('qwen:') || voice.startsWith('clone:') ? 300000 : 30000;
     const r = await fetch(`${DAEMON}/tts?lang=${encodeURIComponent(lang)}&voice=${encodeURIComponent(voice)}`, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain; charset=utf-8' },
       body: Buffer.from(text, 'utf-8'),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(timeout),
     });
     if (!r.ok) return null; // z.B. keine Stimme für die Sprache → nur Text
     return Buffer.from(await r.arrayBuffer());
@@ -333,8 +336,14 @@ export async function voiceRoutes(fastify: FastifyInstance) {
       en: 'Hello, this is how this voice sounds.',
       th: 'สวัสดีค่ะ นี่คือเสียงของระบบสั่งงานด้วยเสียง',
     };
-    const wav = await tts(sample[lang] || sample.de, lang, q.voice || '');
-    if (!wav) return reply.status(500).send({ error: 'Für diese Stimme ist keine Ausgabe möglich' });
+    const voice = q.voice || '';
+    const wav = await tts(sample[lang] || sample.de, lang, voice);
+    if (!wav) {
+      const qwenHint = voice.startsWith('qwen:')
+        ? 'Qwen lädt beim ersten Mal sein Modell (~3–4 GB) – bitte 1–2 Minuten warten und erneut versuchen. Voraussetzung: „sudo bash install.sh --voice-qwen" (installiert PyTorch + sox).'
+        : 'Für diese Stimme ist keine Ausgabe möglich.';
+      return reply.status(500).send({ error: qwenHint });
+    }
     reply.header('Content-Type', 'audio/wav').send(wav);
   });
 
