@@ -143,13 +143,20 @@ function cleanReply(raw: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+type ChatMsg = { role: 'user' | 'assistant'; text: string };
+
 // Fallback über /api/generate – funktioniert auch bei GGUF-Modellen ohne
-// Chat-Template (bei denen /api/chat leer bleibt).
-async function generateReply(model: string, userText: string, lang: string): Promise<string> {
+// Chat-Template (bei denen /api/chat leer bleibt). Gesprächsverlauf wird in den
+// Prompt gefaltet, damit auch hier Kontext erhalten bleibt.
+async function generateReply(model: string, userText: string, lang: string, history: ChatMsg[] = []): Promise<string> {
+  const uLabel = lang === 'en' ? 'User' : 'Nutzer';
+  const aLabel = lang === 'en' ? 'Assistant' : 'Assistent';
+  const convo = history.map((m) => `${m.role === 'user' ? uLabel : aLabel}: ${m.text}`).join('\n');
+  const prompt = (convo ? convo + '\n' : '') + `${uLabel}: ${userText}\n${aLabel}:`;
   try {
     const res = await fetch(`${OLLAMA}/api/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system: sysPrompt(lang), prompt: userText, stream: false, think: false, options: { num_predict: 260, temperature: 0.4 } }),
+      body: JSON.stringify({ model, system: sysPrompt(lang), prompt, stream: false, think: false, options: { num_predict: 260, temperature: 0.4 } }),
       signal: AbortSignal.timeout(60000),
     });
     if (!res.ok) return '';
@@ -164,15 +171,17 @@ async function chatStream(
   lang: string,
   onToken: (t: string) => void,
   onSentence: (s: string) => Promise<void>,
+  history: ChatMsg[] = [],
 ): Promise<string> {
   const sys = sysPrompt(lang);
+  const prior = history.map((m) => ({ role: m.role, content: m.text }));
 
   const res = await fetch(`${OLLAMA}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'system', content: sys }, { role: 'user', content: userText }],
+      messages: [{ role: 'system', content: sys }, ...prior, { role: 'user', content: userText }],
       think: false,
       stream: true,
       options: { num_predict: 220, temperature: 0.4 },
@@ -291,15 +300,20 @@ export async function voiceRoutes(fastify: FastifyInstance) {
 
   // Push-to-Talk: Text → Antwort des geladenen Modells (+ optional TTS-Audio).
   // Reines HTTP (kein WebSocket) – robust auch hinter Reverse-Proxy/Tunnel.
-  fastify.post<{ Body: { text?: string; lang?: string } }>('/api/voice/ask', { preHandler: requireAuth }, async (req, reply) => {
+  fastify.post<{ Body: { text?: string; lang?: string; history?: ChatMsg[] } }>('/api/voice/ask', { preHandler: requireAuth }, async (req, reply) => {
     const text = (req.body?.text || '').trim();
     const lang = (['de', 'en', 'th'].includes(req.body?.lang || '') ? req.body!.lang! : 'de');
     if (!text) return reply.status(400).send({ error: 'Kein Text' });
+    // Gesprächsverlauf (nur user/assistant, letzte ~8 Turns) → Kontext-Gedächtnis
+    const history: ChatMsg[] = (Array.isArray(req.body?.history) ? req.body!.history! : [])
+      .filter((m) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.text === 'string' && m.text.trim())
+      .slice(-8)
+      .map((m) => ({ role: m.role, text: String(m.text).slice(0, 1200) }));
     const model = await loadedModel();
     if (!model) return reply.status(400).send({ error: 'Keine KI im Speicher geladen.' });
     try {
-      let answer = await chatStream(model, text, lang, () => {}, async () => {}).catch(() => '');
-      if (!answer) answer = await generateReply(model, text, lang); // Fallback für GGUF ohne Chat-Template
+      let answer = await chatStream(model, text, lang, () => {}, async () => {}, history).catch(() => '');
+      if (!answer) answer = await generateReply(model, text, lang, history); // Fallback für GGUF ohne Chat-Template
       const cfg = readConfig();
       let audio: string | undefined;
       if (cfg.tts && answer) { const wav = await tts(answer, lang, voiceFor(cfg)); if (wav) audio = wav.toString('base64'); }

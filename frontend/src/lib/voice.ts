@@ -55,8 +55,9 @@ export function usePushToTalk(getCfg: () => { lang: string } | null, onBusyChang
   const outAnalyser = useRef<AnalyserNode | null>(null);
   const rec = useRef<{ stream: MediaStream; ac: AudioContext; node: ScriptProcessorNode; src: MediaStreamAudioSourceNode; chunks: Float32Array[]; rate: number } | null>(null);
   const playCtx = useRef<AudioContext | null>(null);
+  const linesRef = useRef<PttState['lines']>([]);
   const patch = (p: Partial<PttState>) => setState((s) => ({ ...s, ...p }));
-  const addLine = (l: PttState['lines'][number]) => setState((s) => ({ ...s, lines: [...s.lines.slice(-20), l] }));
+  const addLine = (l: PttState['lines'][number]) => setState((s) => { const lines = [...s.lines.slice(-20), l]; linesRef.current = lines; return { ...s, lines }; });
 
   const setBusy = useCallback((b: boolean) => onBusyChange?.(b), [onBusyChange]);
 
@@ -115,9 +116,13 @@ export function usePushToTalk(getCfg: () => { lang: string } | null, onBusyChang
     try {
       const { text } = await api.voice.sttOnce(pcm, cfg.lang);
       if (!text) { patch({ busy: false, status: 'Nichts verstanden – nochmal' }); setBusy(false); return; }
+      // Gesprächsverlauf (vor der neuen Zeile) als Gedächtnis mitschicken
+      const history = linesRef.current
+        .filter((l) => l.role === 'you' || l.role === 'ai')
+        .map((l) => ({ role: (l.role === 'you' ? 'user' : 'assistant') as 'user' | 'assistant', text: l.text }));
       addLine({ role: 'you', text });
       patch({ status: 'Denkt nach …' });
-      const { answer, audio } = await api.voice.ask(text, cfg.lang);
+      const { answer, audio } = await api.voice.ask(text, cfg.lang, history);
       addLine({ role: 'ai', text: answer });
       patch({ busy: false, status: 'Antwort' });
       if (audio) await playAudio(audio); else setBusy(false);

@@ -502,7 +502,7 @@ export function AiHub() {
                         )}
                         {ptt.state.error && <div style={{ fontSize: 11.5, color: 'var(--color-error)' }}>{ptt.state.error}</div>}
                         {ptt.state.lines.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0, maxHeight: '58vh', overflowY: 'auto' }}>
                             {ptt.state.lines.map((ln, i) => (
                               <div key={i} style={{
                                 fontSize: 12, lineHeight: 1.45, padding: '6px 10px', borderRadius: 8,
