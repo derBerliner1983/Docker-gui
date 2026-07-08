@@ -644,6 +644,19 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
   const [qwenLoading, setQwenLoading] = useState(false);
   const [qwenLog, setQwenLog] = useState<string[]>([]);
   const qwenPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [showLog, setShowLog] = useState(false);
+  const [daemonLog, setDaemonLog] = useState<string[]>([]);
+
+  const restartVoice = async () => {
+    setRestarting(true); setMsg('');
+    try { const r = await api.voice.restart(); setMsg(r.daemon ? tt('Sprachdienst neu gestartet.') : tt('Neustart ausgelöst – Dienst startet…')); await load(); }
+    catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); }
+    finally { setRestarting(false); }
+  };
+  const loadDaemonLog = async () => {
+    try { const l = await api.voice.logs(); setDaemonLog(l.lines.slice(-40)); } catch { setDaemonLog([]); }
+  };
 
   const pollQwen = () => {
     if (qwenPollRef.current) clearInterval(qwenPollRef.current);
@@ -799,6 +812,24 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
             {cfg.model ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {cfg.model ? cfg.model.split('/').pop() : tt('kein Modell geladen')}
           </span>
         </div>
+        {av.daemon && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <button className="btn btn--outline btn--sm" disabled={restarting} onClick={() => void restartVoice()} title={tt('Lädt die aktuelle Version des Sprachdienstes – nötig, wenn nach einem Update noch der alte Dienst läuft.')}>
+              {restarting ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <RefreshCw size={12} />} {tt('Sprachdienst neu starten')}
+            </button>
+            <button className="btn btn--outline btn--sm" onClick={() => { const n = !showLog; setShowLog(n); if (n) void loadDaemonLog(); }}>
+              {showLog ? tt('Protokoll ausblenden') : tt('Protokoll anzeigen')}
+            </button>
+            {showLog && (
+              <button className="btn btn--outline btn--sm" onClick={() => void loadDaemonLog()}><RefreshCw size={12} /> {tt('Aktualisieren')}</button>
+            )}
+          </div>
+        )}
+        {showLog && (
+          <pre style={{ maxHeight: 200, overflowY: 'auto', fontSize: 10.5, lineHeight: 1.5, background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>
+            {daemonLog.length ? daemonLog.join('\n') : tt('(kein Protokoll – Dienst ggf. veraltet, bitte neu starten)')}
+          </pre>
+        )}
         {!av.daemon && (
           <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6, background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px' }}>
             <div style={{ color: 'var(--color-warning)', fontWeight: 600, marginBottom: 8 }}>{tt('Der lokale Sprachdienst ist noch nicht installiert.')}</div>

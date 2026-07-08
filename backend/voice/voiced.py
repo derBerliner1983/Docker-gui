@@ -296,6 +296,8 @@ def start_qwen_load() -> None:
     if _qwen is not None or _qwen_loading:
         return
     _qwen_loading = True
+    log(f"Qwen-Ladevorgang gestartet: Modell '{QWEN_MODEL}', Cache {os.environ.get('HF_HOME')}")
+    log("Schritt 1/2: PyTorch + qwen-tts werden importiert (kann beim ersten Mal 1–2 Min dauern) …")
 
     def _run():
         global _qwen_loading
@@ -303,7 +305,7 @@ def start_qwen_load() -> None:
             get_qwen()
             log("Qwen-Modell geladen und bereit.")
         except Exception as e:  # noqa: BLE001
-            log("Qwen laden fehlgeschlagen:", repr(e))
+            log("Qwen laden FEHLGESCHLAGEN:", repr(e))
         finally:
             _qwen_loading = False
 
@@ -317,6 +319,7 @@ def get_qwen():
         import torch  # type: ignore
         from qwen_tts import Qwen3TTSModel  # type: ignore
         cuda = torch.cuda.is_available()
+        log("Schritt 2/2: Modell wird geladen/heruntergeladen (mehrere GB) – Fortschritt siehe Anzeige.")
         log(f"lade Qwen3-TTS '{QWEN_MODEL}' (device={'cuda' if cuda else 'cpu'}) – kann dauern")
         _qwen = Qwen3TTSModel.from_pretrained(
             QWEN_MODEL,
