@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
 import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic, Volume2, BrainCircuit } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
@@ -630,7 +631,7 @@ const VOICE_LANGS: { code: VoiceConfig['lang']; label: string }[] = [
   { code: 'en', label: 'English' },
 ];
 
-export function VoicePanel() {
+export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
   const [cfg, setCfg] = useState<VoiceConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -778,16 +779,16 @@ export function VoicePanel() {
   };
 
   if (!cfg) {
-    return (
+    const spin = <div style={{ display: 'flex', justifyContent: 'center', padding: 16 }}><span className="spinner" style={{ width: 18, height: 18 }} /></div>;
+    return embedded ? spin : (
       <Panel title={tt('Sprachsteuerung')} icon={<Mic size={15} />} subtitle={tt('Lokal · Whisper + Piper')} storageKey="set-voice" defaultCollapsed>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: 16 }}><span className="spinner" style={{ width: 18, height: 18 }} /></div>
+        {spin}
       </Panel>
     );
   }
 
   const av = cfg.available;
-  return (
-    <Panel title={tt('Sprachsteuerung')} icon={<Mic size={15} />} subtitle={tt('Lokal · Whisper (STT) + Piper (TTS) · DE/EN/TH')} storageKey="set-voice" defaultCollapsed>
+  const body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 6 }}>
 
         {/* Verfügbarkeit */}
@@ -999,12 +1000,16 @@ export function VoicePanel() {
 
         {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
       </div>
+  );
+  return embedded ? body : (
+    <Panel title={tt('Sprachsteuerung')} icon={<Mic size={15} />} subtitle={tt('Lokal · Whisper (STT) + Piper (TTS) · DE/EN/TH')} storageKey="set-voice" defaultCollapsed>
+      {body}
     </Panel>
   );
 }
 
 // ── Obsidian als „Gehirn" (lokale Wissensbasis / RAG) ────────────────────────────
-export function ObsidianPanel() {
+export function ObsidianPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const [st, setSt] = useState<import('../lib/types').ObsidianStatus | null>(null);
   const [vault, setVault] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1038,8 +1043,7 @@ export function ObsidianPanel() {
     finally { setBusy(false); }
   };
 
-  return (
-    <Panel title={tt('Wissensbasis (Obsidian)')} icon={<BrainCircuit size={15} />} subtitle={sub} storageKey="set-obsidian" defaultCollapsed>
+  const body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
         <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
           {tt('Verbinde deinen Obsidian-Vault (Ordner mit .md-Notizen) als „Gehirn". Die KI zieht bei Fragen automatisch passende Notizen als Kontext heran. Alles bleibt lokal.')}
@@ -1077,12 +1081,16 @@ export function ObsidianPanel() {
 
         {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
       </div>
+  );
+  return embedded ? body : (
+    <Panel title={tt('Wissensbasis (Obsidian)')} icon={<BrainCircuit size={15} />} subtitle={sub} storageKey="set-obsidian" defaultCollapsed>
+      {body}
     </Panel>
   );
 }
 
 // ── Internetzugriff für die KI (Live-Websuche) ───────────────────────────────────
-export function WebAccessPanel() {
+export function WebAccessPanel({ embedded = false }: { embedded?: boolean } = {}) {
   const [cfg, setCfg] = useState<{ enabled: boolean; maxResults: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -1105,8 +1113,7 @@ export function WebAccessPanel() {
     finally { setBusy(false); }
   };
 
-  return (
-    <Panel title={tt('Internetzugriff (KI)')} icon={<Network size={15} />} subtitle={cfg ? (cfg.enabled ? tt('an') : tt('aus')) : undefined} storageKey="set-websearch" defaultCollapsed>
+  const body = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 6 }}>
         <div style={{ fontSize: 12, color: 'var(--color-muted)', lineHeight: 1.6 }}>
           {tt('Erlaubt der KI, bei Fragen live im Web zu suchen (DuckDuckGo, kein Konto/Schlüssel nötig) und die Treffer als Kontext zu nutzen. So kennt auch ein lokales Modell aktuelle Infos.')}
@@ -1137,6 +1144,62 @@ export function WebAccessPanel() {
           )}
         </div>
         {msg && <div style={{ fontSize: 12, color: 'var(--color-muted)' }}>{msg}</div>}
+      </div>
+  );
+  return embedded ? body : (
+    <Panel title={tt('Internetzugriff (KI)')} icon={<Network size={15} />} subtitle={cfg ? (cfg.enabled ? tt('an') : tt('aus')) : undefined} storageKey="set-websearch" defaultCollapsed>
+      {body}
+    </Panel>
+  );
+}
+
+// ── Sammel-Panel: alle KI-Erweiterungen kompakt in einem einklappbaren Panel ──────
+function ExtSection({ icon, title, hint, storageKey, children }: { icon: ReactNode; title: string; hint?: string; storageKey: string; children: ReactNode }) {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(storageKey) === '1'; } catch { return false; }
+  });
+  const toggle = () => setOpen((o) => { const n = !o; try { localStorage.setItem(storageKey, n ? '1' : '0'); } catch { /* */ } return n; });
+  return (
+    <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, overflow: 'hidden' }}>
+      <button onClick={toggle} style={{
+        width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px',
+        background: 'var(--color-surface)', border: 'none', cursor: 'pointer', textAlign: 'left', color: 'var(--color-fg)',
+      }}>
+        <span style={{ display: 'inline-flex', color: 'var(--color-accent)' }}>{icon}</span>
+        <span style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>{title}</span>
+        {hint && <span style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>{hint}</span>}
+        <RotateCw size={13} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .15s', color: 'var(--color-faint)' }} />
+      </button>
+      {open && <div style={{ padding: '4px 13px 14px', borderTop: '1px solid var(--color-border)' }}>{children}</div>}
+    </div>
+  );
+}
+
+export function AiExtensionsPanel() {
+  const [brain, setBrain] = useState<import('../lib/types').ObsidianStatus | null>(null);
+  const [web, setWeb] = useState<{ enabled: boolean } | null>(null);
+  useEffect(() => { api.obsidian.status().then(setBrain).catch(() => {}); api.websearch.status().then(setWeb).catch(() => {}); }, []);
+
+  const parts = [
+    brain?.connected ? `Obsidian: ${brain.chunks}` : null,
+    web?.enabled ? tt('Internet an') : null,
+  ].filter(Boolean);
+
+  return (
+    <Panel title={tt('KI-Erweiterungen')} icon={<BrainCircuit size={15} />} subtitle={parts.length ? parts.join(' · ') : tt('optional')} storageKey="set-aiext" defaultCollapsed>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
+        <div style={{ fontSize: 12, color: 'var(--color-faint)', lineHeight: 1.55 }}>
+          {tt('Alles optional – zum Starten nicht nötig. Bei Bedarf einzeln aufklappen und einschalten.')}
+        </div>
+        <ExtSection icon={<Mic size={15} />} title={tt('Sprachsteuerung')} storageKey="aiext-voice">
+          <VoicePanel embedded />
+        </ExtSection>
+        <ExtSection icon={<BrainCircuit size={15} />} title={tt('Wissensbasis (Obsidian)')} hint={brain?.connected ? `${brain.chunks} ${tt('Infos')}` : undefined} storageKey="aiext-obsidian">
+          <ObsidianPanel embedded />
+        </ExtSection>
+        <ExtSection icon={<Network size={15} />} title={tt('Internetzugriff (KI)')} hint={web?.enabled ? tt('an') : tt('aus')} storageKey="aiext-web">
+          <WebAccessPanel embedded />
+        </ExtSection>
       </div>
     </Panel>
   );
