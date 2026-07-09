@@ -39,7 +39,11 @@ setup_voice() {
     if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg espeak-ng 2>/dev/null; then
       warn "python3/venv/ffmpeg/espeak-ng konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
     fi
-    "${VOICE_PYTHON:-python3}" -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
+    # Python-Binary: expliziter Override > gemerkte Wahl > System-python3.
+    local VPY="${VOICE_PYTHON:-}"
+    [ -z "$VPY" ] && [ -f "$DATA_DIR/voice-python" ] && VPY="$(cat "$DATA_DIR/voice-python" 2>/dev/null)"
+    command -v "${VPY:-python3}" >/dev/null 2>&1 || VPY="python3"
+    "${VPY:-python3}" -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
     "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
     if ! "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts; then
       warn "pip-Installation (faster-whisper/piper-tts) fehlgeschlagen – Sprachsteuerung übersprungen."; return 0
@@ -84,6 +88,63 @@ EOF
   systemctl enable core-hub-voice 2>/dev/null || true
   systemctl restart core-hub-voice 2>/dev/null || true
   info "Sprachdienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
+}
+
+# Version des Python im Voice-venv als Zahl (z.B. 314 für 3.14), 0 wenn unbekannt.
+voice_venv_pyver() {
+  local py="$INSTALL_DIR/voice/venv/bin/python"
+  [ -x "$py" ] || { echo 0; return; }
+  "$py" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0
+}
+
+# Ein installierbares/vorhandenes Python < 3.14 finden (für PyTorch/torchaudio).
+# Gibt den Binary-Namen/-Pfad aus oder nichts. Installiert bei Bedarf via apt/deadsnakes.
+find_compatible_python() {
+  local c
+  for c in python3.12 python3.13 python3.11; do
+    command -v "$c" >/dev/null 2>&1 && { echo "$c"; return 0; }
+    [ -x "/usr/bin/$c" ] && { echo "/usr/bin/$c"; return 0; }
+  done
+  apt-get update -qq 2>/dev/null || true
+  for v in 3.12 3.13 3.11; do
+    if apt-get install -y --no-install-recommends "python$v" "python$v-venv" "python$v-dev" 2>/dev/null; then
+      command -v "python$v" >/dev/null 2>&1 && { echo "python$v"; return 0; }
+    fi
+  done
+  # deadsnakes als letzte Option
+  apt-get install -y --no-install-recommends software-properties-common 2>/dev/null || true
+  add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || true
+  apt-get update -qq 2>/dev/null || true
+  for v in 3.12 3.13; do
+    if apt-get install -y --no-install-recommends "python$v" "python$v-venv" "python$v-dev" 2>/dev/null; then
+      command -v "python$v" >/dev/null 2>&1 && { echo "python$v"; return 0; }
+    fi
+  done
+  return 1
+}
+
+# Voice-venv mit einem gegebenen Python-Binary neu aufsetzen und die Wahl merken.
+rebuild_voice_venv() {
+  local pybin="$1"
+  info "Baue Voice-venv mit '$pybin' neu auf..."
+  rm -rf "$INSTALL_DIR/voice/venv"
+  mkdir -p "$DATA_DIR"
+  echo "$pybin" > "$DATA_DIR/voice-python"   # für künftige Updates merken
+  VOICE_PYTHON="$pybin" setup_voice
+}
+
+# Selbstheilung: Wenn das Voice-venv auf zu neuem Python (>=3.14) läuft, für das
+# es kein PyTorch/torchaudio gibt, automatisch auf ein kompatibles Python
+# umstellen. Wird vor der Qwen-Installation aufgerufen.
+ensure_voice_python_for_torch() {
+  local ver; ver="$(voice_venv_pyver)"
+  if [ "$ver" -ge 314 ]; then
+    warn "Voice-venv nutzt Python $((ver/100)).$((ver%100)) – dafür gibt es kein PyTorch/torchaudio."
+    info "Stelle automatisch auf ein kompatibles Python um..."
+    local pybin; pybin="$(find_compatible_python || true)"
+    [ -n "$pybin" ] || error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren, z.B. 'apt install python3.12 python3.12-venv'."
+    rebuild_voice_venv "$pybin"
+  fi
 }
 
 # ── sudoers-Allowlist schreiben (passwortloses sudo nur für nötige Befehle) ─────
@@ -171,10 +232,8 @@ if [ "${1:-}" = "--voice-py" ]; then
   fi
   [ -n "$PYBIN_NEW" ] || error "python$PYV ließ sich nicht installieren. Bitte manuell installieren (z.B. 'apt install python$PYV python$PYV-venv') und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13"
   info "Nutze Python-Binary: $PYBIN_NEW"
-  info "Entferne altes venv und lege es mit python$PYV neu an..."
-  rm -rf "$VOICE_DIR/venv"
-  VOICE_PYTHON="$PYBIN_NEW" setup_voice || error "Neuaufbau des Voice-venv fehlgeschlagen."
-  info "Fertig. Voice-venv nutzt jetzt Python $PYV."
+  rebuild_voice_venv "$PYBIN_NEW" || error "Neuaufbau des Voice-venv fehlgeschlagen."
+  info "Fertig. Voice-venv nutzt jetzt Python $PYV (wird für künftige Updates gemerkt)."
   info "Für Qwen-Stimmen jetzt: sudo bash install.sh --voice-qwen"
   exit 0
 fi
@@ -188,15 +247,13 @@ if [ "${1:-}" = "--voice-qwen" ]; then
     setup_voice
   fi
   [ -d "$VOICE_DIR/venv" ] || error "Voice-venv fehlt. Zuerst: sudo bash install.sh --voice"
+  # Selbstheilung: bei zu neuem Python (>=3.14) automatisch auf ein kompatibles
+  # Python umstellen, damit PyTorch/torchaudio überhaupt installierbar sind.
+  ensure_voice_python_for_torch
   PYBIN="$VOICE_DIR/venv/bin/python"
   PIP="$VOICE_DIR/venv/bin/pip"
   PYVER="$("$PYBIN" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo '?')"
   info "Voice-venv nutzt Python $PYVER."
-  case "$PYVER" in
-    3.14|3.15)
-      warn "Python $PYVER ist sehr neu – für PyTorch/torchaudio gibt es dafür oft noch keine passenden Pakete."
-      warn "Falls torchaudio nicht lädt: venv mit Python 3.12 neu anlegen (sudo bash install.sh --voice-py 3.12)." ;;
-  esac
   # SoX + FFmpeg werden von qwen-tts/torchaudio für die Audio-Verarbeitung benötigt.
   apt-get install -y --no-install-recommends sox libsox-fmt-all ffmpeg 2>/dev/null || warn "sox/ffmpeg konnten nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
   info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
