@@ -919,18 +919,18 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
                     <pre style={{ margin: '0 0 8px', fontSize: 10.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--color-faint)' }}>{err.slice(0, 400)}</pre>
                     {torchIssue && (
                       <div style={{ marginBottom: 8, color: 'var(--color-muted)' }}>
-                        {tt('Ursache: PyTorch/torchaudio passt nicht zur installierten Python-Version (oft bei sehr neuem Python wie 3.14). Empfehlung: Sprachumgebung auf Python 3.12 umstellen, dann Qwen neu installieren.')}
+                        {tt('Ursache: PyTorch/torchaudio passt nicht zur installierten Python-Version (oft bei sehr neuem Python wie 3.14). „Qwen neu installieren" stellt die Sprachumgebung automatisch auf ein passendes Python um und merkt sich das für künftige Updates.')}
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button className="btn btn--primary btn--sm" disabled={installing} onClick={() => void startInstall('qwen')}>
+                        {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <RefreshCw size={12} />} {tt('Qwen neu installieren (repariert automatisch)')}
+                      </button>
                       {torchIssue && (
-                        <button className="btn btn--primary btn--sm" disabled={installing} onClick={() => void startInstall('py312')}>
-                          {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <RefreshCw size={12} />} {tt('Auf Python 3.12 umstellen')}
+                        <button className="btn btn--outline btn--sm" disabled={installing} onClick={() => void startInstall('py312')} title={tt('Nur Python umstellen, ohne Qwen-Neuinstallation')}>
+                          {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : null} {tt('Nur auf Python 3.12 umstellen')}
                         </button>
                       )}
-                      <button className="btn btn--outline btn--sm" disabled={installing} onClick={() => void startInstall('qwen')}>
-                        {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Download size={12} />} {tt('Qwen neu installieren')}
-                      </button>
                     </div>
                     {installLog && (
                       <pre style={{ marginTop: 8, maxHeight: 160, overflow: 'auto', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', fontSize: 10.5, color: 'var(--color-faint)', whiteSpace: 'pre-wrap' }}>{installLog}</pre>
