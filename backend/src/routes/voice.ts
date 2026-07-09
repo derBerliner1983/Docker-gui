@@ -47,7 +47,7 @@ function voiceFor(cfg: VoiceConfig): string {
   return cfg.voices[cfg.lang] || '';
 }
 
-type Health = { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean; qwen_loading?: boolean; qwen_ready?: boolean; qwen_bytes?: number; qwen_total?: number };
+type Health = { ok: boolean; stt: boolean; tts: boolean; model?: string; loaded?: string[]; catalog?: Catalog; kokoro?: boolean; qwen?: boolean; qwen_loading?: boolean; qwen_ready?: boolean; qwen_bytes?: number; qwen_total?: number; qwen_error?: string };
 
 async function daemonHealth(): Promise<Health> {
   try {
@@ -256,13 +256,14 @@ function installScriptPath(): string | null {
   return null;
 }
 
-function startVoiceInstall(flag = '--voice'): { started: boolean; error?: string } {
+function startVoiceInstall(flags: string | string[] = '--voice'): { started: boolean; error?: string } {
   if (install.running) return { started: true };
   const script = installScriptPath();
   if (!script) return { started: false, error: 'install.sh nicht gefunden' };
   install.running = true; install.log = ''; install.error = null; install.startedAt = Date.now();
+  const flagArr = Array.isArray(flags) ? flags : [flags];
   const bin = isRoot ? '/bin/bash' : 'sudo';
-  const args = isRoot ? [script, flag] : ['-n', '/bin/bash', script, flag];
+  const args = isRoot ? [script, ...flagArr] : ['-n', '/bin/bash', script, ...flagArr];
   let child;
   try {
     child = spawn(bin, args, { cwd: path.dirname(script) });
@@ -294,7 +295,7 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     reply.send({
       ...cfg,
       whisperModels: WHISPER_MODELS,
-      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {}, kokoro: !!health.kokoro, qwen: !!health.qwen, qwenLoading: !!health.qwen_loading, qwenReady: !!health.qwen_ready, qwenBytes: health.qwen_bytes ?? 0, qwenTotal: health.qwen_total ?? 0 },
+      available: { daemon: health.ok, stt: health.stt, tts: health.tts, model: health.model, loaded: health.loaded ?? [], catalog: health.catalog ?? {}, kokoro: !!health.kokoro, qwen: !!health.qwen, qwenLoading: !!health.qwen_loading, qwenReady: !!health.qwen_ready, qwenBytes: health.qwen_bytes ?? 0, qwenTotal: health.qwen_total ?? 0, qwenError: health.qwen_error ?? '' },
       model,
       install: { running: install.running, error: install.error, log: install.log.slice(-1200) },
     });
@@ -310,6 +311,15 @@ export async function voiceRoutes(fastify: FastifyInstance) {
   // Qwen3-TTS (Deutsch in Studioqualität) nachinstallieren – schwer (PyTorch)
   fastify.post('/api/voice/install-qwen', { preHandler: requireAdmin }, async (_req, reply) => {
     const r = startVoiceInstall('--voice-qwen');
+    if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
+    reply.send({ ok: true, running: install.running });
+  });
+
+  // Voice-venv mit einer bestimmten Python-Version neu aufsetzen (z.B. 3.12),
+  // falls die System-Python-Version zu neu für PyTorch/torchaudio ist.
+  fastify.post<{ Body: { version?: string } }>('/api/voice/rebuild-python', { preHandler: requireAdmin }, async (req, reply) => {
+    const version = (req.body?.version || '3.12').replace(/[^0-9.]/g, '') || '3.12';
+    const r = startVoiceInstall(['--voice-py', version]);
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
   });

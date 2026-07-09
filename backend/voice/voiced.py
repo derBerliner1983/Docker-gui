@@ -91,6 +91,7 @@ _piper = {}     # voice_id -> PiperVoice
 _kokoro = None  # Kokoro-Instanz
 _qwen = None    # Qwen3TTSModel-Instanz
 _qwen_loading = False  # läuft gerade ein Qwen-Modell-Download/Ladevorgang?
+_qwen_error = ""       # letzte Fehlermeldung beim Qwen-Laden (für die GUI)
 QWEN_EST_BYTES = 3_800_000_000  # grober Richtwert (~3,8 GB) für die Fortschrittsanzeige
 
 
@@ -300,11 +301,13 @@ def start_qwen_load() -> None:
     log("Schritt 1/2: PyTorch + qwen-tts werden importiert (kann beim ersten Mal 1–2 Min dauern) …")
 
     def _run():
-        global _qwen_loading
+        global _qwen_loading, _qwen_error
         try:
             get_qwen()
+            _qwen_error = ""
             log("Qwen-Modell geladen und bereit.")
         except Exception as e:  # noqa: BLE001
+            _qwen_error = str(e)
             log("Qwen laden FEHLGESCHLAGEN:", repr(e))
         finally:
             _qwen_loading = False
@@ -586,6 +589,7 @@ class Handler(BaseHTTPRequestHandler):
                 "qwen_ready": (_qwen is not None) or (qwen_model_bytes() > QWEN_EST_BYTES * 0.9),
                 "qwen_bytes": qwen_model_bytes() if qw_avail else 0,
                 "qwen_total": QWEN_EST_BYTES,
+                "qwen_error": _qwen_error,
                 "catalog": cat,
             })
         elif p == "/logs":

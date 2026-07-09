@@ -762,9 +762,13 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg?.available.qwenLoading]);
 
-  const startInstall = async (kind: 'voice' | 'qwen' = 'voice') => {
+  const startInstall = async (kind: 'voice' | 'qwen' | 'py312' = 'voice') => {
     setInstalling(true); setInstallLog(''); setMsg('');
-    try { await (kind === 'qwen' ? api.voice.installQwen() : api.voice.install()); } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setInstalling(false); return; }
+    try {
+      if (kind === 'qwen') await api.voice.installQwen();
+      else if (kind === 'py312') await api.voice.rebuildPython('3.12');
+      else await api.voice.install();
+    } catch (e) { setMsg(e instanceof Error ? e.message : 'Fehler'); setInstalling(false); return; }
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
@@ -906,6 +910,34 @@ export function VoicePanel({ embedded = false }: { embedded?: boolean } = {}) {
                   <div style={{ marginTop: 5 }}>{tt('Studioqualität inkl. Deutsch. Schwer: PyTorch + Modell (~3–4 GB), GPU empfohlen. Danach erscheinen „… · Qwen"-Stimmen.')}</div>
                 </div>
               )}
+              {av.qwen && av.qwenError && (() => {
+                const err = av.qwenError || '';
+                const torchIssue = /torchaudio|torch|abi3|Could not load|\.so/i.test(err);
+                return (
+                  <div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.6, background: 'var(--color-surface-sunken)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ color: 'var(--color-error)', fontWeight: 600, marginBottom: 6 }}>{tt('Qwen konnte nicht geladen werden.')}</div>
+                    <pre style={{ margin: '0 0 8px', fontSize: 10.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--color-faint)' }}>{err.slice(0, 400)}</pre>
+                    {torchIssue && (
+                      <div style={{ marginBottom: 8, color: 'var(--color-muted)' }}>
+                        {tt('Ursache: PyTorch/torchaudio passt nicht zur installierten Python-Version (oft bei sehr neuem Python wie 3.14). Empfehlung: Sprachumgebung auf Python 3.12 umstellen, dann Qwen neu installieren.')}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {torchIssue && (
+                        <button className="btn btn--primary btn--sm" disabled={installing} onClick={() => void startInstall('py312')}>
+                          {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <RefreshCw size={12} />} {tt('Auf Python 3.12 umstellen')}
+                        </button>
+                      )}
+                      <button className="btn btn--outline btn--sm" disabled={installing} onClick={() => void startInstall('qwen')}>
+                        {installing ? <span className="spinner" style={{ width: 11, height: 11 }} /> : <Download size={12} />} {tt('Qwen neu installieren')}
+                      </button>
+                    </div>
+                    {installLog && (
+                      <pre style={{ marginTop: 8, maxHeight: 160, overflow: 'auto', background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '8px 10px', fontSize: 10.5, color: 'var(--color-faint)', whiteSpace: 'pre-wrap' }}>{installLog}</pre>
+                    )}
+                  </div>
+                );
+              })()}
               {av.qwen && av.qwenReady && <div style={{ marginTop: 6, fontSize: 11, color: 'var(--color-success)' }}>{tt('Qwen-Stimmen verfügbar (inkl. Deutsch) – Modell geladen.')}</div>}
               {av.qwen && !av.qwenReady && (() => {
                 const bytes = av.qwenBytes ?? 0;

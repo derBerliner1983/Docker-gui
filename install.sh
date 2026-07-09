@@ -39,7 +39,7 @@ setup_voice() {
     if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg espeak-ng 2>/dev/null; then
       warn "python3/venv/ffmpeg/espeak-ng konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
     fi
-    python3 -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
+    "${VOICE_PYTHON:-python3}" -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
     "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
     if ! "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts; then
       warn "pip-Installation (faster-whisper/piper-tts) fehlgeschlagen – Sprachsteuerung übersprungen."; return 0
@@ -147,6 +147,29 @@ if [ "${1:-}" = "--voice" ]; then
   exit 0
 fi
 
+# ── Voice-venv mit bestimmter Python-Version neu aufsetzen ───────────────────────
+# Nötig, wenn die System-Python-Version zu neu für PyTorch/torchaudio ist
+# (z.B. 3.14). Beispiel: sudo bash install.sh --voice-py 3.12
+if [ "${1:-}" = "--voice-py" ]; then
+  PYV="${2:-3.12}"
+  info "=== $APP_NAME – Voice-venv auf Python $PYV umstellen ==="
+  VOICE_DIR="$INSTALL_DIR/voice"
+  if ! command -v "python$PYV" >/dev/null 2>&1; then
+    info "python$PYV nicht vorhanden – versuche Installation..."
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null \
+      || { add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null && apt-get update -qq && apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev"; } \
+      || error "python$PYV konnte nicht installiert werden. Bitte manuell installieren und erneut versuchen."
+  fi
+  command -v "python$PYV" >/dev/null 2>&1 || error "python$PYV weiterhin nicht gefunden."
+  info "Entferne altes venv und lege es mit python$PYV neu an..."
+  rm -rf "$VOICE_DIR/venv"
+  VOICE_PYTHON="python$PYV" setup_voice || error "Neuaufbau des Voice-venv fehlgeschlagen."
+  info "Fertig. Voice-venv nutzt jetzt Python $PYV."
+  info "Für Qwen-Stimmen jetzt: sudo bash install.sh --voice-qwen"
+  exit 0
+fi
+
 # ── Qwen3-TTS für Deutsch (optional, schwer: PyTorch + mehrere GB Modell) ────────
 if [ "${1:-}" = "--voice-qwen" ]; then
   info "=== $APP_NAME – Qwen3-TTS (sehr gute Stimme inkl. DEUTSCH) ==="
@@ -156,19 +179,35 @@ if [ "${1:-}" = "--voice-qwen" ]; then
     setup_voice
   fi
   [ -d "$VOICE_DIR/venv" ] || error "Voice-venv fehlt. Zuerst: sudo bash install.sh --voice"
-  # SoX wird von qwen-tts für die Audio-Verarbeitung benötigt (sonst „SoX could not be found").
-  apt-get install -y --no-install-recommends sox libsox-fmt-all 2>/dev/null || warn "sox konnte nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
+  PYBIN="$VOICE_DIR/venv/bin/python"
+  PIP="$VOICE_DIR/venv/bin/pip"
+  PYVER="$("$PYBIN" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo '?')"
+  info "Voice-venv nutzt Python $PYVER."
+  case "$PYVER" in
+    3.14|3.15)
+      warn "Python $PYVER ist sehr neu – für PyTorch/torchaudio gibt es dafür oft noch keine passenden Pakete."
+      warn "Falls torchaudio nicht lädt: venv mit Python 3.12 neu anlegen (sudo bash install.sh --voice-py 3.12)." ;;
+  esac
+  # SoX + FFmpeg werden von qwen-tts/torchaudio für die Audio-Verarbeitung benötigt.
+  apt-get install -y --no-install-recommends sox libsox-fmt-all ffmpeg 2>/dev/null || warn "sox/ffmpeg konnten nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
   info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
-  "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
-  # CPU-PyTorch als robuster Standard. Für NVIDIA/AMD-GPU ggf. passenden Index nutzen:
-  #   NVIDIA:  --index-url https://download.pytorch.org/whl/cu124
-  #   AMD/ROCm: --index-url https://download.pytorch.org/whl/rocm6.2
-  "$VOICE_DIR/venv/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu 2>/dev/null \
-    || "$VOICE_DIR/venv/bin/pip" install torch || error "PyTorch-Installation fehlgeschlagen."
-  "$VOICE_DIR/venv/bin/pip" install qwen-tts soundfile || error "qwen-tts-Installation fehlgeschlagen."
+  "$PIP" install --upgrade pip >/dev/null 2>&1 || true
+  # qwen-tts zuerst (zieht seine Abhängigkeiten), danach torch+torchaudio als
+  # ZUSAMMENPASSENDES PAAR aus dem CPU-Wheel-Index erzwingen. Das verhindert den
+  # häufigen Fehler „Could not load _torchaudio.abi3.so" (torch/torchaudio-Mismatch).
+  # Für NVIDIA/AMD-GPU ggf. cu124- bzw. rocm6.2-Index verwenden.
+  "$PIP" install qwen-tts soundfile || error "qwen-tts-Installation fehlgeschlagen."
+  "$PIP" install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cpu 2>/dev/null \
+    || "$PIP" install --force-reinstall torch torchaudio || error "PyTorch/torchaudio-Installation fehlgeschlagen."
+  # Verifizieren, dass torchaudio wirklich lädt – sonst klare Meldung statt Laufzeitfehler.
+  if ! "$PYBIN" -c 'import torch, torchaudio' 2>/dev/null; then
+    warn "torchaudio lädt noch nicht. Meist Python-Version zu neu ($PYVER)."
+    warn "Lösung: venv mit Python 3.12 neu aufsetzen (sudo bash install.sh --voice-py 3.12) und danach erneut --voice-qwen."
+    error "Qwen-TTS nicht einsatzbereit (torchaudio inkompatibel)."
+  fi
   id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" 2>/dev/null || true
   systemctl restart core-hub-voice 2>/dev/null || true
-  info "Qwen3-TTS installiert. Das Modell (~3–4 GB) wird beim ersten Nutzen automatisch geladen."
+  info "Qwen3-TTS installiert & torchaudio geprüft. Das Modell (~3–4 GB) wird beim ersten Nutzen automatisch geladen."
   info "In Einstellungen unter 'Stimme' die '… · Qwen'-Stimmen für Deutsch wählen."
   info "Kleiner/schneller: QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice in /etc/systemd/system/core-hub-voice.service."
   exit 0
