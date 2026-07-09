@@ -3,7 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { isRoot } from '../lib/privilege';
+import { isRoot, privExec } from '../lib/privilege';
 import { appSettingsQueries } from '../db/index';
 import { obsidianContext } from './obsidian';
 import { webContext } from './websearch';
@@ -312,6 +312,20 @@ export async function voiceRoutes(fastify: FastifyInstance) {
     const r = startVoiceInstall('--voice-qwen');
     if (!r.started) return reply.status(500).send({ error: r.error || 'Start fehlgeschlagen' });
     reply.send({ ok: true, running: install.running });
+  });
+
+  // Sprachdienst neu starten (lädt die aktuelle voiced.py in den laufenden Dienst).
+  // Nötig, wenn nach einem Update noch der alte Daemon-Prozess läuft.
+  fastify.post('/api/voice/restart', { preHandler: requireAdmin }, async (_req, reply) => {
+    try {
+      privExec('systemctl restart core-hub-voice', { timeout: 15000 });
+      // kurz warten, bis der Dienst wieder da ist
+      await new Promise((r) => setTimeout(r, 1500));
+      const health = await daemonHealth();
+      reply.send({ ok: true, daemon: health.ok });
+    } catch (e) {
+      reply.status(500).send({ error: e instanceof Error ? e.message : 'Neustart fehlgeschlagen. Alternativ: „sudo systemctl restart core-hub-voice".' });
+    }
   });
 
   // Live-Log des Sprachdienstes (Download-/Ladefortschritt, Fehler) für die GUI
