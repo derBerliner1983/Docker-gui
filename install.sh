@@ -154,17 +154,26 @@ if [ "${1:-}" = "--voice-py" ]; then
   PYV="${2:-3.12}"
   info "=== $APP_NAME – Voice-venv auf Python $PYV umstellen ==="
   VOICE_DIR="$INSTALL_DIR/voice"
-  if ! command -v "python$PYV" >/dev/null 2>&1; then
+  # Kandidaten-Binaries (z.B. python3.12). Manche Distros liefern es unter /usr/bin.
+  find_py() { command -v "python$PYV" 2>/dev/null || command -v "python${PYV%%.*}.${PYV#*.}" 2>/dev/null || { [ -x "/usr/bin/python$PYV" ] && echo "/usr/bin/python$PYV"; }; }
+  PYBIN_NEW="$(find_py || true)"
+  if [ -z "$PYBIN_NEW" ]; then
     info "python$PYV nicht vorhanden – versuche Installation..."
     apt-get update -qq 2>/dev/null || true
-    apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null \
-      || { add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null && apt-get update -qq && apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev"; } \
-      || error "python$PYV konnte nicht installiert werden. Bitte manuell installieren und erneut versuchen."
+    if ! apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null; then
+      info "Nicht in den Standard-Quellen – versuche deadsnakes-PPA..."
+      apt-get install -y --no-install-recommends software-properties-common 2>/dev/null || true
+      add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || warn "deadsnakes-PPA konnte nicht hinzugefügt werden."
+      apt-get update -qq 2>/dev/null || true
+      apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null || true
+    fi
+    PYBIN_NEW="$(find_py || true)"
   fi
-  command -v "python$PYV" >/dev/null 2>&1 || error "python$PYV weiterhin nicht gefunden."
+  [ -n "$PYBIN_NEW" ] || error "python$PYV ließ sich nicht installieren. Bitte manuell installieren (z.B. 'apt install python$PYV python$PYV-venv') und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13"
+  info "Nutze Python-Binary: $PYBIN_NEW"
   info "Entferne altes venv und lege es mit python$PYV neu an..."
   rm -rf "$VOICE_DIR/venv"
-  VOICE_PYTHON="python$PYV" setup_voice || error "Neuaufbau des Voice-venv fehlgeschlagen."
+  VOICE_PYTHON="$PYBIN_NEW" setup_voice || error "Neuaufbau des Voice-venv fehlgeschlagen."
   info "Fertig. Voice-venv nutzt jetzt Python $PYV."
   info "Für Qwen-Stimmen jetzt: sudo bash install.sh --voice-qwen"
   exit 0
