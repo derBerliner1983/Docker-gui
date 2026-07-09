@@ -361,6 +361,7 @@ export const api = {
       req<import('./types').VoiceConfig>('/api/voice/config', { method: 'POST', body: JSON.stringify(data) }),
     install: () => req<{ ok: boolean; running: boolean }>('/api/voice/install', { method: 'POST' }),
     installQwen: () => req<{ ok: boolean; running: boolean }>('/api/voice/install-qwen', { method: 'POST' }),
+    rebuildPython: (version = '3.12') => req<{ ok: boolean; running: boolean }>('/api/voice/rebuild-python', { method: 'POST', body: JSON.stringify({ version }) }),
     qwenLoad: () => req<{ ok: boolean; loading: boolean; ready: boolean }>('/api/voice/qwen-load', { method: 'POST' }),
     logs: () => req<{ lines: string[] }>('/api/voice/logs'),
     restart: () => req<{ ok: boolean; daemon: boolean }>('/api/voice/restart', { method: 'POST' }),
