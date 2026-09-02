@@ -4,8 +4,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { privExec, safeExec, hasBinary, isRoot } from '../lib/privilege';
+import { privExec, safeExec, hasBinary, isRoot, describeExecError } from '../lib/privilege';
 import { auditQueries, appSettingsQueries, DB_PATH } from '../db/index';
+import { removeCommand, packageNames } from '../lib/pkgmgr';
 import {
   getUpdateSource, saveUpdateSource, listVersions, syncRemote, fetchRemote,
   gitRun, gitSafe, scrubSecrets, isValidRef, getUpdateNotes,
@@ -331,6 +332,64 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       try { fs.rmSync(stage, { recursive: true, force: true }); } catch { /* */ }
     }
   });
+
+  // ── Reverse-Proxy (Caddy) entfernen ──────────────────────────────────────
+  // Wer keinen Reverse-Proxy braucht, soll ihn auch wieder loswerden können.
+  // Wichtig: danach ist Core-Hub nur noch direkt über http://<IP>:PORT
+  // erreichbar, nicht mehr über https auf 443.
+  fastify.get('/api/settings/proxy/status', { preHandler: requireAdmin }, async (_req, reply) => {
+    const installed = hasBinary('caddy');
+    const active = safeExec('systemctl is-active caddy 2>/dev/null').trim() === 'active';
+    const enabled = safeExec('systemctl is-enabled caddy 2>/dev/null').trim() === 'enabled';
+    const managed = fs.existsSync(CADDYFILE)
+      && /core-hub-base/.test(safeExec(`cat ${CADDYFILE} 2>/dev/null`, 4000));
+    reply.send({
+      installed, active, enabled, managed,
+      caddyfile: CADDYFILE,
+      directUrl: `http://${os.hostname()}:${process.env.PORT || 4200}`,
+      packages: packageNames('caddy'),
+    });
+  });
+
+  fastify.post<{ Body: { purge?: boolean } }>(
+    '/api/settings/proxy/remove',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const purge = !!req.body?.purge;
+      const steps: string[] = [];
+      try {
+        if (safeExec('systemctl is-active caddy 2>/dev/null').trim() === 'active') {
+          privExec('systemctl stop caddy', { timeout: 20000 });
+          steps.push('Dienst gestoppt');
+        }
+        if (safeExec('systemctl is-enabled caddy 2>/dev/null').trim() === 'enabled') {
+          privExec('systemctl disable caddy', { timeout: 20000 });
+          steps.push('Autostart deaktiviert');
+        }
+        // Nur die von Core-Hub erzeugte Konfiguration entfernen – eine eigene
+        // Caddy-Konfiguration des Admins bleibt unangetastet.
+        if (fs.existsSync(CADDYFILE) && /core-hub-base/.test(safeExec(`cat ${CADDYFILE} 2>/dev/null`, 4000))) {
+          privExec(`mv ${CADDYFILE} ${CADDYFILE}.core-hub-entfernt`, { timeout: 8000 });
+          steps.push(`Konfiguration gesichert nach ${CADDYFILE}.core-hub-entfernt`);
+        }
+        if (purge) {
+          const cmd = removeCommand(['caddy']);
+          if (cmd) { privExec(cmd, { timeout: 300000 }); steps.push('Paket deinstalliert'); }
+        }
+        // Proxy-Seite aus der Navigation nehmen – sie hat ohne Caddy keinen Zweck.
+        appSettingsQueries.set.run('proxy_enabled', '0');
+        steps.push('Proxy-Seite ausgeblendet');
+        auditQueries.log.run(req.user.id, 'settings.proxy.remove', purge ? 'purge' : 'stop');
+        reply.send({
+          ok: true,
+          steps,
+          note: `Core-Hub ist jetzt direkt über Port ${process.env.PORT || 4200} erreichbar (http, ohne HTTPS-Weiterleitung auf 443).`,
+        });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: describeExecError(err, 'Reverse-Proxy konnte nicht entfernt werden'), steps });
+      }
+    },
+  );
 
   // ── Update-Quelle (Git-Repository) verwalten ──────────────────────────────
   // Erlaubt es, das Repository nachträglich zu ändern (Umzug, eigener Fork) und

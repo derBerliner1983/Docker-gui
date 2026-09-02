@@ -360,6 +360,9 @@ body {
   display: flex; align-items: center; gap: 11px;
   padding: 13px 16px; cursor: pointer; user-select: none;
   transition: background 0.1s;
+  /* Auf schmalen Bildschirmen dürfen die Aktionen in eine zweite Zeile
+     rutschen, statt Titel oder Knöpfe abzuschneiden. */
+  flex-wrap: wrap;
 }
 .panel__header:hover { background: var(--color-hover); }
 .panel__icon {
@@ -370,7 +373,7 @@ body {
 .panel__titlewrap { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; flex-wrap: wrap; }
 .panel__title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .panel__subtitle { font-size: 12px; color: var(--color-subtle); font-weight: 400; letter-spacing: 0; }
-.panel__actions { display: flex; align-items: center; gap: 6px; }
+.panel__actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .panel__toggle {
   width: 26px; height: 26px; border-radius: 6px; border: none; background: none;
   cursor: pointer; color: var(--color-subtle); display: flex;

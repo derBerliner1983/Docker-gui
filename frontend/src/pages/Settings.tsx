@@ -11,6 +11,7 @@ import { api } from '../lib/api';
 import { recordPcm } from '../lib/voice';
 import { formatUptime, timeAgo } from '../lib/utils';
 import { UpdateSourcePanel, VersionPanel } from '../components/settings/UpdatePanels';
+import { HardwarePanel } from '../components/system/HardwarePanel';
 import { useI18n, useT, LANGUAGES, tt } from '../lib/i18n';
 import { usePrefs } from '../lib/prefs';
 import { NAV, HIDDEN_NAV_PREF, canHide } from '../lib/navItems';
@@ -487,6 +488,71 @@ function NetworkPanel() {
   );
 }
 
+/**
+ * Reverse-Proxy (Caddy) wieder loswerden.
+ * Stoppt den Dienst, deaktiviert den Autostart und legt die von Core-Hub
+ * erzeugte Caddyfile beiseite; auf Wunsch wird auch das Paket deinstalliert.
+ * Danach ist Core-Hub nur noch direkt über seinen Port erreichbar.
+ */
+function ProxyRemoval() {
+  const [st, setSt] = useState<{ installed: boolean; active: boolean; managed: boolean; caddyfile: string; directUrl: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ steps: string[]; note: string } | null>(null);
+  const [err, setErr] = useState('');
+
+  const load = useCallback(async () => {
+    try { setSt(await api.settings.proxyStatus()); } catch { setSt(null); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const remove = async (purge: boolean) => {
+    const frage = purge
+      ? tt('Caddy stoppen UND das Paket deinstallieren? Core-Hub ist danach nur noch direkt über seinen Port erreichbar (kein HTTPS auf 443).')
+      : tt('Caddy stoppen und aus dem Autostart nehmen? Core-Hub ist danach nur noch direkt über seinen Port erreichbar (kein HTTPS auf 443).');
+    if (!confirm(frage)) return;
+    setBusy(true); setErr(''); setResult(null);
+    try {
+      const r = await api.settings.removeProxy(purge);
+      setResult({ steps: r.steps, note: r.note });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tt('Entfernen fehlgeschlagen'));
+    } finally { setBusy(false); }
+  };
+
+  if (!st?.installed) return null;
+
+  return (
+    <div className="card" style={{ marginTop: 14, borderColor: 'var(--color-border)' }}>
+      <div className="card-body">
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{tt('Reverse-Proxy entfernen')}</div>
+        <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 10, lineHeight: 1.55 }}>
+          {tt('Caddy ist installiert{state}. Wird er entfernt, entfällt die HTTPS-Weiterleitung – Core-Hub ist dann nur noch direkt über seinen Port erreichbar. Eine eigene, nicht von Core-Hub erzeugte Caddy-Konfiguration bleibt unangetastet.', {
+            state: st.active ? tt(' und läuft') : tt(' (läuft nicht)'),
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => void remove(false)}>
+            {busy ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <XCircle size={13} />} {tt('Stoppen & deaktivieren')}
+          </button>
+          <button className="btn btn--outline btn--sm" disabled={busy} onClick={() => void remove(true)}>
+            <Trash2 size={13} /> {tt('Zusätzlich Paket deinstallieren')}
+          </button>
+        </div>
+        {err && <div style={{ fontSize: 12.5, color: 'var(--color-warning)', marginTop: 10, whiteSpace: 'pre-wrap' }}>{err}</div>}
+        {result && (
+          <div style={{ marginTop: 10, fontSize: 12.5 }}>
+            {result.steps.map((s) => (
+              <div key={s} style={{ color: 'var(--color-success)' }}>✓ {s}</div>
+            ))}
+            <div style={{ color: 'var(--color-muted)', marginTop: 6 }}>{result.note}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProxyVisibilityPanel() {
   const { t } = useI18n();
   const [enabled, setEnabled] = useState<boolean | null>(null);
@@ -532,6 +598,7 @@ function ProxyVisibilityPanel() {
               <option value="traefik" disabled>{t('settings.proxy.backend.traefik')}</option>
             </select>
             <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.backend.hint')}</div>
+            <ProxyRemoval />
           </div>
         )}
       </div>
@@ -1214,6 +1281,7 @@ export function Settings() {
           { id: 'smtp', node: <SmtpPanel /> },
           { id: 'notifications', node: <NotificationsPanel /> },
           { id: 'migration', node: <MigrationPanel /> },
+          { id: 'hardware', node: <HardwarePanel /> },
           { id: 'sysinfo', node: (
         <Panel title={tt('System-Info')} icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>
           {info && (

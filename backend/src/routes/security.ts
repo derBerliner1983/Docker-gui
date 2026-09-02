@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import Dockerode from 'dockerode';
 import bcrypt from 'bcryptjs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { safeExec, privExec, hasBinary } from '../lib/privilege';
+import { safeExec, privExec, hasBinary, describeExecError } from '../lib/privilege';
 import { detectPM, installLogical, packageNames, isLogicalInstalled } from '../lib/pkgmgr';
 import { userQueries, auditQueries } from '../db/index';
 import { ensureLanWebAccess } from './firewall';
@@ -539,8 +539,7 @@ export async function securityRoutes(fastify: FastifyInstance) {
         auditQueries.log.run(req.user.id, 'security.fix', action);
         reply.send({ ok: true, output });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
+        reply.status(500).send({ error: describeExecError(err) });
       }
     }
   );

@@ -7,7 +7,7 @@ import type {
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel, NetscanJob,
-  UpdateSource, UpdateVersion, UpdateNotes,
+  UpdateSource, UpdateVersion, UpdateNotes, HardwareInfo,
 } from './types';
 
 import { tt } from './i18n';
@@ -94,6 +94,7 @@ export const api = {
 
   system: {
     stats: () => req<SystemStats>('/api/system/stats'),
+    hardware: () => req<HardwareInfo>('/api/system/hardware'),
     dockerVersion: () => req<{ version: string }>('/api/system/docker-version'),
     services: () => req<{ services: SystemService[] }>('/api/system/services'),
     controlService: (service: string, action: string) =>
@@ -325,6 +326,10 @@ export const api = {
       url: string; branch: string; visibility: 'public' | 'private';
       authType: 'token' | 'password'; username: string; secret?: string;
     }) => req<{ ok: boolean; source: UpdateSource }>('/api/settings/update-source', { method: 'PUT', body: JSON.stringify(body) }),
+    // Reverse-Proxy (Caddy) entfernen
+    proxyStatus: () => req<{ installed: boolean; active: boolean; enabled: boolean; managed: boolean; caddyfile: string; directUrl: string; packages: string[] }>('/api/settings/proxy/status'),
+    removeProxy: (purge: boolean) =>
+      req<{ ok: boolean; steps: string[]; note: string }>('/api/settings/proxy/remove', { method: 'POST', body: JSON.stringify({ purge }) }),
     testUpdateSource: () => req<{ ok: boolean; url: string; branches: string[]; count: number }>('/api/settings/update-source/test', { method: 'POST' }),
     updateVersions: (refresh = false) =>
       req<{ available: boolean; versions: UpdateVersion[]; current: string; branch?: string; error?: string }>(

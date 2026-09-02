@@ -71,27 +71,15 @@ export function Updates() {
 
   return (
     <>
+      {/* Die Paket-Knöpfe stehen bewusst NICHT hier oben, sondern am Panel
+          „Verfügbare Updates" – also direkt bei der Liste, auf die sie sich
+          beziehen. Oben in der Topbar wirkten sie so, als gehörten sie zum
+          Core-Hub-Update darunter. */}
       <Topbar
         title={t('nav.updates')}
         subtitle={manager ? t('page.updates.subtitle', { manager }) : undefined}
         onRefresh={load}
         refreshing={loading}
-        actions={
-          available && (
-            <>
-              <button className="btn btn--outline btn--sm" onClick={check} disabled={checking}>
-                {checking ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />}
-                Nach Updates suchen
-              </button>
-              {updates.length > 0 && (
-                <button className="btn btn--primary btn--sm" onClick={() => apply()} disabled={applying}>
-                  {applying ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={13} />}
-                  Alle installieren ({updates.length})
-                </button>
-              )}
-            </>
-          )
-        }
       />
       <main className="page">
         {/* Core-Hub selbst aktualisieren: Update-Quelle (Git-Repository) und

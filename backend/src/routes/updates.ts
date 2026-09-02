@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { privExec, safeExec, hasBinary } from '../lib/privilege';
+import { privExec, safeExec, hasBinary, describeExecError } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 interface PackageUpdate {
@@ -97,14 +97,21 @@ export async function updateRoutes(fastify: FastifyInstance) {
         } else if (pm === 'dnf') {
           cmd = pkgs.length ? `dnf -y upgrade ${pkgs.join(' ')}` : 'dnf -y upgrade';
         } else {
-          cmd = pkgs.length ? `pacman -S --noconfirm ${pkgs.join(' ')}` : 'pacman -Su --noconfirm';
+          // Arch/CachyOS: -Syu statt -Su. Ohne frischen Paketindex scheitert das
+          // Upgrade an veralteten Paketständen ("target not found"). Teilupgrades
+          // sind auf Arch ohnehin nicht unterstützt, deshalb wird auch bei einer
+          // Paketauswahl der Index mitgezogen.
+          cmd = pkgs.length
+            ? `pacman -Syu --noconfirm ${pkgs.join(' ')}`
+            : 'pacman -Syu --noconfirm';
         }
-        const output = privExec(cmd, { timeout: 600000 });
+        // Ein volles Systemupgrade kann bei über hundert Paketen deutlich länger
+        // als zehn Minuten dauern (Download + Hooks).
+        const output = privExec(cmd, { timeout: 3600000 });
         auditQueries.log.run(req.user.id, 'system.update.apply', pkgs.join(',') || 'all');
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Update fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
+        reply.status(500).send({ error: describeExecError(err) });
       }
     }
   );

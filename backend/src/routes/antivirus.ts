@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { spawn } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { safeExec, privExec, hasBinary, isRoot } from '../lib/privilege';
+import { safeExec, privExec, hasBinary, isRoot, describeExecError, isPermissionError } from '../lib/privilege';
 import { installLogical } from '../lib/pkgmgr';
 import { auditQueries } from '../db/index';
 import { notify } from '../lib/notify';
@@ -74,8 +74,7 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
       auditQueries.log.run(req.user.id, 'antivirus.install', null);
       reply.send({ ok: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
-      reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
+      reply.status(500).send({ error: describeExecError(err) });
     }
   });
 
@@ -120,8 +119,9 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
         const active = safeExec(`systemctl is-active ${unit} 2>/dev/null`).trim() === 'active';
         reply.send({ ok: true, active });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Aktion fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : `${unit} ließ sich nicht ${req.body?.enable ? 'starten' : 'stoppen'} – evtl. fehlen die Signaturen (erst „Signaturen aktualisieren").` });
+        reply.status(500).send({ error: isPermissionError(err)
+            ? describeExecError(err)
+            : `${unit} ließ sich nicht ${req.body?.enable ? 'starten' : 'stoppen'} – evtl. fehlen die Signaturen (erst „Signaturen aktualisieren").\n${describeExecError(err)}` });
       }
     }
   );
