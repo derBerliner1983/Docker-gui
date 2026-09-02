@@ -5,6 +5,31 @@ import { privExec, safeExec, hasBinary } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 const SMB_CONF = '/etc/samba/smb.conf';
+
+/**
+ * Namen der Samba-systemd-Units. Debian/Ubuntu nennen sie `smbd`/`nmbd`,
+ * Arch/CachyOS dagegen `smb`/`nmb`. Einmal ermitteln und danach überall
+ * verwenden, damit Start/Stop/Reload auf beiden Familien funktioniert.
+ */
+let sambaUnitsCache: { main: string; extra: string[] } | null = null;
+function sambaUnits(): { main: string; extra: string[] } {
+  if (sambaUnitsCache) return sambaUnitsCache;
+  const units = safeExec('systemctl list-unit-files --type=service --no-legend 2>/dev/null', 8000);
+  const has = (u: string) => new RegExp(`^${u}\\.service\\b`, 'm').test(units);
+  if (has('smbd')) sambaUnitsCache = { main: 'smbd', extra: has('nmbd') ? ['nmbd'] : [] };
+  else if (has('smb')) sambaUnitsCache = { main: 'smb', extra: has('nmb') ? ['nmb'] : [] };
+  else sambaUnitsCache = { main: 'smbd', extra: [] };   // Fallback: bisheriges Verhalten
+  return sambaUnitsCache;
+}
+/** Alle Samba-Units als Argumentliste für systemctl (z. B. "smbd nmbd"). */
+function sambaUnitArgs(): string {
+  const u = sambaUnits();
+  return [u.main, ...u.extra].join(' ');
+}
+/** Läuft Samba gerade? */
+function sambaActive(): boolean {
+  return safeExec(`systemctl is-active ${sambaUnits().main} 2>/dev/null`).trim() === 'active';
+}
 const MANAGED_BEGIN = '# >>> core-hub managed shares >>>';
 const MANAGED_END = '# <<< core-hub managed shares <<<';
 const SAMBA_FW_COMMENT = 'core-hub-samba';
@@ -135,21 +160,21 @@ function writeShares(shares: Share[]): void {
   fs.unlinkSync(tmp);
   safeExec('testparm -s 2>/dev/null >/dev/null');
 
-  const wasRunning = safeExec('systemctl is-active smbd 2>/dev/null').trim() === 'active';
+  const wasRunning = sambaActive();
 
   if (shares.length === 0) {
     // Last share removed → stop Samba + block firewall
     if (wasRunning) {
-      try { privExec('systemctl stop smbd nmbd 2>/dev/null || systemctl stop smbd', { timeout: 12000 }); } catch { /* */ }
+      try { privExec(`systemctl stop ${sambaUnitArgs()}`, { timeout: 12000 }); } catch { /* */ }
     }
     sambaFirewallBlock();
   } else if (!wasRunning) {
     // First share added (Samba was stopped) → start + open LAN firewall
-    try { privExec('systemctl start smbd nmbd 2>/dev/null || systemctl start smbd', { timeout: 12000 }); } catch { /* */ }
+    try { privExec(`systemctl start ${sambaUnitArgs()}`, { timeout: 12000 }); } catch { /* */ }
     sambaFirewallAllow();
   } else {
     // Shares modified, Samba already running → reload + ensure firewall is open
-    try { privExec('systemctl reload smbd 2>/dev/null || systemctl restart smbd', { timeout: 12000 }); } catch { /* */ }
+    try { privExec(`systemctl reload ${sambaUnits().main} 2>/dev/null || systemctl restart ${sambaUnitArgs()}`, { timeout: 12000 }); } catch { /* */ }
     sambaFirewallAllow();
   }
 }
@@ -157,9 +182,9 @@ function writeShares(shares: Share[]): void {
 export async function shareRoutes(fastify: FastifyInstance) {
   fastify.get('/api/shares', { preHandler: requireAuth }, async (_req, reply) => {
     if (!hasBinary('smbd')) {
-      return reply.send({ available: false, shares: [], message: 'Samba nicht installiert (apt install samba)' });
+      return reply.send({ available: false, shares: [], message: 'Samba nicht installiert' });
     }
-    const running = safeExec('systemctl is-active smbd 2>/dev/null').trim() === 'active';
+    const running = sambaActive();
     const shares = parseShares(readConf());
     const firewallOpen = isSambaFirewallOpen();
     reply.send({ available: true, running, shares, firewallOpen });
@@ -207,7 +232,7 @@ export async function shareRoutes(fastify: FastifyInstance) {
       const action = req.body?.action;
       if (!['start', 'stop', 'restart'].includes(action)) return reply.status(400).send({ error: 'Ungültige Aktion' });
       try {
-        privExec(`systemctl ${action} smbd nmbd 2>/dev/null || systemctl ${action} smbd`, { timeout: 12000 });
+        privExec(`systemctl ${action} ${sambaUnitArgs()}`, { timeout: 12000 });
         // On manual start: also ensure firewall is open if shares exist
         if (action !== 'stop') {
           const shares = parseShares(readConf());

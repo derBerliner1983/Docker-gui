@@ -168,6 +168,37 @@ sudo bash install.sh
 → Erreichbar unter `http://SERVER-IP:4200` · Login: `admin` / `admin`
 ⚠️ **Passwort nach dem ersten Login ändern!**
 
+### Unterstützte Distributionen
+
+`install.sh` erkennt den Paketmanager selbst und übersetzt alle Paketnamen passend:
+
+| Familie | Paketmanager | Status |
+|---|---|---|
+| Debian, Ubuntu | `apt` | vollständig getestet |
+| **Arch, CachyOS**, EndeavourOS, Manjaro | `pacman` | unterstützt |
+| Fedora, RHEL, Rocky | `dnf` | unterstützt (best effort) |
+| openSUSE | `zypper` | unterstützt (best effort) |
+
+Was sich je nach Distribution automatisch unterscheidet:
+
+- **Node.js** kommt auf Debian/Ubuntu über NodeSource, überall sonst aus den
+  eigenen Paketquellen (Arch & Co. liefern bereits ein aktuelles Node)
+- **Caddy** über das offizielle Repo (Debian/Ubuntu) bzw. direkt aus den Paketquellen
+- **Paketnamen** werden übersetzt (z. B. `docker.io` → `docker`,
+  `qemu-system-x86 libvirt-daemon-system virtinst` → `qemu-base libvirt virt-install …`)
+- **Dienste** werden dort aktiviert, wo sie nicht von selbst starten (Docker, libvirt)
+- **Samba-Units** heißen je nach Familie `smbd`/`nmbd` oder `smb`/`nmb` – Core-Hub erkennt das
+- **Fehlende Standardkonfigurationen** werden angelegt: Arch liefert weder eine
+  `smb.conf` noch fertige ClamAV-Configs mit (nur `*.sample`)
+- **Automatische Sicherheitsupdates** gibt es nur, wo die Distribution sie kennt
+  (`unattended-upgrades` / `dnf-automatic`) – auf Arch entfällt der Punkt
+- Die **sudoers-Allowlist** wird mit allen Pfadvarianten geschrieben
+  (`/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`), weil Arch alles unter `/usr/bin` führt
+
+Optionale Module (Docker, KVM, Samba, Caddy, ClamAV, UFW, fail2ban) brechen die
+Installation nicht mehr ab, wenn ein Paket fehlt – es gibt eine Warnung und das
+jeweilige Modul bleibt inaktiv.
+
 ### Update auf eine neue Version
 
 **In der Oberfläche:** *System-Updates* oder *Einstellungen* → „Version & Updates" → **„Jetzt aktualisieren"**
@@ -271,6 +302,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
 | **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
 | **18** | **Freie Update-Quelle** (eigenes Git-Repository/Branch, öffentlich oder privat mit verschlüsselt gespeichertem Token/Passwort, Verbindungstest), **Versionsauswahl inkl. Rollback** auf einen früheren Stand, **„Was ist neu?"-Popup** mit Beschreibungstext, Änderungen und Dateiliste (Volltext auch per Hover), **Menüpunkte per Rechtsklick ausblenden** und in den Einstellungen wieder einblenden | ✅ `v0.24.0` |
+| **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist | ✅ `v0.25.0` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { spawn } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { safeExec, privExec, hasBinary, isRoot } from '../lib/privilege';
+import { installLogical } from '../lib/pkgmgr';
 import { auditQueries } from '../db/index';
 import { notify } from '../lib/notify';
 
@@ -69,10 +70,7 @@ export async function antivirusRoutes(fastify: FastifyInstance) {
   // Install ClamAV + daemon
   fastify.post('/api/antivirus/install', { preHandler: requireAdmin }, async (req, reply) => {
     try {
-      if (hasBinary('apt-get')) privExec('apt-get install -y clamav clamav-daemon', { timeout: 300000 });
-      else if (hasBinary('dnf')) privExec('dnf install -y clamav clamav-update clamd', { timeout: 300000 });
-      else if (hasBinary('pacman')) privExec('pacman -S --noconfirm clamav', { timeout: 300000 });
-      else return reply.status(400).send({ error: 'Kein unterstützter Paketmanager' });
+      installLogical('clamav', 300000);
       auditQueries.log.run(req.user.id, 'antivirus.install', null);
       reply.send({ ok: true });
     } catch (err: unknown) {

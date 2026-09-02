@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Core-Hub – Installations-Script für Linux
-# Getestet auf: Ubuntu 22.04/24.04, Debian 12
+# Getestet auf: Ubuntu 22.04/24.04, Debian 12, Arch/CachyOS
 set -e
 
 APP_NAME="Core-Hub"
@@ -21,6 +21,181 @@ error() { echo -e "${RED}[ERR]${NC} $*"; exit 1; }
 
 [ "$EUID" -ne 0 ] && error "Bitte als root ausführen: sudo bash install.sh"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Distribution & Paketmanager erkennen
+#
+# Core-Hub läuft nicht nur auf Debian/Ubuntu, sondern auch auf Arch-basierten
+# Systemen (Arch, CachyOS, EndeavourOS, Manjaro) und – so gut es geht – auf
+# Fedora/RHEL und openSUSE. Alle Paketaktionen laufen deshalb über die
+# Hilfsfunktionen weiter unten statt direkt über apt-get.
+# ─────────────────────────────────────────────────────────────────────────────
+OS_ID=""; OS_LIKE=""; OS_NAME=""
+if [ -r /etc/os-release ]; then
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  OS_ID="${ID:-}"; OS_LIKE="${ID_LIKE:-}"; OS_NAME="${PRETTY_NAME:-${NAME:-}}"
+fi
+
+PM=""
+if   command -v apt-get &>/dev/null; then PM="apt"
+elif command -v pacman  &>/dev/null; then PM="pacman"
+elif command -v dnf     &>/dev/null; then PM="dnf"
+elif command -v zypper  &>/dev/null; then PM="zypper"
+fi
+[ -n "$PM" ] || error "Kein unterstützter Paketmanager gefunden (apt, pacman, dnf oder zypper)."
+
+# Wird beim ersten Paketbefehl einmal aktualisiert, danach nicht mehr.
+PKG_REFRESHED=0
+
+# Paketindex aktualisieren (nur einmal pro Lauf).
+pkg_refresh() {
+  [ "$PKG_REFRESHED" = "1" ] && return 0
+  PKG_REFRESHED=1
+  case "$PM" in
+    apt)    apt-get update -qq 2>/dev/null || true ;;
+    pacman) pacman -Sy --noconfirm >/dev/null 2>&1 || true ;;
+    dnf)    dnf -q makecache 2>/dev/null || true ;;
+    zypper) zypper --non-interactive refresh >/dev/null 2>&1 || true ;;
+  esac
+}
+
+# Ist ein Paket installiert? (Ersatz für „dpkg -l“)
+pkg_have() {
+  case "$PM" in
+    apt)    dpkg -l "$1" 2>/dev/null | grep -q "^ii"; ;;
+    pacman) pacman -Qi "$1" >/dev/null 2>&1 ;;
+    dnf)    rpm -q "$1" >/dev/null 2>&1 ;;
+    zypper) rpm -q "$1" >/dev/null 2>&1 ;;
+    *)      return 1 ;;
+  esac
+}
+
+# Pakete installieren. Schlägt nie fehl (optionale Module sollen den Lauf nicht
+# abbrechen) – der Rückgabewert sagt aber, ob es geklappt hat.
+pkg_install() {
+  [ "$#" -eq 0 ] && return 0
+  pkg_refresh
+  case "$PM" in
+    apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" 2>/dev/null ;;
+    pacman) pacman -S --noconfirm --needed "$@" ;;
+    dnf)    dnf install -y "$@" ;;
+    zypper) zypper --non-interactive install "$@" ;;
+    *)      return 1 ;;
+  esac
+}
+
+# Wie pkg_install, aber mit „empfohlenen“ Paketen (nur bei apt relevant) –
+# für Dinge wie Samba oder libvirt, die ohne ihre Empfehlungen unvollständig sind.
+pkg_install_full() {
+  [ "$#" -eq 0 ] && return 0
+  pkg_refresh
+  case "$PM" in
+    apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y "$@" 2>/dev/null ;;
+    *)      pkg_install "$@" ;;
+  esac
+}
+
+# Bereits installierte Pakete auf den neuesten Stand bringen.
+pkg_upgrade() {
+  [ "$#" -eq 0 ] && return 0
+  pkg_refresh
+  case "$PM" in
+    apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade "$@" 2>/dev/null || true ;;
+    pacman) pacman -S --noconfirm --needed "$@" 2>/dev/null || true ;;
+    dnf)    dnf upgrade -y "$@" 2>/dev/null || true ;;
+    zypper) zypper --non-interactive update "$@" 2>/dev/null || true ;;
+  esac
+}
+
+# Paketnamen je Distribution. Ein logischer Name (z. B. „libvirt“) wird auf die
+# tatsächlichen Pakete der laufenden Distribution abgebildet. Leere Ausgabe
+# bedeutet: gibt es hier nicht (wird dann übersprungen).
+pkg_names() {
+  case "$1:$PM" in
+    build:apt)        echo "build-essential python3" ;;
+    build:pacman)     echo "base-devel python" ;;
+    build:dnf)        echo "gcc gcc-c++ make python3" ;;
+    build:zypper)     echo "gcc gcc-c++ make python3" ;;
+
+    docker:apt)       echo "docker.io" ;;
+    docker:pacman)    echo "docker" ;;
+    docker:dnf)       echo "moby-engine" ;;
+    docker:zypper)    echo "docker" ;;
+
+    libvirt:apt)      echo "qemu-system-x86 libvirt-daemon-system virtinst" ;;
+    libvirt:pacman)   echo "qemu-base libvirt virt-install dnsmasq edk2-ovmf" ;;
+    libvirt:dnf)      echo "qemu-kvm libvirt virt-install" ;;
+    libvirt:zypper)   echo "qemu-kvm libvirt virt-install" ;;
+
+    samba:*)          echo "samba" ;;
+
+    caddy:*)          echo "caddy" ;;
+
+    clamav:apt)       echo "clamav clamav-daemon" ;;
+    clamav:pacman)    echo "clamav" ;;
+    clamav:dnf)       echo "clamav clamd" ;;
+    clamav:zypper)    echo "clamav" ;;
+
+    ufw:*)            echo "ufw" ;;
+    fail2ban:*)       echo "fail2ban" ;;
+
+    # Automatische Sicherheitsupdates: nur Debian/Ubuntu und Fedora kennen so etwas.
+    autoupdate:apt)   echo "unattended-upgrades" ;;
+    autoupdate:dnf)   echo "dnf-automatic" ;;
+    autoupdate:*)     echo "" ;;
+
+    python:apt)       echo "python3 python3-venv python3-pip" ;;
+    python:pacman)    echo "python python-pip" ;;
+    python:dnf)       echo "python3 python3-pip" ;;
+    python:zypper)    echo "python3 python3-pip" ;;
+
+    ffmpeg:*)         echo "ffmpeg" ;;
+    espeak:*)         echo "espeak-ng" ;;
+
+    sox:apt)          echo "sox libsox-fmt-all" ;;
+    sox:*)            echo "sox" ;;
+
+    *)                echo "" ;;
+  esac
+}
+
+# Logisches Paket installieren (übersetzt den Namen und überspringt Unbekanntes).
+pkg_install_logical() {
+  local names; names="$(pkg_names "$1")"
+  if [ -z "$names" ]; then
+    warn "„$1\" ist auf dieser Distribution nicht verfügbar – übersprungen."
+    return 0
+  fi
+  # shellcheck disable=SC2086
+  pkg_install_full $names
+}
+
+# Dienst aktivieren und starten, falls die Unit existiert (Namen unterscheiden
+# sich je Distribution, deshalb dürfen mehrere Kandidaten übergeben werden).
+svc_enable() {
+  local unit
+  for unit in "$@"; do
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\(\.service\)\? "; then
+      systemctl enable "$unit" >/dev/null 2>&1 || true
+      systemctl start  "$unit" >/dev/null 2>&1 || true
+      return 0
+    fi
+  done
+  return 0
+}
+
+# Primäre IPv4-Adresse ermitteln. `hostname -I` gibt es nur bei Debians
+# hostname-Paket – auf Arch (inetutils) fehlt die Option, deshalb der ip-Fallback.
+primary_ip() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  [ -n "$ip" ] && { echo "$ip"; return 0; }
+  ip="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
+  [ -n "$ip" ] && { echo "$ip"; return 0; }
+  echo "127.0.0.1"
+}
+
+
 # ── Sprachsteuerung einrichten/aktualisieren (Whisper STT + Piper TTS, lokal) ────
 # Wird von `--voice` UND vom normalen Install/Update aufgerufen (letzteres nur,
 # wenn die Sprachsteuerung bereits installiert ist oder `--with-voice` angegeben
@@ -35,8 +210,7 @@ setup_voice() {
 
   if [ ! -d "$VOICE_DIR/venv" ]; then
     info "Sprachsteuerung: installiere Python + faster-whisper + piper-tts + kokoro (einmalig, kann dauern)..."
-    apt-get update -qq 2>/dev/null || true
-    if ! apt-get install -y --no-install-recommends python3 python3-venv python3-pip ffmpeg espeak-ng 2>/dev/null; then
+    if ! { pkg_install_logical python && pkg_install_logical ffmpeg && pkg_install_logical espeak; }; then
       warn "python3/venv/ffmpeg/espeak-ng konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
     fi
     # Python-Binary: expliziter Override > gemerkte Wahl > System-python3.
@@ -55,7 +229,7 @@ setup_voice() {
       "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts || true
     fi
     if ! "$VOICE_DIR/venv/bin/python" -c "import kokoro_onnx" 2>/dev/null; then
-      apt-get install -y --no-install-recommends espeak-ng 2>/dev/null || true
+      pkg_install_logical espeak || true
       "$VOICE_DIR/venv/bin/pip" install kokoro-onnx soundfile 2>/dev/null || true
     fi
   fi
@@ -97,26 +271,55 @@ voice_venv_pyver() {
   "$py" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0
 }
 
+# Version eines Python-Binaries als Zahl (z. B. 312 für 3.12); 0 bei Fehler.
+py_ver_num() {
+  command -v "$1" >/dev/null 2>&1 || return 1
+  "$1" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0
+}
+
+# Versucht, eine bestimmte Python-Nebenversion zu installieren (z. B. 3.12).
+# Die Paketnamen unterscheiden sich stark je Distribution.
+pkg_install_python_version() {
+  local v="$1" short="${1/./}"     # 3.12 → 312
+  case "$PM" in
+    apt)
+      pkg_install "python$v" "python$v-venv" "python$v-dev" && return 0
+      # deadsnakes-PPA als letzte Option (nur Ubuntu)
+      pkg_install software-properties-common 2>/dev/null || true
+      add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || return 1
+      PKG_REFRESHED=0; pkg_refresh
+      pkg_install "python$v" "python$v-venv" "python$v-dev"
+      ;;
+    dnf|zypper)
+      pkg_install "python$v" "python$v-devel"
+      ;;
+    pacman)
+      # Arch/CachyOS führen nur das aktuelle „python". Ältere Nebenversionen
+      # liegen im AUR (python311/python312) – das bauen wir hier bewusst nicht
+      # als root. Stattdessen: passt das System-Python, wird es genutzt.
+      pkg_install "python$short" 2>/dev/null || return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # Ein installierbares/vorhandenes Python < 3.14 finden (für PyTorch/torchaudio).
-# Gibt den Binary-Namen/-Pfad aus oder nichts. Installiert bei Bedarf via apt/deadsnakes.
+# Gibt den Binary-Namen/-Pfad aus oder nichts.
 find_compatible_python() {
-  local c
+  local c v n
   for c in python3.12 python3.13 python3.11; do
     command -v "$c" >/dev/null 2>&1 && { echo "$c"; return 0; }
     [ -x "/usr/bin/$c" ] && { echo "/usr/bin/$c"; return 0; }
   done
-  apt-get update -qq 2>/dev/null || true
-  for v in 3.12 3.13 3.11; do
-    if apt-get install -y --no-install-recommends "python$v" "python$v-venv" "python$v-dev" 2>/dev/null; then
-      command -v "python$v" >/dev/null 2>&1 && { echo "python$v"; return 0; }
-    fi
+  # Passt das System-Python schon? (Auf Arch/CachyOS ist das der Normalfall,
+  # dort gibt es keine parallel installierbaren älteren Nebenversionen.)
+  for c in python3 python; do
+    n="$(py_ver_num "$c" || echo 0)"
+    if [ "${n:-0}" -ge 311 ] && [ "${n:-0}" -lt 314 ]; then echo "$c"; return 0; fi
   done
-  # deadsnakes als letzte Option
-  apt-get install -y --no-install-recommends software-properties-common 2>/dev/null || true
-  add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || true
-  apt-get update -qq 2>/dev/null || true
-  for v in 3.12 3.13; do
-    if apt-get install -y --no-install-recommends "python$v" "python$v-venv" "python$v-dev" 2>/dev/null; then
+  pkg_refresh
+  for v in 3.12 3.13 3.11; do
+    if pkg_install_python_version "$v"; then
       command -v "python$v" >/dev/null 2>&1 && { echo "python$v"; return 0; }
     fi
   done
@@ -142,28 +345,55 @@ ensure_voice_python_for_torch() {
     warn "Voice-venv nutzt Python $((ver/100)).$((ver%100)) – dafür gibt es kein PyTorch/torchaudio."
     info "Stelle automatisch auf ein kompatibles Python um..."
     local pybin; pybin="$(find_compatible_python || true)"
-    [ -n "$pybin" ] || error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren, z.B. 'apt install python3.12 python3.12-venv'."
+    if [ -z "$pybin" ]; then
+      case "$PM" in
+        pacman) error "Kein kompatibles Python (3.11–3.13) verfügbar. Auf Arch/CachyOS liegt eine ältere Nebenversion im AUR – z. B. 'yay -S python312' (als normaler Benutzer) – danach 'sudo bash install.sh --voice-py 3.12'." ;;
+        apt)    error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren, z.B. 'apt install python3.12 python3.12-venv'." ;;
+        *)      error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren und danach 'sudo bash install.sh --voice-py 3.12' ausführen." ;;
+      esac
+    fi
     rebuild_voice_venv "$pybin"
   fi
 }
 
 # ── sudoers-Allowlist schreiben (passwortloses sudo nur für nötige Befehle) ─────
-# Wichtig: sowohl /bin/bash als auch /usr/bin/bash, da sudo bloßes `bash` je nach
-# Distribution zu /usr/bin/bash auflöst (sonst „Keine Root-Rechte" bei Firewall etc.).
+# Wichtig: jeder Befehl wird unter allen üblichen Pfaden eingetragen
+# (/usr/bin, /usr/sbin, /bin, /sbin). sudo vergleicht den Pfad, zu dem die
+# PATH-Auflösung führt – und der unterscheidet sich je Distribution stark:
+# Debian legt Systemwerkzeuge nach /usr/sbin, auf Arch/CachyOS liegt dagegen
+# alles in /usr/bin (/usr/sbin ist dort nur ein Symlink). Ein fehlender Pfad
+# führt sonst zu „Keine Root-Rechte" bei Firewall, Benutzern oder Updates.
 write_sudoers() {
   if ! id "$SERVICE_USER" &>/dev/null; then warn "Benutzer '$SERVICE_USER' fehlt – sudoers übersprungen."; return 0; fi
   info "Richte sudoers-Allowlist ein (/etc/sudoers.d/core-hub)..."
+
+  # Erlaubte Befehle (ohne Pfad) – die Pfadvarianten erzeugt die Schleife unten.
+  local CMDS="apt-get apt dnf pacman zypper systemctl \
+    useradd userdel usermod groupadd chpasswd smbpasswd smbcontrol \
+    cp tar mkdir rm mv sed chown chmod tee bash \
+    virsh virt-install qemu-img caddy nginx ufw ss sysctl reboot \
+    dpkg-reconfigure debconf-set-selections freshclam clamscan clamdscan git"
+
+  # Bewusst ALLE Pfadvarianten eintragen – auch für noch nicht installierte
+  # Befehle. Nicht vorhandene Pfade stören sudo nicht, aber ein später
+  # nachinstalliertes ufw/caddy funktioniert dann sofort ohne erneutes
+  # „install.sh --fix-perms".
+  local LIST="" c d p
+  for c in $CMDS; do
+    for d in /usr/bin /usr/sbin /bin /sbin; do
+      p="$d/$c"
+      case " $LIST " in *" $p,"*) continue;; esac
+      LIST="$LIST $p,"
+    done
+  done
+  LIST="${LIST% ,}"; LIST="${LIST%,}"
+  LIST="$(echo "$LIST" | sed 's/^ *//')"
+  if [ -z "$LIST" ]; then warn "Keine erlaubten Befehle gefunden – sudoers übersprungen."; return 0; fi
+
   cat > /etc/sudoers.d/core-hub <<EOF
 # Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle
-$SERVICE_USER ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/apt, /usr/bin/dnf, /usr/bin/pacman, \\
-  /usr/bin/systemctl, /usr/sbin/useradd, /usr/sbin/userdel, /usr/sbin/usermod, /usr/sbin/groupadd, \\
-  /usr/bin/chpasswd, /usr/bin/smbpasswd, /usr/bin/cp, /usr/bin/tar, /usr/bin/mkdir, /usr/bin/rm, \\
-  /usr/bin/virsh, /usr/bin/virt-install, /usr/bin/qemu-img, /usr/bin/tee, /bin/bash, /usr/bin/bash, \\
-  /usr/sbin/smbcontrol, /usr/bin/caddy, /usr/sbin/nginx, /usr/bin/ufw, /usr/sbin/ufw, /sbin/ufw, \\
-  /usr/bin/ss, /usr/sbin/ss, /bin/ss, \\
-  /usr/bin/sed, /usr/bin/chown, /usr/bin/chmod, /usr/bin/mv, /usr/sbin/dpkg-reconfigure, /usr/bin/debconf-set-selections, \\
-  /usr/bin/dpkg-reconfigure, /usr/bin/freshclam, /usr/bin/clamscan, /usr/bin/clamdscan, \\
-  /usr/bin/git, /usr/sbin/sysctl, /sbin/sysctl, /usr/sbin/reboot, /sbin/reboot
+# (automatisch erzeugt von install.sh – Pfade passend zur Distribution)
+$SERVICE_USER ALL=(root) NOPASSWD: $LIST
 EOF
   chmod 0440 /etc/sudoers.d/core-hub
   if visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1; then
@@ -219,18 +449,17 @@ if [ "${1:-}" = "--voice-py" ]; then
   find_py() { command -v "python$PYV" 2>/dev/null || command -v "python${PYV%%.*}.${PYV#*.}" 2>/dev/null || { [ -x "/usr/bin/python$PYV" ] && echo "/usr/bin/python$PYV"; }; }
   PYBIN_NEW="$(find_py || true)"
   if [ -z "$PYBIN_NEW" ]; then
-    info "python$PYV nicht vorhanden – versuche Installation..."
-    apt-get update -qq 2>/dev/null || true
-    if ! apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null; then
-      info "Nicht in den Standard-Quellen – versuche deadsnakes-PPA..."
-      apt-get install -y --no-install-recommends software-properties-common 2>/dev/null || true
-      add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || warn "deadsnakes-PPA konnte nicht hinzugefügt werden."
-      apt-get update -qq 2>/dev/null || true
-      apt-get install -y --no-install-recommends "python$PYV" "python$PYV-venv" "python$PYV-dev" 2>/dev/null || true
-    fi
+    info "python$PYV nicht vorhanden – versuche Installation über $PM..."
+    pkg_install_python_version "$PYV" || warn "python$PYV ließ sich nicht über $PM installieren."
     PYBIN_NEW="$(find_py || true)"
   fi
-  [ -n "$PYBIN_NEW" ] || error "python$PYV ließ sich nicht installieren. Bitte manuell installieren (z.B. 'apt install python$PYV python$PYV-venv') und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13"
+  if [ -z "$PYBIN_NEW" ]; then
+    case "$PM" in
+      pacman) error "python$PYV ließ sich nicht installieren. Arch/CachyOS führen nur das aktuelle „python\" – ältere Nebenversionen liegen im AUR: 'yay -S python${PYV/./}' (als normaler Benutzer), danach erneut versuchen. Ist das System-Python bereits < 3.14, genügt 'sudo bash install.sh --voice'." ;;
+      apt)    error "python$PYV ließ sich nicht installieren. Bitte manuell installieren (z.B. 'apt install python$PYV python$PYV-venv') und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13" ;;
+      *)      error "python$PYV ließ sich nicht installieren. Bitte manuell installieren und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13" ;;
+    esac
+  fi
   info "Nutze Python-Binary: $PYBIN_NEW"
   rebuild_voice_venv "$PYBIN_NEW" || error "Neuaufbau des Voice-venv fehlgeschlagen."
   info "Fertig. Voice-venv nutzt jetzt Python $PYV (wird für künftige Updates gemerkt)."
@@ -255,7 +484,7 @@ if [ "${1:-}" = "--voice-qwen" ]; then
   PYVER="$("$PYBIN" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo '?')"
   info "Voice-venv nutzt Python $PYVER."
   # SoX + FFmpeg werden von qwen-tts/torchaudio für die Audio-Verarbeitung benötigt.
-  apt-get install -y --no-install-recommends sox libsox-fmt-all ffmpeg 2>/dev/null || warn "sox/ffmpeg konnten nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
+  { pkg_install_logical sox && pkg_install_logical ffmpeg; } || warn "sox/ffmpeg konnten nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
   info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
   "$PIP" install --upgrade pip >/dev/null 2>&1 || true
   # qwen-tts zuerst (zieht seine Abhängigkeiten), danach torch+torchaudio als
@@ -490,80 +719,148 @@ else
 fi
 
 # Paketlisten aktualisieren, damit neue/zusätzliche Abhängigkeiten gefunden werden
+info "System: ${OS_NAME:-unbekannt} · Paketmanager: $PM"
 info "Aktualisiere Paketlisten..."
-apt-get update -qq 2>/dev/null || true
+pkg_refresh
 
 # Node.js prüfen / installieren
 if ! command -v node &>/dev/null; then
-  info "Installiere Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+  info "Installiere Node.js..."
+  if [ "$PM" = "apt" ]; then
+    # Debian/Ubuntu liefern oft ein zu altes Node – deshalb NodeSource.
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    pkg_install_full nodejs
+  else
+    # Arch/CachyOS, Fedora & openSUSE liefern ein aktuelles Node in den eigenen Quellen.
+    pkg_install_full nodejs npm || pkg_install_full nodejs
+  fi
 fi
+command -v node &>/dev/null || error "Node.js konnte nicht installiert werden – bitte manuell installieren (Node.js >= 20)."
 NODE_VER=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
 [ "$NODE_VER" -lt 20 ] && error "Node.js >= 20 erforderlich (aktuell: $(node -v))"
+command -v npm &>/dev/null || pkg_install_full npm || true
+command -v npm &>/dev/null || error "npm nicht gefunden – bitte npm installieren."
 info "Node.js $(node -v) OK"
 
 # Build-Tools für native Module (better-sqlite3)
 info "Installiere Build-Tools..."
-apt-get install -y --no-install-recommends build-essential python3 2>/dev/null || true
+pkg_install_logical build || true
 
 # Abhängigkeiten installieren (alle Module)
 info "Installiere System-Abhängigkeiten..."
 
 if ! command -v docker &>/dev/null; then
   info "Installiere Docker..."
-  apt-get install -y docker.io
+  pkg_install_logical docker || warn "Docker konnte nicht installiert werden – Container-Verwaltung bleibt inaktiv."
 fi
+# Auf Arch/Fedora startet der Docker-Dienst nicht von selbst (bei Debian schon).
+command -v docker &>/dev/null && svc_enable docker
 
 if ! command -v virsh &>/dev/null; then
   info "Installiere libvirt/KVM..."
-  apt-get install -y qemu-system-x86 libvirt-daemon-system virtinst
+  pkg_install_logical libvirt || warn "libvirt/KVM konnte nicht installiert werden – VM-Verwaltung bleibt inaktiv."
 fi
+command -v virsh &>/dev/null && svc_enable libvirtd
 
 if ! command -v smbd &>/dev/null; then
   info "Installiere Samba..."
-  apt-get install -y samba
+  pkg_install_logical samba || warn "Samba konnte nicht installiert werden – SMB-Freigaben bleiben inaktiv."
 fi
 
 if ! command -v caddy &>/dev/null; then
   info "Installiere Caddy..."
-  apt-get install -y debian-keyring debian-archive-keyring apt-transport-https 2>/dev/null || true
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-    | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null || true
-  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-    | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
-  apt-get update -qq
-  apt-get install -y caddy
+  if [ "$PM" = "apt" ]; then
+    # Debian/Ubuntu haben Caddy nicht in den Standardquellen → offizielles Repo.
+    pkg_install debian-keyring debian-archive-keyring apt-transport-https 2>/dev/null || true
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+      | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null || true
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+      | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+    PKG_REFRESHED=0   # neue Quelle → Index erneut einlesen
+    pkg_refresh
+  fi
+  pkg_install_logical caddy || warn "Caddy konnte nicht installiert werden – HTTPS-Proxy bleibt inaktiv."
 fi
 
 if ! command -v clamscan &>/dev/null; then
   info "Installiere ClamAV..."
-  apt-get install -y clamav clamav-daemon
+  pkg_install_logical clamav || warn "ClamAV konnte nicht installiert werden – Virenschutz bleibt inaktiv."
 fi
 
 if ! command -v ufw &>/dev/null; then
   info "Installiere UFW (Firewall)..."
-  apt-get install -y ufw
+  pkg_install_logical ufw || warn "UFW konnte nicht installiert werden – Firewall-Verwaltung bleibt inaktiv."
 fi
 
 if ! command -v fail2ban-client &>/dev/null; then
   info "Installiere fail2ban..."
-  apt-get install -y fail2ban
+  pkg_install_logical fail2ban || warn "fail2ban konnte nicht installiert werden."
 fi
 
-if ! dpkg -l unattended-upgrades &>/dev/null 2>&1; then
-  info "Installiere unattended-upgrades..."
-  apt-get install -y unattended-upgrades
+# Automatische Sicherheitsupdates – gibt es so nur auf Debian/Ubuntu und Fedora.
+AUTOUPD_PKG="$(pkg_names autoupdate)"
+if [ -n "$AUTOUPD_PKG" ] && ! pkg_have "${AUTOUPD_PKG%% *}"; then
+  info "Installiere automatische Sicherheitsupdates ($AUTOUPD_PKG)..."
+  # shellcheck disable=SC2086
+  pkg_install_full $AUTOUPD_PKG || warn "$AUTOUPD_PKG konnte nicht installiert werden."
 fi
 
 # Bei --update: bereits installierte Abhängigkeiten auf neueste Version bringen
 if [ "$FORCE_UPDATE" = "1" ]; then
   info "Aktualisiere installierte Abhängigkeiten (--update)..."
   UPD_PKGS=""
-  for pkg in docker.io qemu-system-x86 libvirt-daemon-system virtinst samba caddy clamav clamav-daemon ufw fail2ban unattended-upgrades; do
-    dpkg -l "$pkg" &>/dev/null 2>&1 && UPD_PKGS="$UPD_PKGS $pkg"
+  for logical in docker libvirt samba caddy clamav ufw fail2ban autoupdate; do
+    for pkg in $(pkg_names "$logical"); do
+      pkg_have "$pkg" && UPD_PKGS="$UPD_PKGS $pkg"
+    done
   done
-  [ -n "$UPD_PKGS" ] && apt-get install -y --only-upgrade $UPD_PKGS 2>/dev/null || true
+  # shellcheck disable=SC2086
+  [ -n "$UPD_PKGS" ] && pkg_upgrade $UPD_PKGS
+fi
+
+# ── Distributionsbedingte Nacharbeiten ──────────────────────────────────────
+# Manche Distributionen liefern Pakete ohne brauchbare Standardkonfiguration
+# aus (Arch/CachyOS legen z. B. keine smb.conf an, ClamAV nur *.sample). Ohne
+# diese Dateien starten die Dienste gar nicht erst.
+
+# Samba: Grundkonfiguration anlegen, falls keine vorhanden ist.
+if command -v smbd &>/dev/null && [ ! -f /etc/samba/smb.conf ]; then
+  info "Lege Samba-Grundkonfiguration an (/etc/samba/smb.conf)..."
+  mkdir -p /etc/samba
+  cat > /etc/samba/smb.conf <<'SMBEOF'
+# Von Core-Hub angelegte Grundkonfiguration.
+# Freigaben werden in Core-Hub unter „SMB-Freigaben" verwaltet.
+[global]
+   workgroup = WORKGROUP
+   server string = Core-Hub
+   security = user
+   map to guest = Bad User
+   server role = standalone server
+   log file = /var/log/samba/%m.log
+   max log size = 1000
+   logging = file
+SMBEOF
+  chmod 644 /etc/samba/smb.conf
+  mkdir -p /var/log/samba
+fi
+
+# ClamAV: mitgelieferte *.sample-Konfigurationen aktivieren (Arch/CachyOS).
+if command -v clamscan &>/dev/null; then
+  for cfg in freshclam clamd; do
+    if [ ! -f "/etc/clamav/$cfg.conf" ] && [ -f "/etc/clamav/$cfg.conf.sample" ]; then
+      info "Aktiviere ClamAV-Konfiguration /etc/clamav/$cfg.conf..."
+      # Die „Example"-Zeile muss raus, sonst verweigert ClamAV den Start.
+      sed 's/^Example/#Example/' "/etc/clamav/$cfg.conf.sample" > "/etc/clamav/$cfg.conf"
+      chmod 644 "/etc/clamav/$cfg.conf"
+    fi
+  done
+  mkdir -p /var/lib/clamav
+  # Ohne Signaturen startet clamav-daemon nicht – Datenbank einmal holen.
+  if command -v freshclam &>/dev/null && [ ! -f /var/lib/clamav/daily.cvd ] && [ ! -f /var/lib/clamav/daily.cld ]; then
+    info "Lade ClamAV-Signaturen (einmalig, kann dauern)..."
+    systemctl stop clamav-freshclam >/dev/null 2>&1 || true
+    freshclam >/dev/null 2>&1 || warn "ClamAV-Signaturen konnten nicht geladen werden – später in Core-Hub nachholen."
+  fi
 fi
 
 # Benutzer anlegen
@@ -640,7 +937,7 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 info "Konfiguriere Caddy (HTTPS + HTTP-Redirect)..."
 CADDYFILE="/etc/caddy/Caddyfile"
 # Server-IP und Hostname ermitteln
-SERVER_IP=$(hostname -I | awk '{print $1}')
+SERVER_IP="$(primary_ip)"
 SERVER_HOST=$(hostname -s 2>/dev/null || echo "")
 # Caddy-Adressen: IP immer, Hostname zusätzlich wenn verschieden
 CADDY_ADDR="https://${SERVER_IP}"
@@ -738,7 +1035,7 @@ fi
 
 sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then
-  IP=$(hostname -I | awk '{print $1}')
+  IP="$(primary_ip)"
   info ""
   if [ "$MODE" = "update" ]; then
     info "✅ $APP_NAME auf v$NEW_VERSION aktualisiert!"
