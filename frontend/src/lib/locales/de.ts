@@ -35,6 +35,7 @@ export const de: Record<string, string> = {
   'sidebar.collapse': 'Einklappen',
   'sidebar.toggleTheme': 'Theme wechseln',
   'sidebar.logout': 'Abmelden',
+  'sidebar.hideHint': 'Rechtsklick: Menüpunkt ausblenden',
 
   // ── Häufige Aktionen (überall genutzt) ──
   'common.save': 'Speichern',

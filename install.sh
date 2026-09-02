@@ -391,25 +391,45 @@ fi
 NEW_VERSION="$(cat ./VERSION 2>/dev/null || echo '0.0.0')"
 
 # --update: explizit erzwungener Update-Lauf (installiert auch neue Abhängigkeiten)
+#
+# Zusätzliche Schalter für den Update-Lauf:
+#   --skip-git     Kein git fetch/reset – der Aufrufer hat den gewünschten Stand
+#                  bereits ausgecheckt (nutzt das In-App-Update, weil dort die
+#                  konfigurierte Quelle inkl. Zugangsdaten für private Repos liegt).
+#   --ref=<REF>    Auf genau diesen Tag/Commit/Branch wechseln statt auf die
+#                  Spitze des Remote-Branches (ermöglicht ein Rollback).
+#                  Alternativ per Umgebungsvariable CORE_HUB_UPDATE_REF.
+SKIP_GIT=0
+case " $* " in *" --skip-git "*) SKIP_GIT=1;; esac
+UPDATE_REF="${CORE_HUB_UPDATE_REF:-}"
+for _arg in "$@"; do
+  case "$_arg" in --ref=*) UPDATE_REF="${_arg#--ref=}";; esac
+done
+
 FORCE_UPDATE=0
 if [ "${1:-}" = "--update" ]; then
   FORCE_UPDATE=1
   # Neueste Quelle von GitHub holen (sofern dieses Verzeichnis ein Git-Checkout ist).
   # git pull läuft im SOURCE_DIR (dem ursprünglichen Klon), nicht im INSTALL_DIR.
-  if command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
+  if [ "$SKIP_GIT" = "1" ]; then
+    info "Überspringe git (--skip-git) – es wird der aktuell ausgecheckte Stand gebaut."
+    NEW_VERSION="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || cat ./VERSION 2>/dev/null || echo '0.0.0')"
+  elif command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
     info "Hole neueste Version von GitHub (in $SOURCE_DIR)..."
     git config --global --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
     # Aktuellen Branch + zugehörigen Remote-Branch bestimmen
     GIT_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
     GIT_UPSTREAM="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
     [ -z "$GIT_UPSTREAM" ] && [ -n "$GIT_BRANCH" ] && GIT_UPSTREAM="origin/$GIT_BRANCH"
-    if git -C "$SOURCE_DIR" fetch --tags origin 2>&1 && [ -n "$GIT_UPSTREAM" ]; then
+    # Ein ausdrücklich gewünschter Stand (--ref) hat Vorrang vor der Branch-Spitze.
+    GIT_TARGET="${UPDATE_REF:-$GIT_UPSTREAM}"
+    if git -C "$SOURCE_DIR" fetch --tags origin 2>&1 && [ -n "$GIT_TARGET" ]; then
       # Deployment-Verzeichnis: verwaiste, nicht getrackte Quelldateien entfernen
       # (blockieren sonst den Merge). node_modules/dist sind ignoriert und bleiben.
       git -C "$SOURCE_DIR" clean -fd 2>/dev/null || true
-      # Hart auf den Remote-Stand setzen (robust gegen lokale Abweichungen)
-      if git -C "$SOURCE_DIR" reset --hard "$GIT_UPSTREAM" 2>&1; then
-        info "Auf $GIT_UPSTREAM gesetzt."
+      # Hart auf den Ziel-Stand setzen (robust gegen lokale Abweichungen)
+      if git -C "$SOURCE_DIR" reset --hard "$GIT_TARGET" 2>&1; then
+        info "Auf $GIT_TARGET gesetzt."
       else
         warn "git reset fehlgeschlagen – fahre mit vorhandenem Stand fort"
       fi

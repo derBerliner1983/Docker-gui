@@ -155,6 +155,38 @@ export interface VersionInfo {
   repo: string;
   checkedAt: string;
   error?: string;
+  /** Branch, dem die Update-Quelle folgt. */
+  branch?: string;
+  /** Aktuell ausgecheckter Commit (SHA) des Quell-Verzeichnisses. */
+  ref?: string;
+}
+
+/** Konfigurierte Update-Quelle (Git-Repository) – ohne Token/Passwort. */
+export interface UpdateSource {
+  url: string;
+  branch: string;
+  visibility: 'public' | 'private';
+  authType: 'token' | 'password';
+  username: string;
+  /** true, wenn ein Token/Passwort hinterlegt ist (der Wert selbst wird nie ausgeliefert). */
+  hasSecret: boolean;
+  configured: boolean;
+  /** Im vorhandenen Checkout eingetragene origin-URL (Vorbelegung). */
+  detectedUrl?: string;
+  detectedBranch?: string;
+  repoRoot?: string | null;
+}
+
+/** Ein auswählbarer Stand (neueste Version, Tag oder älterer Commit). */
+export interface UpdateVersion {
+  ref: string;
+  type: 'branch' | 'tag' | 'commit';
+  version: string;
+  shortSha: string;
+  date: string;
+  subject: string;
+  current: boolean;
+  latest: boolean;
 }
 
 export interface Container {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { ReactNode } from 'react';
 import qrcode from 'qrcode-generator';
-import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, ArrowUpCircle, Send, Trash2, Languages, Network, Mic, Volume2, BrainCircuit } from 'lucide-react';
+import { KeyRound, Download, Upload, RotateCw, Server, CheckCircle2, XCircle, FileArchive, ShieldCheck, Bell, Smartphone, Copy, RefreshCw, Send, Trash2, Languages, Network, Mic, Volume2, BrainCircuit, Eye, EyeOff } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
@@ -10,8 +10,11 @@ import { SmtpPanel } from '../components/security/AlertsPanel';
 import { api } from '../lib/api';
 import { recordPcm } from '../lib/voice';
 import { formatUptime, timeAgo } from '../lib/utils';
-import { useI18n, LANGUAGES, tt } from '../lib/i18n';
-import type { NotificationItem, NotificationConfig, VersionInfo, VoiceConfig } from '../lib/types';
+import { UpdateSourcePanel, VersionPanel } from '../components/settings/UpdatePanels';
+import { useI18n, useT, LANGUAGES, tt } from '../lib/i18n';
+import { usePrefs } from '../lib/prefs';
+import { NAV, HIDDEN_NAV_PREF, canHide } from '../lib/navItems';
+import type { NotificationItem, NotificationConfig, VoiceConfig } from '../lib/types';
 
 function LanguagePanel() {
   const { lang, setLang, t } = useI18n();
@@ -379,150 +382,61 @@ function NotificationsPanel() {
   );
 }
 
-function VersionPanel({ installCmd }: { installCmd: string }) {
-  const [ver, setVer] = useState<VersionInfo | null>(null);
-  const [checking, setChecking] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [updateLog, setUpdateLog] = useState<string[]>([]);
-  const [updateDone, setUpdateDone] = useState(false);
-  const logRef = useRef<HTMLDivElement>(null);
+/**
+ * Menüpunkte der Seitenleiste ein-/ausblenden.
+ * Ausblenden geht zusätzlich direkt per Rechtsklick auf den Menüpunkt;
+ * hier lassen sich ausgeblendete Punkte wieder einblenden.
+ */
+function NavVisibilityPanel() {
+  const t = useT();
+  const { prefs, setPref } = usePrefs();
+  const hidden = useMemo(() => ((prefs[HIDDEN_NAV_PREF] as string[]) || []), [prefs]);
 
-  const check = useCallback(async (refresh = false) => {
-    setChecking(true);
-    try { setVer(await api.settings.version(refresh)); } catch { /* */ }
-    finally { setChecking(false); }
-  }, []);
-  // Beim Laden schnell (ohne git fetch), Button „Prüfen" holt den Remote-Stand frisch
-  useEffect(() => { void check(false); }, [check]);
-
-  useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [updateLog]);
-
-  // Nach dem Update den Dienst pollen, bis er wieder online ist (neuer Build läuft),
-  // dann „fertig" melden und die laufende Version anzeigen.
-  const pollForNewVersion = async (priorBuild?: string) => {
-    const started = Date.now();
-    while (Date.now() - started < 120_000) {
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        const res = await fetch('/health', { cache: 'no-store' });
-        if (res.ok) {
-          const h = await res.json().catch(() => null) as { version?: string } | null;
-          const now = h?.version;
-          if (now && priorBuild && now !== priorBuild) {
-            setUpdateLog(l => [...l, `✓ Neue Version v${now} aktiv – lade Seite neu…`]);
-            setTimeout(() => location.reload(), 1000);
-            return;
-          }
-        }
-      } catch { /* Dienst noch nicht erreichbar */ }
-    }
-  };
-
-  const startUpdate = () => {
-    if (!confirm(tt('Core-Hub jetzt aktualisieren? Der Dienst wird kurz neu gestartet.'))) return;
-    setUpdating(true);
-    setUpdateDone(false);
-    setUpdateLog(['▶ Update gestartet…']);
-    const priorBuild = ver?.current;
-    let finished = false;
-
-    const onDone = () => {
-      if (finished) return;
-      finished = true;
-      setUpdateLog(l => [...l, '', '✓ Installation abgeschlossen. Core-Hub wird neu gestartet…']);
-      setUpdating(false);
-      setUpdateDone(true);
-      void check(false);
-      void pollForNewVersion(priorBuild);
-    };
-
-    const es = new EventSource('/api/settings/update/stream');
-    es.onmessage = (evt) => {
-      try {
-        const d = JSON.parse(evt.data) as { line: string };
-        setUpdateLog(l => [...l, d.line]);
-      } catch { /* */ }
-    };
-    es.addEventListener('done', () => { es.close(); onDone(); });
-    es.onerror = () => { es.close(); onDone(); };
+  const setHidden = (next: string[]) => setPref(HIDDEN_NAV_PREF, next);
+  const toggle = (to: string, visible: boolean) => {
+    if (visible) setHidden(hidden.filter((h) => h !== to));
+    else if (!hidden.includes(to)) setHidden([...hidden, to]);
   };
 
   return (
-    <Panel title={tt('Version & Updates')} icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
-      actions={
-        <button className="btn btn--outline btn--sm" disabled={checking} onClick={() => check(true)}>
-          {checking ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />} Prüfen
+    <Panel
+      title={tt('Menüpunkte')}
+      icon={<Eye size={15} />}
+      subtitle={hidden.length ? tt('{n} ausgeblendet', { n: hidden.length }) : tt('alle sichtbar')}
+      storageKey="set-nav"
+      defaultCollapsed
+      actions={hidden.length > 0 ? (
+        <button className="btn btn--outline btn--sm" onClick={() => setHidden([])}>
+          <Eye size={13} /> {tt('Alle einblenden')}
         </button>
-      }
+      ) : undefined}
     >
       <div style={{ marginTop: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 22, fontWeight: 700 }}>Core-Hub v{ver?.current ?? '…'}</span>
-          {ver && ver.updateAvailable && (
-            <span className="badge badge--restarting" style={{ height: 26, padding: '0 12px' }}>
-              <ArrowUpCircle size={13} /> Update verfügbar: {ver.latest}
-            </span>
-          )}
-          {ver && !ver.updateAvailable && !ver.error && ver.latest && (
-            <span className="badge badge--running" style={{ height: 26, padding: '0 12px' }}>
-              <CheckCircle2 size={13} /> {tt('Aktuell')}
-            </span>
-          )}
+        <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 12 }}>
+          {tt('Blendet Einträge in der Seitenleiste aus. Schneller geht es per Rechtsklick direkt auf den Menüpunkt – wieder einblenden lässt er sich hier. Die Auswahl gilt nur für dein Benutzerkonto.')}
         </div>
-
-        {ver?.error && <div style={{ fontSize: 12.5, color: 'var(--color-warning)', marginTop: 10 }}>Versionsprüfung: {ver.error}</div>}
-
-        {ver?.updateAvailable && !updating && !updateDone && (
-          <div className="card" style={{ marginTop: 14, borderColor: 'var(--color-warning)' }}>
-            <div className="card-body">
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Neue Version {ver.latest} verfügbar</div>
-              <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 10 }}>
-                Core-Hub automatisch aktualisieren: neuen Code holen, Abhängigkeiten installieren und Dienst neu starten.
-                Deine Daten (Datenbank, Zertifikate) bleiben erhalten.
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn btn--primary btn--sm" onClick={startUpdate}>
-                  <ArrowUpCircle size={13} /> Jetzt aktualisieren
-                </button>
-                {ver.releaseUrl && (
-                  <a className="btn btn--outline btn--sm" href={ver.releaseUrl} target="_blank" rel="noreferrer">
-                    Release-Notes ansehen
-                  </a>
-                )}
-              </div>
-              <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 8 }}>
-                Manuell: <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, background: 'var(--color-surface-sunken)', padding: '1px 6px', borderRadius: 4 }}>{installCmd}</code>
-              </div>
+        {NAV.map((section) => (
+          <div key={section.labelKey} style={{ marginBottom: 14 }}>
+            <div className="section-heading" style={{ marginBottom: 6 }}>{t(section.labelKey)}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {section.items.map(({ to, icon: Icon, labelKey }) => {
+                const visible = !hidden.includes(to);
+                const locked = !canHide(to);
+                return (
+                  <div key={to} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 2px' }}>
+                    <Icon size={15} style={{ color: visible ? 'var(--color-text)' : 'var(--color-faint)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 13, color: visible ? 'var(--color-text)' : 'var(--color-faint)' }}>
+                      {t(labelKey)}
+                      {locked && <span style={{ fontSize: 11, color: 'var(--color-faint)', marginLeft: 8 }}>{tt('immer sichtbar')}</span>}
+                    </span>
+                    {!visible && <EyeOff size={13} style={{ color: 'var(--color-faint)' }} />}
+                    <Switch checked={visible} disabled={locked} onChange={(v) => toggle(to, v)} />
+                  </div>
+                );
+              })}
             </div>
           </div>
-        )}
-
-        {(updating || updateDone) && updateLog.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div ref={logRef} style={{ fontFamily: 'monospace', fontSize: 12, background: 'var(--color-input)', border: '1px solid var(--color-border)', borderRadius: 6, padding: '10px 14px', maxHeight: 300, overflowY: 'auto', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-              {updateLog.join('\n')}
-              {updating && <span style={{ animation: 'spin 1s linear infinite', display: 'inline-block', marginLeft: 6 }}>⟳</span>}
-            </div>
-            {updateDone && (
-              <button className="btn btn--primary btn--sm" style={{ marginTop: 10 }} onClick={() => location.reload()}>
-                <RotateCw size={13} /> Seite neu laden
-              </button>
-            )}
-            {updating && (
-              <button className="btn btn--outline btn--sm" style={{ marginTop: 10, marginLeft: 8 }} onClick={() => { setUpdating(false); setUpdateDone(true); }}>
-                {tt('Abbrechen')}
-              </button>
-            )}
-          </div>
-        )}
-
-        <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 12 }}>
-          Repository: {ver?.repo ?? '—'}
-          {ver?.method && ver.method !== 'none' ? ` · Prüfung via ${ver.method === 'github' ? 'GitHub-Releases' : 'Git'}` : ''}
-          {ver ? ` · zuletzt geprüft ${timeAgo(new Date(ver.checkedAt).getTime() / 1000)}` : ''}
-        </div>
+        ))}
       </div>
     </Panel>
   );
@@ -1292,6 +1206,8 @@ export function Settings() {
           { id: 'language', node: <LanguagePanel /> },
           { id: 'network', node: <NetworkPanel /> },
           { id: 'proxy', node: <ProxyVisibilityPanel /> },
+          { id: 'nav', node: <NavVisibilityPanel /> },
+          { id: 'update-source', node: <UpdateSourcePanel /> },
           { id: 'version', node: <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} /> },
           { id: 'password', node: <PasswordPanel /> },
           { id: '2fa', node: <TwoFactorPanel /> },

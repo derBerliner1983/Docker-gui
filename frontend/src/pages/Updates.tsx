@@ -4,6 +4,7 @@ import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
 import { Panel } from '../components/ui/Panel';
 import { Modal } from '../components/ui/Modal';
+import { UpdateSourcePanel, VersionPanel } from '../components/settings/UpdatePanels';
 import { api } from '../lib/api';
 import type { PackageUpdate } from '../lib/types';
 
@@ -93,6 +94,14 @@ export function Updates() {
         }
       />
       <main className="page">
+        {/* Core-Hub selbst aktualisieren: Update-Quelle (Git-Repository) und
+            Versionsauswahl inkl. Rückrollen auf einen früheren Stand.
+            Dieselben Panels stehen auch in den Einstellungen. */}
+        <VersionPanel installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />
+        <UpdateSourcePanel />
+
+        <div className="section-heading" style={{ margin: '18px 0 10px' }}>{tt('System-Pakete')}</div>
+
         {!available ? (
           <div className="empty-state">
             <div className="empty-state__icon"><Package size={44} strokeWidth={1} /></div>
