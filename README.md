@@ -199,6 +199,13 @@ Optionale Module (Docker, KVM, Samba, Caddy, ClamAV, UFW, fail2ban) brechen die
 Installation nicht mehr ab, wenn ein Paket fehlt – es gibt eine Warnung und das
 jeweilige Modul bleibt inaktiv.
 
+**npm ab Version 12** (z. B. auf Arch/CachyOS) führt Install-Skripte von
+Abhängigkeiten standardmäßig nicht mehr aus. Ohne sie wird `better-sqlite3` nicht
+kompiliert und der Dienst startet nicht (*„Could not locate the bindings file"*).
+Die nötigen Freigaben stehen deshalb in `backend/.npmrc` und `frontend/.npmrc`;
+zusätzlich prüft `install.sh` nach dem Build, ob die native Bindung wirklich lädt,
+und baut sie sonst gezielt nach.
+
 ### Update auf eine neue Version
 
 **In der Oberfläche:** *System-Updates* oder *Einstellungen* → „Version & Updates" → **„Jetzt aktualisieren"**
@@ -302,7 +309,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
 | **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
 | **18** | **Freie Update-Quelle** (eigenes Git-Repository/Branch, öffentlich oder privat mit verschlüsselt gespeichertem Token/Passwort, Verbindungstest), **Versionsauswahl inkl. Rollback** auf einen früheren Stand, **„Was ist neu?"-Popup** mit Beschreibungstext, Änderungen und Dateiliste (Volltext auch per Hover), **Menüpunkte per Rechtsklick ausblenden** und in den Einstellungen wieder einblenden | ✅ `v0.24.0` |
-| **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist | ✅ `v0.25.0` |
+| **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist · **npm-12-Freigaben** für native Module (`better-sqlite3`) inkl. Selbstreparatur im Installer | ✅ `v0.25.1` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen
