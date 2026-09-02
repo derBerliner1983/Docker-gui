@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Download, CheckCircle2, AlertTriangle, Package } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { useT, tt } from '../lib/i18n';
@@ -20,6 +20,8 @@ export function Updates() {
   const [applying, setApplying] = useState(false);
   const [output, setOutput] = useState('');
   const [outputOpen, setOutputOpen] = useState(false);
+  const [done, setDone] = useState(false);
+  const logRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +39,11 @@ export function Updates() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Log mitlaufen lassen, damit die neueste Zeile sichtbar bleibt.
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [output]);
+
   const check = async () => {
     setChecking(true);
     try { await api.system.checkUpdates(); await load(); }
@@ -44,29 +51,46 @@ export function Updates() {
     finally { setChecking(false); }
   };
 
-  const apply = async (packages?: string[]) => {
-    const label = packages ? `${packages.length} Paket(e)` : 'ALLE Updates';
-    if (!confirm(`${label} jetzt installieren?`)) return;
+  // Installation als Live-Stream: ein Systemupgrade mit über hundert Paketen
+  // dauert Minuten. Als einzelner Request brach das mit „Failed to fetch" ab,
+  // weil Browser bzw. Reverse-Proxy die Verbindung kappen. Jetzt läuft es über
+  // EventSource und die Ausgabe ist während des Laufs zu sehen.
+  const apply = (packages?: string[]) => {
+    const label = packages ? `${packages.length} Paket(e)` : `ALLE Updates (${updates.length})`;
+    if (!confirm(tt('{label} jetzt installieren?', { label }))) return;
     setApplying(true);
-    try {
-      const res = await api.system.applyUpdates(packages);
-      setOutput(res.output || 'Fertig.');
-      setOutputOpen(true);
-      setTimeout(() => setOutputOpen(false), 4000);
-      // Optimistically clear the installed packages immediately so the UI
-      // reflects the new state without waiting for apt's cache to settle.
-      if (packages) {
-        setUpdates((prev) => prev.filter((u) => !packages.includes(u.name)));
-      } else {
-        setUpdates([]);
-      }
-      // Re-sync with the real apt state after a short delay.
-      setTimeout(() => { void load(); }, 3000);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Fehler');
-    } finally {
+    setDone(false);
+    setOutput(`▶ ${tt('Installation gestartet…')}`);
+    setOutputOpen(true);
+
+    const q = packages?.length ? `?packages=${encodeURIComponent(packages.join(','))}` : '';
+    const es = new EventSource(`/api/system/updates/apply/stream${q}`);
+    let finished = false;
+    const finish = (ok: boolean) => {
+      if (finished) return;
+      finished = true;
+      es.close();
       setApplying(false);
-    }
+      setDone(true);
+      if (ok) {
+        // Erledigte Pakete sofort ausblenden, danach den echten Stand nachladen.
+        if (packages) setUpdates((prev) => prev.filter((u) => !packages.includes(u.name)));
+        else setUpdates([]);
+        setTimeout(() => { void load(); }, 2000);
+      }
+    };
+    es.onmessage = (evt) => {
+      try {
+        const d = JSON.parse(evt.data) as { line: string };
+        setOutput((o) => `${o}\n${d.line}`);
+      } catch { /* */ }
+    };
+    es.addEventListener('done', (evt) => {
+      let ok = true;
+      try { ok = (JSON.parse((evt as MessageEvent).data) as { ok: boolean }).ok; } catch { /* */ }
+      finish(ok);
+    });
+    es.onerror = () => finish(false);
   };
 
   return (
@@ -166,10 +190,25 @@ export function Updates() {
         )}
       </main>
 
-      <Modal open={outputOpen} title={tt('Update-Ausgabe')} onClose={() => setOutputOpen(false)} width={680}>
-        <div className="log-viewer" style={{ maxHeight: 460 }}>{output}</div>
-        <div style={{ marginTop: 10, fontSize: 12, color: 'var(--color-success)', textAlign: 'right' }}>
-          ✓ Fertig – Fenster schließt automatisch…
+      <Modal
+        open={outputOpen}
+        title={tt('Update-Ausgabe')}
+        // Während der Installation nicht schließbar – sonst bricht der Stream ab.
+        onClose={() => { if (!applying) setOutputOpen(false); }}
+        width={760}
+        footer={
+          done ? (
+            <button className="btn btn--primary btn--sm" onClick={() => setOutputOpen(false)}>
+              {tt('Schließen')}
+            </button>
+          ) : undefined
+        }
+      >
+        <div ref={logRef} className="log-viewer" style={{ maxHeight: 460, whiteSpace: 'pre-wrap' }}>{output}</div>
+        <div style={{ marginTop: 10, fontSize: 12, textAlign: 'right', color: applying ? 'var(--color-muted)' : 'var(--color-success)' }}>
+          {applying
+            ? tt('Läuft… das Fenster bitte offen lassen.')
+            : done ? tt('✓ Fertig.') : ''}
         </div>
       </Modal>
     </>

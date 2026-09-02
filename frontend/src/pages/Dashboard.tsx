@@ -4,6 +4,7 @@ import { Cpu, MemoryStick, Network, ArrowDown, ArrowUp, ChevronDown, ChevronRigh
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { SortablePanels } from '../components/ui/SortablePanels';
+import { HardwarePanel } from '../components/system/HardwarePanel';
 import { Donut, donutColor } from '../components/ui/Donut';
 import { Sparkline } from '../components/ui/Sparkline';
 import { api } from '../lib/api';
@@ -310,6 +311,7 @@ export function Dashboard() {
           )}
         </Panel>
           ) },
+          { id: 'hardware', node: <HardwarePanel /> },
           { id: 'network', node: (
         /* ── NETZWERK ── */
         <Panel

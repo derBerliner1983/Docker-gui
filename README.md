@@ -108,6 +108,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 🔄 System-Updates
 - apt / dnf / pacman: Updates suchen, einzeln oder alle installieren
 - **„Nach Updates suchen"** und **„Alle installieren"** stehen direkt am Panel „Verfügbare Updates" – also bei der Liste, auf die sie sich beziehen
+- Die Installation läuft als **Live-Stream** mit sichtbarer Paketmanager-Ausgabe – ein Upgrade mit über hundert Paketen dauert Minuten und brach als einzelner Request mit „Failed to fetch" ab
 - Fehlermeldungen nennen die **tatsächliche Ursache** (fehlendes Paket, gesperrte Datenbank, Netzfehler); der Hinweis auf fehlende Root-Rechte erscheint nur noch, wenn sudo das wirklich meldet
 - Auf Arch/CachyOS wird `pacman -Syu` verwendet (kein Teilupgrade mit veraltetem Index), das Zeitlimit reicht für ein volles Systemupgrade
 
@@ -142,6 +143,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ### 🧠 Hardware & Speicheraufteilung
 - Zeigt getrennt nach Quelle, wie der Speicher aufgeteilt ist: **verbaut** (BIOS/SMBIOS), **für das System nutzbar** (Kernel), **fest der GPU zugeteilt** (UMA-Framebuffer aus dem BIOS) und **dynamisch leihbar** (GTT)
+- Zu finden auf dem **Dashboard**
 - Gedacht für APUs mit gemeinsamem Speicher wie **AMD Ryzen AI Max** – dort ist genau diese Unterscheidung die Frage
 - Dazu Speicherriegel, BIOS-Version und die **Kernel-Boot-Parameter**, die die Aufteilung beeinflussen (`amdgpu.gttsize`, `amdgpu.vramlimit`, `mem`, `memmap` …) mit Erklärung
 
@@ -159,6 +161,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Konfigurations-Migration**: Export/Import als `.tar.gz` (DB + Caddy-Zertifikate + SMB)
 
 ### ↕️ Anpassbare Oberfläche (pro Benutzer)
+- **Layout bearbeiten**: Knopf über jeder Panel-Liste – im Bearbeiten-Modus lassen sich Panels sortieren, **ausblenden** und über Chips wieder **einblenden**; „Zurücksetzen" stellt den Auslieferungszustand her
 - **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
 - **Menüpunkte ausblenden**: **Rechtsklick** direkt auf den Eintrag in der Seitenleiste → „Menüpunkt ausblenden"
 - **Wieder einblenden** unter *Einstellungen → Menüpunkte* (Schalter je Eintrag, „Alle einblenden") – „Einstellungen" selbst bleibt immer sichtbar
@@ -329,6 +332,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **18** | **Freie Update-Quelle** (eigenes Git-Repository/Branch, öffentlich oder privat mit verschlüsselt gespeichertem Token/Passwort, Verbindungstest), **Versionsauswahl inkl. Rollback** auf einen früheren Stand, **„Was ist neu?"-Popup** mit Beschreibungstext, Änderungen und Dateiliste (Volltext auch per Hover), **Menüpunkte per Rechtsklick ausblenden** und in den Einstellungen wieder einblenden | ✅ `v0.24.0` |
 | **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist · **npm-12-Freigaben** für native Module (`better-sqlite3`) inkl. Selbstreparatur im Installer · **better-sqlite3 12.x** für Node 24+/C++20 | ✅ `v0.26.0` |
 | **20** | **Hardware- & Speicheraufteilung** (BIOS vs. Kernel vs. GPU-UMA/GTT, Kernel-Parameter) für APUs mit gemeinsamem Speicher, **Reverse-Proxy entfernbar**, echte Fehlerursachen statt pauschalem „keine Root-Rechte" | ✅ `v0.27.0` |
+| **21** | **Editor-Modus** für Panels (sortieren, ausblenden, einblenden, zurücksetzen), **Update-Installation als Live-Stream**, Git `safe.directory` systemweit, verwaiste pacman-Sperre wird gelöst | ✅ `v0.28.0` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen

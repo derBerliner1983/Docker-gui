@@ -38,7 +38,7 @@ function readBuild(): string {
     try { const v = fs.readFileSync(p, 'utf8').trim(); if (v) return v.replace(/[^a-zA-Z0-9.]/g, ''); } catch { /* try next */ }
   }
   try {
-    const h = execSync('git rev-parse --short=7 HEAD', {
+    const h = execSync('git -c safe.directory=* rev-parse --short=7 HEAD', {
       cwd: __dirname, stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000,
     }).toString().trim();
     if (/^[0-9a-f]{4,}$/.test(h)) return h;
@@ -92,7 +92,9 @@ function findRepoRoot(): string | null {
 
 /** git im Repo ausführen – erst direkt, bei Rechtefehler via sudo (Klon kann root gehören). */
 function gitCmd(repoRoot: string, args: string, timeout = 8000): string {
-  const cmd = `git -C "${repoRoot}" ${args}`;
+  // safe.directory mitgeben – das Quell-Verzeichnis gehört meist einem anderen
+  // Benutzer als dem Dienst, sonst bricht Git mit „dubious ownership" ab.
+  const cmd = `git -c safe.directory="${repoRoot}" -C "${repoRoot}" ${args}`;
   try { return execSync(cmd, { timeout, stdio: ['ignore', 'pipe', 'ignore'] }).toString(); }
   catch { return privExec(cmd, { timeout }); }
 }

@@ -47,13 +47,40 @@ fi
 # Wird beim ersten Paketbefehl einmal aktualisiert, danach nicht mehr.
 PKG_REFRESHED=0
 
+# Verwaiste pacman-Sperre entfernen.
+# /var/lib/pacman/db.lck bleibt liegen, wenn ein früherer pacman-Lauf abgebrochen
+# wurde (Strg-C, Absturz). Jeder weitere Aufruf scheitert dann mit „Kann Datenbank
+# nicht sperren" – und weil die Paketbefehle Fehler bewusst schlucken, würden
+# Abhängigkeiten stillschweigend übersprungen. Entfernt wird die Sperre nur, wenn
+# nachweislich kein pacman läuft; genau das empfiehlt auch pacmans eigene Meldung.
+pacman_unlock() {
+  local lock="/var/lib/pacman/db.lck"
+  [ -e "$lock" ] || return 0
+  if pgrep -x pacman >/dev/null 2>&1 || pgrep -x pacman-key >/dev/null 2>&1; then
+    warn "pacman läuft gerade – warte bis zu 60 Sekunden auf das Ende..."
+    local i=0
+    while { pgrep -x pacman >/dev/null 2>&1 || pgrep -x pacman-key >/dev/null 2>&1; } && [ "$i" -lt 60 ]; do
+      sleep 1; i=$((i+1))
+    done
+  fi
+  if pgrep -x pacman >/dev/null 2>&1; then
+    warn "Es läuft weiterhin ein pacman-Prozess – die Sperre bleibt bestehen."
+    return 1
+  fi
+  if [ -e "$lock" ]; then
+    warn "Entferne verwaiste pacman-Sperre ($lock) – es läuft kein Paketmanager."
+    rm -f "$lock" || return 1
+  fi
+  return 0
+}
+
 # Paketindex aktualisieren (nur einmal pro Lauf).
 pkg_refresh() {
   [ "$PKG_REFRESHED" = "1" ] && return 0
   PKG_REFRESHED=1
   case "$PM" in
     apt)    apt-get update -qq 2>/dev/null || true ;;
-    pacman) pacman -Sy --noconfirm >/dev/null 2>&1 || true ;;
+    pacman) pacman -Sy --noconfirm >/dev/null 2>&1 || { pacman_unlock && pacman -Sy --noconfirm >/dev/null 2>&1; } || true ;;
     dnf)    dnf -q makecache 2>/dev/null || true ;;
     zypper) zypper --non-interactive refresh >/dev/null 2>&1 || true ;;
   esac
@@ -77,7 +104,7 @@ pkg_install() {
   pkg_refresh
   case "$PM" in
     apt)    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@" 2>/dev/null ;;
-    pacman) pacman -S --noconfirm --needed "$@" ;;
+    pacman) pacman -S --noconfirm --needed "$@" || { pacman_unlock && pacman -S --noconfirm --needed "$@"; } ;;
     dnf)    dnf install -y "$@" ;;
     zypper) zypper --non-interactive install "$@" ;;
     *)      return 1 ;;
@@ -645,7 +672,7 @@ if [ "${1:-}" = "--update" ]; then
     NEW_VERSION="$(cat "$SOURCE_DIR/VERSION" 2>/dev/null || cat ./VERSION 2>/dev/null || echo '0.0.0')"
   elif command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
     info "Hole neueste Version von GitHub (in $SOURCE_DIR)..."
-    git config --global --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
+    git config --system --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
     # Aktuellen Branch + zugehörigen Remote-Branch bestimmen
     GIT_BRANCH="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
     GIT_UPSTREAM="$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo '')"
@@ -744,7 +771,9 @@ info "Node.js $(node -v) OK"
 
 # Build-Tools für native Module (better-sqlite3)
 info "Installiere Build-Tools..."
-pkg_install_logical build || true
+# Ohne Compiler und Python lässt sich better-sqlite3 nicht bauen – ein
+# Fehlschlag darf hier nicht unbemerkt durchrutschen.
+pkg_install_logical build || warn "Build-Tools konnten nicht installiert werden – falls der Backend-Build gleich scheitert, ist das die Ursache."
 
 # dmidecode liefert die vom BIOS gemeldeten Hardware-Daten (verbauter Speicher,
 # Speicherriegel, BIOS-Version). Ohne das Paket kann Core-Hub nur die
@@ -899,6 +928,14 @@ else
 fi
 # Quell-Verzeichnis merken, damit das In-App-Update später `git pull` hier ausführt
 echo "$SOURCE_DIR" > "$DATA_DIR/source_dir"
+# Git erlauben, in diesem Verzeichnis zu arbeiten, obwohl es einem anderen
+# Benutzer gehört. --system (nicht --global), damit es für root, den
+# Dienstbenutzer und die angemeldete Person gleichermaßen gilt – sonst bricht
+# sowohl `sudo git pull` als auch das In-App-Update mit „dubious ownership" ab.
+if command -v git &>/dev/null && [ -d "$SOURCE_DIR/.git" ]; then
+  git config --system --get-all safe.directory 2>/dev/null | grep -qxF "$SOURCE_DIR" \
+    || git config --system --add safe.directory "$SOURCE_DIR" 2>/dev/null || true
+fi
 # Build-Datei schreiben (vom Backend für die angezeigte Version gelesen)
 if [ -n "$GIT_HASH" ]; then
   echo "$GIT_HASH" > "$INSTALL_DIR/BUILD"

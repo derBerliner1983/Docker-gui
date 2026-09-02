@@ -11,7 +11,6 @@ import { api } from '../lib/api';
 import { recordPcm } from '../lib/voice';
 import { formatUptime, timeAgo } from '../lib/utils';
 import { UpdateSourcePanel, VersionPanel } from '../components/settings/UpdatePanels';
-import { HardwarePanel } from '../components/system/HardwarePanel';
 import { useI18n, useT, LANGUAGES, tt } from '../lib/i18n';
 import { usePrefs } from '../lib/prefs';
 import { NAV, HIDDEN_NAV_PREF, canHide } from '../lib/navItems';
@@ -598,9 +597,11 @@ function ProxyVisibilityPanel() {
               <option value="traefik" disabled>{t('settings.proxy.backend.traefik')}</option>
             </select>
             <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6, lineHeight: 1.5, maxWidth: 460 }}>{t('settings.proxy.backend.hint')}</div>
-            <ProxyRemoval />
           </div>
         )}
+        {/* Bewusst AUSSERHALB des enabled-Blocks: gerade wer den Proxy
+            ausgeblendet hat, will ihn loswerden können. */}
+        <ProxyRemoval />
       </div>
     </Panel>
   );
@@ -1281,7 +1282,6 @@ export function Settings() {
           { id: 'smtp', node: <SmtpPanel /> },
           { id: 'notifications', node: <NotificationsPanel /> },
           { id: 'migration', node: <MigrationPanel /> },
-          { id: 'hardware', node: <HardwarePanel /> },
           { id: 'sysinfo', node: (
         <Panel title={tt('System-Info')} icon={<Server size={15} />} subtitle={info?.hostname} storageKey="set-info" defaultCollapsed>
           {info && (
