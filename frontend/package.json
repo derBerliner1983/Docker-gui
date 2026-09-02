@@ -1,7 +1,10 @@
 {
   "name": "core-hub-frontend",
-  "version": "0.25.1",
+  "version": "0.25.2",
   "private": true,
+  "allowScripts": {
+    "esbuild": true
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
