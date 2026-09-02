@@ -4,6 +4,7 @@ import Dockerode from 'dockerode';
 import { execSync } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 
+import { readHardware } from '../lib/hardware';
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 
 function safeExec(cmd: string, timeout = 5000): string {
@@ -111,6 +112,19 @@ function detectGpus(): GpuStat[] {
 }
 
 export async function systemRoutes(fastify: FastifyInstance) {
+  // ── Hardware & Speicheraufteilung ───────────────────────────────────────
+  // Trennt bewusst nach Quelle: was das BIOS als verbaut meldet, was der Kernel
+  // als Arbeitsspeicher sieht, was fest der GPU zugeteilt ist (UMA) und was sie
+  // sich dynamisch leiht (GTT). Bei APUs mit gemeinsamem Speicher – etwa
+  // AMD Ryzen AI Max – ist genau diese Unterscheidung die interessante.
+  fastify.get('/api/system/hardware', { preHandler: requireAuth }, async (_req, reply) => {
+    try {
+      reply.send(readHardware());
+    } catch (err: unknown) {
+      reply.status(500).send({ error: err instanceof Error ? err.message : 'Hardware-Auslesen fehlgeschlagen' });
+    }
+  });
+
   // ── Full system stats (CPU per core, RAM breakdown, disk, network) ──
   fastify.get('/api/system/stats', { preHandler: requireAuth }, async (_req, reply) => {
     try {

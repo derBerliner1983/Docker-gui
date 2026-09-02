@@ -22,7 +22,7 @@ export function detectPM(): PkgManager | null {
 }
 
 /** Logische Paketnamen, die zur Laufzeit nachinstalliert werden können. */
-export type LogicalPackage = 'ufw' | 'fail2ban' | 'clamav' | 'autoupdate' | 'samba' | 'docker';
+export type LogicalPackage = 'ufw' | 'fail2ban' | 'clamav' | 'autoupdate' | 'samba' | 'docker' | 'caddy';
 
 const NAMES: Record<LogicalPackage, Record<PkgManager, string[]>> = {
   ufw:      { apt: ['ufw'], pacman: ['ufw'], dnf: ['ufw'], zypper: ['ufw'] },
@@ -32,6 +32,7 @@ const NAMES: Record<LogicalPackage, Record<PkgManager, string[]>> = {
   autoupdate: { apt: ['unattended-upgrades'], pacman: [], dnf: ['dnf-automatic'], zypper: [] },
   samba:    { apt: ['samba'], pacman: ['samba'], dnf: ['samba'], zypper: ['samba'] },
   docker:   { apt: ['docker.io'], pacman: ['docker'], dnf: ['moby-engine'], zypper: ['docker'] },
+  caddy:    { apt: ['caddy'], pacman: ['caddy'], dnf: ['caddy'], zypper: ['caddy'] },
 };
 
 /** Echte Paketnamen für ein logisches Paket – leer, wenn es die Distribution nicht kennt. */
@@ -92,4 +93,21 @@ export function isInstalled(pkg: string, pm = detectPM()): boolean {
 export function isLogicalInstalled(logical: LogicalPackage): boolean {
   const names = packageNames(logical);
   return names.length > 0 && isInstalled(names[0]);
+}
+
+/** Entfernungsbefehl für den erkannten Paketmanager. */
+export function removeCommand(pkgs: string[], pm = detectPM()): string | null {
+  const safe = pkgs.map((p) => p.replace(/[^a-zA-Z0-9._+-]/g, '')).filter(Boolean);
+  if (!pm || safe.length === 0) return null;
+  switch (pm) {
+    case 'apt':
+      return `/bin/bash -c "DEBIAN_FRONTEND=noninteractive apt-get remove -y ${safe.join(' ')}"`;
+    case 'pacman':
+      // -Rs entfernt auch nicht mehr benötigte Abhängigkeiten.
+      return `pacman -Rs --noconfirm ${safe.join(' ')}`;
+    case 'dnf':
+      return `dnf remove -y ${safe.join(' ')}`;
+    case 'zypper':
+      return `zypper --non-interactive remove ${safe.join(' ')}`;
+  }
 }

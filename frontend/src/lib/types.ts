@@ -721,3 +721,50 @@ export interface CreateContainerData {
   icon?: string;
   networks?: { id: string; ip?: string }[];
 }
+
+// ── Hardware & Speicheraufteilung ───────────────────────────────────────────
+// Bei APUs mit gemeinsamem Speicher (z. B. AMD Ryzen AI Max) ist entscheidend,
+// welcher Wert woher stammt: BIOS/UEFI, Kernel oder GPU-Treiber.
+
+export interface MemoryModule { size: string; type: string; speed: string; locator: string }
+
+export interface MemorySplit {
+  installedBytes: number;
+  kernelTotalBytes: number;
+  kernelAvailableBytes: number;
+  reservedBytes: number;
+  modules: MemoryModule[];
+  installedSource: 'dmidecode' | 'unbekannt';
+}
+
+export interface GpuMemory {
+  card: string;
+  name: string;
+  driver: string;
+  vramTotalBytes: number;
+  vramUsedBytes: number;
+  visibleVramBytes: number;
+  gttTotalBytes: number;
+  gttUsedBytes: number;
+  unified: boolean;
+}
+
+export interface FirmwareInfo {
+  biosVendor: string; biosVersion: string; biosDate: string;
+  boardVendor: string; boardName: string; productName: string;
+  available: boolean;
+}
+
+export interface KernelMemParam { key: string; value: string; note: string }
+
+export interface KernelInfo { version: string; cmdline: string; memoryParams: KernelMemParam[] }
+
+export interface HardwareInfo {
+  cpu: { model: string; vendor: string; cores: number; threads: number };
+  memory: MemorySplit;
+  gpus: GpuMemory[];
+  firmware: FirmwareInfo;
+  kernel: KernelInfo;
+  sharedMemory: boolean;
+  hints: string[];
+}

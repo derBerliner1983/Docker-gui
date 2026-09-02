@@ -371,7 +371,7 @@ write_sudoers() {
   local CMDS="apt-get apt dnf pacman zypper systemctl \
     useradd userdel usermod groupadd chpasswd smbpasswd smbcontrol \
     cp tar mkdir rm mv sed chown chmod tee bash \
-    virsh virt-install qemu-img caddy nginx ufw ss sysctl reboot \
+    virsh virt-install qemu-img caddy nginx ufw ss sysctl reboot dmidecode \
     dpkg-reconfigure debconf-set-selections freshclam clamscan clamdscan git"
 
   # Bewusst ALLE Pfadvarianten eintragen – auch für noch nicht installierte
@@ -745,6 +745,13 @@ info "Node.js $(node -v) OK"
 # Build-Tools für native Module (better-sqlite3)
 info "Installiere Build-Tools..."
 pkg_install_logical build || true
+
+# dmidecode liefert die vom BIOS gemeldeten Hardware-Daten (verbauter Speicher,
+# Speicherriegel, BIOS-Version). Ohne das Paket kann Core-Hub nur die
+# Kernel-Sicht anzeigen und nicht sagen, wie viel Speicher fest reserviert ist.
+if ! command -v dmidecode &>/dev/null; then
+  pkg_install dmidecode 2>/dev/null || warn "dmidecode konnte nicht installiert werden – BIOS-Speicherdaten bleiben unbekannt."
+fi
 
 # Abhängigkeiten installieren (alle Module)
 info "Installiere System-Abhängigkeiten..."

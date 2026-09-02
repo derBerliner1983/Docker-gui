@@ -107,7 +107,9 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ### 🔄 System-Updates
 - apt / dnf / pacman: Updates suchen, einzeln oder alle installieren
-- **„Alle installieren"** steht auch direkt am Panel-Kopf – bei langen Paketlisten ist die Topbar sonst weggescrollt
+- **„Nach Updates suchen"** und **„Alle installieren"** stehen direkt am Panel „Verfügbare Updates" – also bei der Liste, auf die sie sich beziehen
+- Fehlermeldungen nennen die **tatsächliche Ursache** (fehlendes Paket, gesperrte Datenbank, Netzfehler); der Hinweis auf fehlende Root-Rechte erscheint nur noch, wenn sudo das wirklich meldet
+- Auf Arch/CachyOS wird `pacman -Syu` verwendet (kein Teilupgrade mit veraltetem Index), das Zeitlimit reicht für ein volles Systemupgrade
 
 ### 💾 Backups
 - Docker-Volumes, Verzeichnisse (tar.gz), VM-qcow2 – Download / Löschen
@@ -138,6 +140,11 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Deutsch = Schlüssel**: jeder deutsche Quelltext ist selbst der Übersetzungs-Schlüssel – fehlt eine Übersetzung, erscheint automatisch der deutsche Originaltext
 - **Sprache leicht anpassbar**: neue Sprache = eine Locale-Datei mit `deutsch → übersetzt`-Zuordnungen, fertig (`frontend/src/lib/locales/`)
 
+### 🧠 Hardware & Speicheraufteilung
+- Zeigt getrennt nach Quelle, wie der Speicher aufgeteilt ist: **verbaut** (BIOS/SMBIOS), **für das System nutzbar** (Kernel), **fest der GPU zugeteilt** (UMA-Framebuffer aus dem BIOS) und **dynamisch leihbar** (GTT)
+- Gedacht für APUs mit gemeinsamem Speicher wie **AMD Ryzen AI Max** – dort ist genau diese Unterscheidung die Frage
+- Dazu Speicherriegel, BIOS-Version und die **Kernel-Boot-Parameter**, die die Aufteilung beeinflussen (`amdgpu.gttsize`, `amdgpu.vramlimit`, `mem`, `memmap` …) mit Erklärung
+
 ### ⚙️ Einstellungen
 - Passwort & 2FA, System-Info, Version & Update-Prüfung (git + GitHub-Releases)
 - **1-Klick-Update** in der Oberfläche (git pull + install.sh, Live-Log) – nach der Installation erscheint sofort der **„Seite neu laden"**-Button (kein manuelles F5 nötig)
@@ -145,6 +152,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
   - **Öffentlich**: keine Zugangsdaten nötig
   - **Privat**: Benutzername + **Zugriffstoken** (empfohlen) oder Passwort – **AES-256-GCM-verschlüsselt** gespeichert, nie wieder ausgeliefert und niemals im Log sichtbar
   - **Verbindungstest** direkt in der Oberfläche
+- **Reverse-Proxy entfernen**: Caddy stoppen und aus dem Autostart nehmen, auf Wunsch auch das Paket deinstallieren. Die von Core-Hub erzeugte Caddyfile wird gesichert, eine eigene Konfiguration bleibt unangetastet
 - **Versionsauswahl mit Rollback**: vorgeschlagen wird immer die neueste Version; per Dropdown lässt sich auch ein **früherer Stand** (Tag oder Commit inkl. Datum & Versionsnummer) einspielen
 - **„Was ist neu?"** – vor dem Update sehen, was der Stand bringt: Titel und Beschreibung direkt als Vorschau (voller Text per **Hover**) und im **Popup** alle enthaltenen Änderungen mit Beschreibungstext, Autor und Datum sowie die geänderten Dateien mit Zeilenbilanz. Bei einem Rollback wird angezeigt, welche Änderungen dabei **wegfallen**
 - **IPv4/IPv6-Umschalter**: standardmäßig **nur IPv4**; IPv6 bei Bedarf aktivierbar (persistent via `sysctl`)
@@ -320,6 +328,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
 | **18** | **Freie Update-Quelle** (eigenes Git-Repository/Branch, öffentlich oder privat mit verschlüsselt gespeichertem Token/Passwort, Verbindungstest), **Versionsauswahl inkl. Rollback** auf einen früheren Stand, **„Was ist neu?"-Popup** mit Beschreibungstext, Änderungen und Dateiliste (Volltext auch per Hover), **Menüpunkte per Rechtsklick ausblenden** und in den Einstellungen wieder einblenden | ✅ `v0.24.0` |
 | **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist · **npm-12-Freigaben** für native Module (`better-sqlite3`) inkl. Selbstreparatur im Installer · **better-sqlite3 12.x** für Node 24+/C++20 | ✅ `v0.26.0` |
+| **20** | **Hardware- & Speicheraufteilung** (BIOS vs. Kernel vs. GPU-UMA/GTT, Kernel-Parameter) für APUs mit gemeinsamem Speicher, **Reverse-Proxy entfernbar**, echte Fehlerursachen statt pauschalem „keine Root-Rechte" | ✅ `v0.27.0` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen

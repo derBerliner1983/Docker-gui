@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { privExec, safeExec, hasBinary } from '../lib/privilege';
+import { privExec, safeExec, hasBinary, describeExecError } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 interface InstalledPackage {
@@ -188,8 +188,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         auditQueries.log.run(req.user.id, 'system.package.install', pkgs.join(','));
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Installation fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
+        reply.status(500).send({ error: describeExecError(err) });
       }
     },
   );
@@ -219,8 +218,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         auditQueries.log.run(req.user.id, purge ? 'system.package.purge' : 'system.package.remove', pkgs.join(','));
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Entfernen fehlgeschlagen';
-        reply.status(500).send({ error: msg.includes('sudo') ? 'Keine Root-Rechte – bitte einmal „sudo bash install.sh --fix-perms“ ausführen (aktualisiert die sudoers-Rechte).' : msg });
+        reply.status(500).send({ error: describeExecError(err) });
       }
     },
   );
