@@ -19,7 +19,9 @@ function Bar({ segments }: { segments: Array<{ label: string; bytes: number; col
           <div
             key={s.label}
             title={`${s.label}: ${gb(s.bytes)}`}
-            style={{ width: `${pct(s.bytes, total)}%`, background: s.color }}
+            // minWidth, damit ein sehr kleiner Anteil (z. B. 0,5 GB UMA neben
+            // 96 GB GTT) nicht unsichtbar wird.
+            style={{ width: `${pct(s.bytes, total)}%`, minWidth: 4, background: s.color }}
           />
         ))}
       </div>

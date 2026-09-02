@@ -202,7 +202,13 @@ export function gitRun(repoRoot: string | null, args: string, timeout = 20000): 
     GIT_CONFIG_NOSYSTEM: '1',
     ...(askpass ? { GIT_ASKPASS: askpass, SSH_ASKPASS: askpass } : {}),
   };
-  const base = `git ${repoRoot ? `-C ${shq(repoRoot)} ` : ''}${args}`;
+  // safe.directory je Aufruf mitgeben: das Quell-Verzeichnis gehört oft einem
+  // anderen Benutzer (z. B. dem Konto, das geklont hat), der Dienst läuft aber
+  // als core-hub bzw. root. Git verweigert dann mit „dubious ownership".
+  // Als Parameter statt globaler Konfiguration, damit es unabhängig davon
+  // funktioniert, unter welchem Benutzer der Aufruf landet.
+  const safeDir = repoRoot ? `-c ${shq(`safe.directory=${repoRoot}`)} ` : '';
+  const base = `git ${safeDir}${repoRoot ? `-C ${shq(repoRoot)} ` : ''}${args}`;
   try {
     try {
       return execSync(base, { timeout, env, stdio: ['ignore', 'pipe', 'pipe'] }).toString();
@@ -321,9 +327,10 @@ function versionsFor(repoRoot: string, shas: string[]): Map<string, string> {
   const map = new Map<string, string>();
   if (shas.length === 0) return map;
   const list = shas.map((s) => shq(s)).join(' ');
+  const safeDir = shq(`safe.directory=${repoRoot}`);
   const script =
     `for s in ${list}; do printf '%s %s\\n' "$s" ` +
-    `"$(git -C ${shq(repoRoot)} show "$s:VERSION" 2>/dev/null | tr -d '[:space:]')"; done`;
+    `"$(git -c ${safeDir} -C ${shq(repoRoot)} show "$s:VERSION" 2>/dev/null | tr -d '[:space:]')"; done`;
   let out = '';
   try {
     out = execSync(`/bin/bash -c ${shq(script)}`, { timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] }).toString();
