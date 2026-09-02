@@ -202,9 +202,11 @@ jeweilige Modul bleibt inaktiv.
 **npm ab Version 12** (z. B. auf Arch/CachyOS) führt Install-Skripte von
 Abhängigkeiten standardmäßig nicht mehr aus. Ohne sie wird `better-sqlite3` nicht
 kompiliert und der Dienst startet nicht (*„Could not locate the bindings file"*).
-Die nötigen Freigaben stehen deshalb in `backend/.npmrc` und `frontend/.npmrc`;
-zusätzlich prüft `install.sh` nach dem Build, ob die native Bindung wirklich lädt,
-und baut sie sonst gezielt nach.
+Die nötigen Freigaben stehen deshalb im Feld `allowScripts` der jeweiligen
+`package.json` (npm 12 zieht dieses Feld einer `.npmrc` vor und ignoriert die
+`.npmrc` dann komplett). Zusätzlich prüft `install.sh` nach dem Build, ob die
+native Bindung wirklich lädt, und baut sie sonst gezielt nach – schlägt auch das
+fehl, wird das Build-Log direkt ausgegeben statt verschluckt.
 
 ### Update auf eine neue Version
 
