@@ -107,6 +107,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 
 ### 🔄 System-Updates
 - apt / dnf / pacman: Updates suchen, einzeln oder alle installieren
+- **„Alle installieren"** steht auch direkt am Panel-Kopf – bei langen Paketlisten ist die Topbar sonst weggescrollt
 
 ### 💾 Backups
 - Docker-Volumes, Verzeichnisse (tar.gz), VM-qcow2 – Download / Löschen
@@ -153,6 +154,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
 - **Menüpunkte ausblenden**: **Rechtsklick** direkt auf den Eintrag in der Seitenleiste → „Menüpunkt ausblenden"
 - **Wieder einblenden** unter *Einstellungen → Menüpunkte* (Schalter je Eintrag, „Alle einblenden") – „Einstellungen" selbst bleibt immer sichtbar
+- Das Kontextmenü hängt am `<body>` und richtet seine Breite am längsten Eintrag aus; es wird weder von der Seitenleiste beschnitten noch ragt es aus dem Fenster
 - Reihenfolge und Sichtbarkeit werden **serverseitig pro Benutzer** gespeichert – jeder hat sein eigenes Layout
 
 ---
