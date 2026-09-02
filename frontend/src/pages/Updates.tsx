@@ -125,6 +125,23 @@ export function Updates() {
               icon={<Package size={15} />}
               subtitle={`${updates.length} Paket(e)`}
               storageKey="updates"
+              // Die Knöpfe stehen zusätzlich hier am Panel: bei vielen Paketen
+              // ist die Topbar längst weggescrollt und "Alle installieren" wäre
+              // sonst nicht mehr erreichbar.
+              actions={
+                <>
+                  <button className="btn btn--outline btn--sm" onClick={check} disabled={checking || applying}>
+                    {checking ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <RefreshCw size={13} />}
+                    {tt('Nach Updates suchen')}
+                  </button>
+                  {updates.length > 0 && (
+                    <button className="btn btn--primary btn--sm" onClick={() => apply()} disabled={applying}>
+                      {applying ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Download size={13} />}
+                      {tt('Alle installieren')} ({updates.length})
+                    </button>
+                  )}
+                </>
+              }
             >
               {updates.length === 0 ? (
                 <div className="empty-state" style={{ padding: '40px 20px' }}>

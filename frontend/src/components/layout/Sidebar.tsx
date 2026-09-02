@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Moon, Sun, ChevronLeft, ChevronRight, LogOut, EyeOff, Settings as SettingsIcon,
 } from 'lucide-react';
@@ -46,6 +47,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const [dragOver, setDragOver] = useState<string | null>(null);
   // Kontextmenü (Rechtsklick auf einen Menüpunkt) → Ausblenden
   const [menu, setMenu] = useState<{ x: number; y: number; to: string; label: string } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.settings.version()
@@ -54,6 +56,21 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
     api.ki.status().then((s) => setKiInstalled(s.installed)).catch(() => {});
     api.settings.getProxyVisibility().then((p) => setProxyVisible(p.enabled)).catch(() => {});
   }, []);
+
+  // Das Menü wird erst am Mauszeiger gerendert und danach ins sichtbare Fenster
+  // geschoben. Vorher ist seine Breite unbekannt – eine feste Annahme würde es
+  // je nach Sprache und Textlänge abschneiden.
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!menu || !el) return;
+    const pad = 8;
+    const r = el.getBoundingClientRect();
+    const left = Math.max(pad, Math.min(menu.x, window.innerWidth - r.width - pad));
+    const top = Math.max(pad, Math.min(menu.y, window.innerHeight - r.height - pad));
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.visibility = 'visible';
+  }, [menu]);
 
   // Kontextmenü schließen, sobald irgendwo geklickt / gescrollt / ESC gedrückt wird
   useEffect(() => {
@@ -169,33 +186,47 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         })}
       </nav>
 
-      {menu && (
+      {/* Das Kontextmenü hängt bewusst am <body>: die Sidebar hat einen
+          backdrop-filter (macht sie zum Bezugsrahmen für position:fixed) und
+          overflow:hidden – als Kind der Sidebar würde das Menü daran
+          abgeschnitten. */}
+      {menu && createPortal(
         <div
           role="menu"
+          ref={menuRef}
           className="card"
           style={{
-            position: 'fixed', left: Math.min(menu.x, window.innerWidth - 240), top: Math.min(menu.y, window.innerHeight - 110),
-            zIndex: 900, minWidth: 220, padding: 6, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+            // Breite richtet sich nach dem längsten Eintrag, damit nichts
+            // abgeschnitten wird; Position setzt der Layout-Effekt oben.
+            position: 'fixed', left: menu.x, top: menu.y, visibility: 'hidden',
+            zIndex: 900, width: 'max-content', minWidth: 200, maxWidth: 'min(320px, calc(100vw - 16px))',
+            padding: 6, boxShadow: '0 8px 24px rgba(0,0,0,.35)',
           }}
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
         >
-          <div style={{ fontSize: 11, color: 'var(--color-faint)', padding: '4px 8px 6px' }}>{menu.label}</div>
+          <div style={{
+            fontSize: 11, color: 'var(--color-faint)', padding: '4px 8px 6px',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {menu.label}
+          </div>
           <button
             className="btn btn--outline btn--sm"
             style={{ width: '100%', justifyContent: 'flex-start' }}
             onClick={() => hideItem(menu.to)}
           >
-            <EyeOff size={13} /> {tt('Menüpunkt ausblenden')}
+            <EyeOff size={13} style={{ flexShrink: 0 }} /> {tt('Menüpunkt ausblenden')}
           </button>
           <button
             className="btn btn--outline btn--sm"
             style={{ width: '100%', justifyContent: 'flex-start', marginTop: 6 }}
             onClick={() => { setMenu(null); navigate('/settings'); handleNavClick(); }}
           >
-            <SettingsIcon size={13} /> {tt('Menü in Einstellungen verwalten')}
+            <SettingsIcon size={13} style={{ flexShrink: 0 }} /> {tt('Menü in Einstellungen verwalten')}
           </button>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <div className="sidebar__footer">
