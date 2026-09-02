@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary, describeExecError, isRoot } from '../lib/privilege';
 import { auditQueries } from '../db/index';
+import { execWithLockRetry, clearStalePacmanLock, pacmanRunning } from '../lib/pkgmgr';
 
 interface PackageUpdate {
   name: string;
@@ -84,9 +85,11 @@ export async function updateRoutes(fastify: FastifyInstance) {
     const pm = detectPM();
     if (!pm) return reply.status(400).send({ error: 'Kein Paketmanager' });
     try {
+      // Bei pacman kann eine liegengebliebene db.lck den Aufruf blockieren –
+      // execWithLockRetry löst das, wenn nachweislich kein Paketvorgang läuft.
       if (pm === 'apt') privExec('apt-get update', { timeout: 120000 });
       else if (pm === 'dnf') privExec('dnf -q makecache', { timeout: 120000 });
-      else privExec('pacman -Sy', { timeout: 120000 });
+      else execWithLockRetry('pacman -Sy', { timeout: 120000 });
       auditQueries.log.run(req.user.id, 'system.update.check', pm);
       reply.send({ ok: true });
     } catch (err: unknown) {
@@ -124,6 +127,17 @@ export async function updateRoutes(fastify: FastifyInstance) {
     const send = (line: string) => {
       try { reply.raw.write(`data: ${JSON.stringify({ line })}\n\n`); } catch { /* geschlossen */ }
     };
+
+    // Verwaiste Sperre vorab lösen, sonst bricht pacman sofort ab. Läuft
+    // wirklich ein Paketvorgang, wird nicht entsperrt.
+    if (pm === 'pacman' && !clearStalePacmanLock()) {
+      if (pacmanRunning()) {
+        send('[!] Es läuft gerade ein Paketvorgang (pacman) – bitte warten und erneut versuchen.');
+        try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok: false })}\n\n`); } catch { /* */ }
+        reply.raw.end();
+        return;
+      }
+    }
 
     const argv = buildUpgradeArgs(pm, pkgs);
     const [bin, ...args] = isRoot ? argv : ['sudo', '-n', ...argv];
@@ -187,7 +201,7 @@ export async function updateRoutes(fastify: FastifyInstance) {
         }
         // Ein volles Systemupgrade kann bei über hundert Paketen deutlich länger
         // als zehn Minuten dauern (Download + Hooks).
-        const output = privExec(cmd, { timeout: 3600000 });
+        const output = execWithLockRetry(cmd, { timeout: 3600000 });
         auditQueries.log.run(req.user.id, 'system.update.apply', pkgs.join(',') || 'all');
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
