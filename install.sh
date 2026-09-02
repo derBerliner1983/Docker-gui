@@ -905,6 +905,45 @@ info "Installiere Backend-Abhängigkeiten & Build..."
 cd "$INSTALL_DIR/backend"
 dep_install_and_fix
 npm run build
+
+# ── Native Module prüfen (better-sqlite3) ───────────────────────────────────
+# npm ab Version 12 (u. a. auf Arch/CachyOS) führt Install-Skripte von
+# Abhängigkeiten standardmäßig nicht mehr aus. Dann wird better-sqlite3 nicht
+# kompiliert, die native Bindung fehlt und der Dienst startet gar nicht
+# ("Could not locate the bindings file"). Die Freigaben stehen in backend/.npmrc;
+# ein bereits vorhandenes, unfertiges node_modules heilt davon aber nicht von
+# selbst – deshalb hier prüfen und gezielt nachbauen.
+# Achtung: ein bloßes require() genügt nicht – better-sqlite3 lädt die native
+# Bindung erst beim Öffnen einer Datenbank. Deshalb wirklich eine anlegen.
+check_native() { node -e "const D=require('better-sqlite3'); new D(':memory:').close()" >/dev/null 2>&1; }
+if ! check_native; then
+  warn "Native SQLite-Bindung fehlt – vermutlich hat npm die Install-Skripte blockiert."
+  info "Baue better-sqlite3 nach (kann ein bis zwei Minuten dauern)..."
+  npm rebuild better-sqlite3 >/dev/null 2>&1 || true
+  if ! check_native; then
+    # npm 12 kennt eine ausdrückliche Freigabe – als zweiter Versuch.
+    npm install-scripts approve better-sqlite3 >/dev/null 2>&1 || true
+    npm rebuild better-sqlite3 >/dev/null 2>&1 || true
+  fi
+  if ! check_native; then
+    # Letzter Versuch: direkt über node-gyp im Paketverzeichnis bauen.
+    ( cd node_modules/better-sqlite3 2>/dev/null && npx --yes node-gyp rebuild --release >/dev/null 2>&1 ) || true
+  fi
+fi
+if ! check_native; then
+  warn "better-sqlite3 konnte nicht gebaut werden – ohne diese native Bindung startet Core-Hub nicht."
+  warn "Mögliche Ursachen:"
+  warn "  • Compiler/Python fehlen  →  auf Arch/CachyOS: pacman -S base-devel python"
+  if [ "$NODE_VER" -ge 24 ]; then
+    warn "  • Node.js $(node -v) ist sehr neu – better-sqlite3 9.x kennt es evtl. noch nicht."
+    warn "    In dem Fall muss die Abhängigkeit im Projekt angehoben werden (backend/package.json)."
+  fi
+  error "Fehlgeschlagen. Genaue Fehlermeldung mit:
+       cd $INSTALL_DIR/backend && npm rebuild better-sqlite3 --foreground-scripts"
+fi
+info "Native SQLite-Bindung OK"
+
+# Erst jetzt aufräumen – vorher werden die Build-Werkzeuge evtl. noch gebraucht.
 npm prune --omit=dev
 
 info "Installiere Frontend-Abhängigkeiten & Build..."
@@ -1055,5 +1094,9 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
   info "   Stop:    systemctl stop $SERVICE_NAME"
   info "   Start:   systemctl start $SERVICE_NAME"
 else
-  error "Service konnte nicht gestartet werden. Logs: journalctl -u $SERVICE_NAME --no-pager"
+  warn "Service konnte nicht gestartet werden – die letzten Log-Zeilen:"
+  echo "────────────────────────────────────────────────────────────────"
+  journalctl -u "$SERVICE_NAME" --no-pager -n 30 2>/dev/null || true
+  echo "────────────────────────────────────────────────────────────────"
+  error "Start fehlgeschlagen. Vollständiges Log: journalctl -u $SERVICE_NAME --no-pager"
 fi
