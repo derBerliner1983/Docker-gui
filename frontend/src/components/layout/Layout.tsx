@@ -46,7 +46,20 @@ export function Layout({ children }: { children: ReactNode }) {
   };
   const closeMobile = useCallback(() => setMobileOpen(false), []);
   const openMobileMenu = useCallback(() => setMobileOpen(true), []);
-  const ctx = useMemo(() => ({ openMobileMenu }), [openMobileMenu]);
+
+  // Bearbeiten-Modus der Panels liegt hier, damit ihn die Topbar anbieten kann
+  // (der Bleistift gehört nach oben, nicht über die Panel-Liste).
+  const [editLayout, setEditLayout] = useState(false);
+  const [hasPanels, setHasPanels] = useState(false);
+  const registerPanels = useCallback((present: boolean) => {
+    setHasPanels(present);
+    if (!present) setEditLayout(false);   // Seitenwechsel beendet den Modus
+  }, []);
+
+  const ctx = useMemo(
+    () => ({ openMobileMenu, editLayout, setEditLayout, registerPanels, hasPanels }),
+    [openMobileMenu, editLayout, registerPanels, hasPanels],
+  );
 
   return (
     <LayoutContext.Provider value={ctx}>

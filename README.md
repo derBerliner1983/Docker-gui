@@ -110,6 +110,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **„Nach Updates suchen"** und **„Alle installieren"** stehen direkt am Panel „Verfügbare Updates" – also bei der Liste, auf die sie sich beziehen
 - Die Installation läuft als **Live-Stream** mit sichtbarer Paketmanager-Ausgabe – ein Upgrade mit über hundert Paketen dauert Minuten und brach als einzelner Request mit „Failed to fetch" ab
 - Fehlermeldungen nennen die **tatsächliche Ursache** (fehlendes Paket, gesperrte Datenbank, Netzfehler); der Hinweis auf fehlende Root-Rechte erscheint nur noch, wenn sudo das wirklich meldet
+- Eine liegengebliebene pacman-Sperre (`db.lck`) wird erkannt und gelöst, sofern nachweislich kein Paketvorgang läuft – sonst kommt ein verständlicher Hinweis statt „Kann Datenbank nicht sperren"
 - Auf Arch/CachyOS wird `pacman -Syu` verwendet (kein Teilupgrade mit veraltetem Index), das Zeitlimit reicht für ein volles Systemupgrade
 
 ### 💾 Backups
@@ -161,7 +162,7 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Konfigurations-Migration**: Export/Import als `.tar.gz` (DB + Caddy-Zertifikate + SMB)
 
 ### ↕️ Anpassbare Oberfläche (pro Benutzer)
-- **Layout bearbeiten**: Knopf über jeder Panel-Liste – im Bearbeiten-Modus lassen sich Panels sortieren, **ausblenden** und über Chips wieder **einblenden**; „Zurücksetzen" stellt den Auslieferungszustand her
+- **Layout bearbeiten**: der **Bleistift oben in der Titelleiste** schaltet den Modus ein (nur auf Seiten mit Panels) – darin lassen sich Panels sortieren, **ausblenden** und über Chips wieder **einblenden**; „Zurücksetzen" stellt den Auslieferungszustand her
 - **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
 - **Menüpunkte ausblenden**: **Rechtsklick** direkt auf den Eintrag in der Seitenleiste → „Menüpunkt ausblenden"
 - **Wieder einblenden** unter *Einstellungen → Menüpunkte* (Schalter je Eintrag, „Alle einblenden") – „Einstellungen" selbst bleibt immer sichtbar

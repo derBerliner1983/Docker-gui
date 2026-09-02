@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary, describeExecError } from '../lib/privilege';
+import { execWithLockRetry } from '../lib/pkgmgr';
 import { auditQueries } from '../db/index';
 
 interface InstalledPackage {
@@ -184,7 +185,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         } else {
           cmd = `pacman -S --noconfirm ${pkgs.join(' ')}`;
         }
-        const output = privExec(cmd, { timeout: 600000 });
+        const output = execWithLockRetry(cmd, { timeout: 600000 });
         auditQueries.log.run(req.user.id, 'system.package.install', pkgs.join(','));
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {
@@ -214,7 +215,7 @@ export async function packageRoutes(fastify: FastifyInstance) {
         } else {
           cmd = `pacman -R --noconfirm ${pkgs.join(' ')}`;
         }
-        const output = privExec(cmd, { timeout: 600000 });
+        const output = execWithLockRetry(cmd, { timeout: 600000 });
         auditQueries.log.run(req.user.id, purge ? 'system.package.purge' : 'system.package.remove', pkgs.join(','));
         reply.send({ ok: true, output: output.slice(-4000) });
       } catch (err: unknown) {

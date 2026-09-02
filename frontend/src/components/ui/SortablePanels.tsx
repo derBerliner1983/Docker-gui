@@ -1,7 +1,8 @@
-import { useRef, useState, type ReactNode } from 'react';
-import { GripVertical, EyeOff, Plus, Pencil, Check, RotateCcw } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { GripVertical, EyeOff, Plus, RotateCcw } from 'lucide-react';
 import { tt } from '../../lib/i18n';
 import { useOrder, usePrefs } from '../../lib/prefs';
+import { useLayout } from '../../lib/layoutContext';
 
 export interface SortableItem {
   id: string;
@@ -36,8 +37,15 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [armed, setArmed] = useState<string | null>(null);   // Panel, dessen Griff gegriffen wurde
-  const [editing, setEditing] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Der Bleistift sitzt in der Topbar – der Modus kommt deshalb aus dem Layout.
+  const { editLayout: editing, registerPanels } = useLayout();
+
+  // Der Topbar melden, dass diese Seite Panels hat (und beim Verlassen abmelden).
+  useEffect(() => {
+    registerPanels(true);
+    return () => registerPanels(false);
+  }, [registerPanels]);
 
   const allHidden = (prefs[HIDDEN_PREF] as Record<string, HiddenPanel[]>) || {};
   const hidden: HiddenPanel[] = allHidden[storageKey] ?? [];
@@ -79,32 +87,18 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
 
   return (
     <div ref={wrapRef}>
-      {/* Kopfzeile des Bearbeiten-Modus */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-        <button
-          className={`btn btn--sm ${editing ? 'btn--primary' : 'btn--outline'}`}
-          onClick={() => setEditing((e) => !e)}
-          title={tt('Panels sortieren, ausblenden und wieder einblenden')}
-        >
-          {editing ? <Check size={13} /> : <Pencil size={13} />}
-          {editing ? tt('Fertig') : tt('Layout bearbeiten')}
-        </button>
-        {editing && (
-          <>
-            <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
-              {tt('Am Griff ziehen zum Sortieren · Auge zum Ausblenden')}
-            </span>
-            <button className="btn btn--outline btn--sm" style={{ marginLeft: 'auto' }} onClick={resetLayout}>
-              <RotateCcw size={13} /> {tt('Zurücksetzen')}
-            </button>
-          </>
-        )}
-        {!editing && hidden.length > 0 && (
-          <span style={{ fontSize: 12, color: 'var(--color-faint)' }}>
-            {tt('{n} ausgeblendet', { n: hidden.length })}
+      {/* Nur im Bearbeiten-Modus sichtbar – sonst steht hier nichts über den
+          Panels. Umgeschaltet wird über den Bleistift in der Topbar. */}
+      {editing && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+            {tt('Am Griff ziehen zum Sortieren · Auge zum Ausblenden')}
           </span>
-        )}
-      </div>
+          <button className="btn btn--outline btn--sm" style={{ marginLeft: 'auto' }} onClick={resetLayout}>
+            <RotateCcw size={13} /> {tt('Zurücksetzen')}
+          </button>
+        </div>
+      )}
 
       {/* Ausgeblendete Panels wieder hereinholen */}
       {editing && hidden.length > 0 && (
@@ -162,16 +156,23 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
                 <GripVertical size={15} />
               </button>
 
-              {/* Ausblenden – nur im Bearbeiten-Modus */}
+              {/* Ausblenden – nur im Bearbeiten-Modus. Sitzt unter dem Griff am
+                  linken Rand: rechts oben liegen je nach Panel schon eigene
+                  Aktionen und Werte, dort würde es überlappen. */}
               {editing && (
                 <button
                   type="button"
-                  className="icon-btn"
                   title={tt('Dieses Panel ausblenden')}
                   onClick={(e) => { e.stopPropagation(); hide(it); }}
-                  style={{ position: 'absolute', right: 44, top: 12, zIndex: 3 }}
+                  style={{
+                    position: 'absolute', left: -4, top: 36, zIndex: 3,
+                    width: 24, height: 24, borderRadius: 6, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-muted)',
+                  }}
                 >
-                  <EyeOff size={14} />
+                  <EyeOff size={13} />
                 </button>
               )}
               {it.node}
@@ -183,7 +184,7 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
       {list.length === 0 && (
         <div className="empty-state" style={{ padding: '32px 20px' }}>
           <div className="empty-state__title">{tt('Alle Panels ausgeblendet')}</div>
-          <div className="empty-state__desc">{tt('Über „Layout bearbeiten" lassen sie sich wieder einblenden.')}</div>
+          <div className="empty-state__desc">{tt('Über den Bleistift oben rechts lassen sie sich wieder einblenden.')}</div>
         </div>
       )}
     </div>

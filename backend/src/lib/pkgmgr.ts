@@ -111,3 +111,62 @@ export function removeCommand(pkgs: string[], pm = detectPM()): string | null {
       return `zypper --non-interactive remove ${safe.join(' ')}`;
   }
 }
+
+// ── pacman-Sperre ───────────────────────────────────────────────────────────
+// /var/lib/pacman/db.lck bleibt liegen, wenn ein pacman-Lauf abgebrochen wurde.
+// Danach scheitert jeder weitere Aufruf mit „Kann Datenbank nicht sperren“ –
+// auch die harmlose Update-Suche. Entfernt wird die Sperre nur, wenn
+// nachweislich kein Paketmanager läuft; genau das empfiehlt pacman selbst.
+
+const PACMAN_LOCK = '/var/lib/pacman/db.lck';
+
+/** Läuft gerade ein pacman-Prozess? */
+export function pacmanRunning(): boolean {
+  return safeExec('pgrep -x pacman 2>/dev/null').trim().length > 0;
+}
+
+/** Meldet der Fehler eine gesperrte Paketdatenbank? */
+export function isLockError(err: unknown): boolean {
+  const e = err as { stderr?: Buffer | string; stdout?: Buffer | string; message?: string };
+  const part = (v: Buffer | string | undefined) => (v == null ? '' : typeof v === 'string' ? v : v.toString());
+  const out = `${part(e?.stderr)}${part(e?.stdout)}${e?.message ?? ''}`.toLowerCase();
+  return out.includes('db.lck')
+    || out.includes('unable to lock database')
+    || out.includes('could not lock database')
+    || out.includes('kann datenbank nicht sperren')
+    || out.includes('datenbank konnte nicht gesperrt werden');
+}
+
+/**
+ * Verwaiste pacman-Sperre entfernen.
+ * @returns true, wenn die Sperre weg ist (oder es keine gab).
+ */
+export function clearStalePacmanLock(): boolean {
+  if (!hasBinary('pacman')) return false;
+  if (safeExec(`test -e ${PACMAN_LOCK} && echo yes`).trim() !== 'yes') return true;
+  if (pacmanRunning()) return false;   // echter Lauf – Sperre ist berechtigt
+  try {
+    privExec(`rm -f ${PACMAN_LOCK}`, { timeout: 8000 });
+    return safeExec(`test -e ${PACMAN_LOCK} && echo yes`).trim() !== 'yes';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Befehl ausführen und bei einer verwaisten pacman-Sperre einmal wiederholen.
+ * Läuft wirklich ein Paketvorgang, wird nicht entsperrt, sondern eine
+ * verständliche Meldung geworfen.
+ */
+export function execWithLockRetry(cmd: string, opts: { timeout?: number } = {}): string {
+  try {
+    return privExec(cmd, opts);
+  } catch (err) {
+    if (!isLockError(err)) throw err;
+    if (pacmanRunning()) {
+      throw new Error('Es läuft gerade ein Paketvorgang (pacman). Bitte warten, bis er fertig ist, und erneut versuchen.');
+    }
+    if (!clearStalePacmanLock()) throw err;
+    return privExec(cmd, opts);
+  }
+}
