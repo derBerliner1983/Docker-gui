@@ -55,6 +55,10 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const IS_DEV = process.env.NODE_ENV !== 'production';
 
 const fastify = Fastify({
+  // Hinter einem Reverse-Proxy (Caddy, Pangolin, nginx …) stehen die echte
+  // Client-Adresse und das Protokoll in den X-Forwarded-*-Kopfzeilen.
+  // Ohne trustProxy sieht der Server nur die Adresse des Proxys.
+  trustProxy: true,
   logger: IS_DEV
     ? { transport: { target: 'pino-pretty', options: { colorize: true } } }
     : true,

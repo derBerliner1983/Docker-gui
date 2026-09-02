@@ -22,7 +22,7 @@ export function detectPM(): PkgManager | null {
 }
 
 /** Logische Paketnamen, die zur Laufzeit nachinstalliert werden können. */
-export type LogicalPackage = 'ufw' | 'fail2ban' | 'clamav' | 'autoupdate' | 'samba' | 'docker' | 'caddy';
+export type LogicalPackage = 'ufw' | 'fail2ban' | 'clamav' | 'autoupdate' | 'samba' | 'docker' | 'caddy' | 'libvirt';
 
 const NAMES: Record<LogicalPackage, Record<PkgManager, string[]>> = {
   ufw:      { apt: ['ufw'], pacman: ['ufw'], dnf: ['ufw'], zypper: ['ufw'] },
@@ -33,6 +33,12 @@ const NAMES: Record<LogicalPackage, Record<PkgManager, string[]>> = {
   samba:    { apt: ['samba'], pacman: ['samba'], dnf: ['samba'], zypper: ['samba'] },
   docker:   { apt: ['docker.io'], pacman: ['docker'], dnf: ['moby-engine'], zypper: ['docker'] },
   caddy:    { apt: ['caddy'], pacman: ['caddy'], dnf: ['caddy'], zypper: ['caddy'] },
+  libvirt:  {
+    apt: ['qemu-system-x86', 'libvirt-daemon-system', 'virtinst'],
+    pacman: ['qemu-base', 'libvirt', 'virt-install'],
+    dnf: ['qemu-kvm', 'libvirt', 'virt-install'],
+    zypper: ['qemu-kvm', 'libvirt', 'virt-install'],
+  },
 };
 
 /** Echte Paketnamen für ein logisches Paket – leer, wenn es die Distribution nicht kennt. */

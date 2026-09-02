@@ -7,7 +7,7 @@ import type {
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel, NetscanJob,
-  UpdateSource, UpdateVersion, UpdateNotes, HardwareInfo,
+  UpdateSource, UpdateVersion, UpdateNotes, HardwareInfo, SystemComponent,
 } from './types';
 
 import { tt } from './i18n';
@@ -95,6 +95,17 @@ export const api = {
   system: {
     stats: () => req<SystemStats>('/api/system/stats'),
     hardware: () => req<HardwareInfo>('/api/system/hardware'),
+    // Optionale Komponenten: Status, entfernen, wieder installieren
+    components: () => req<{ components: SystemComponent[] }>('/api/system/components'),
+    uninstallComponent: (id: string, purge: boolean) =>
+      req<{ ok: boolean; steps: string[]; components: SystemComponent[] }>(
+        `/api/system/components/${encodeURIComponent(id)}/uninstall`,
+        { method: 'POST', body: JSON.stringify({ purge }) },
+      ),
+    installComponent: (id: string) =>
+      req<{ ok: boolean; steps: string[]; components: SystemComponent[] }>(
+        `/api/system/components/${encodeURIComponent(id)}/install`, { method: 'POST' },
+      ),
     dockerVersion: () => req<{ version: string }>('/api/system/docker-version'),
     services: () => req<{ services: SystemService[] }>('/api/system/services'),
     controlService: (service: string, action: string) =>

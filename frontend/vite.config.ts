@@ -1,7 +1,15 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Basispfad der Oberfläche. Standard ist "/" – wird Core-Hub hinter einem
+// Reverse-Proxy unter einem UNTERPFAD ausgeliefert (z. B. https://host/corehub/),
+// muss der Pfad hier bekannt sein, sonst fordert der Browser die Asset-Dateien
+// unter /assets/… an, landet außerhalb des Präfix und die Seite bleibt weiß.
+// Setzen über die Umgebungsvariable, z. B.:  VITE_BASE=/corehub/ npm run build
+const BASE = process.env.VITE_BASE || '/';
+
 export default defineConfig({
+  base: BASE,
   plugins: [react()],
   server: {
     port: 5173,
