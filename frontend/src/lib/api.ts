@@ -7,6 +7,7 @@ import type {
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel, NetscanJob,
+  UpdateSource, UpdateVersion,
 } from './types';
 
 import { tt } from './i18n';
@@ -318,6 +319,17 @@ export const api = {
     getIpv6: () => req<{ enabled: boolean; kernelEnabled?: boolean; configured: boolean }>('/api/settings/ipv6'),
     setIpv6: (enable: boolean) => req<{ ok: boolean; enabled: boolean }>('/api/settings/ipv6', { method: 'POST', body: JSON.stringify({ enable }) }),
     getProxyVisibility: () => req<{ enabled: boolean; backend: string }>('/api/settings/proxy-visibility'),
+    // ── Update-Quelle (Git-Repository) ──
+    updateSource: () => req<UpdateSource>('/api/settings/update-source'),
+    saveUpdateSource: (body: {
+      url: string; branch: string; visibility: 'public' | 'private';
+      authType: 'token' | 'password'; username: string; secret?: string;
+    }) => req<{ ok: boolean; source: UpdateSource }>('/api/settings/update-source', { method: 'PUT', body: JSON.stringify(body) }),
+    testUpdateSource: () => req<{ ok: boolean; url: string; branches: string[]; count: number }>('/api/settings/update-source/test', { method: 'POST' }),
+    updateVersions: (refresh = false) =>
+      req<{ available: boolean; versions: UpdateVersion[]; current: string; branch?: string; error?: string }>(
+        `/api/settings/update/versions${refresh ? '?refresh=1' : ''}`,
+      ),
     setProxyVisibility: (enabled: boolean, backend: string) => req<{ ok: boolean; enabled: boolean; backend: string }>('/api/settings/proxy-visibility', { method: 'POST', body: JSON.stringify({ enabled, backend }) }),
     import: async (file: File) => {
       const token = localStorage.getItem('token');

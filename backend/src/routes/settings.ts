@@ -6,6 +6,10 @@ import os from 'os';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { privExec, safeExec, hasBinary, isRoot } from '../lib/privilege';
 import { auditQueries, appSettingsQueries, DB_PATH } from '../db/index';
+import {
+  getUpdateSource, saveUpdateSource, listVersions, syncRemote, fetchRemote,
+  gitRun, gitSafe, scrubSecrets, isValidRef,
+} from '../lib/updatesource';
 
 function readVersion(): string {
   for (const p of [
@@ -138,6 +142,7 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     const result: {
       current: string; latest: string | null; updateAvailable: boolean; behind: number;
       method: string; releaseUrl: string | null; repo: string; checkedAt: string; error?: string;
+      branch?: string; ref?: string;
     } = {
       current: APP_VERSION, latest: null, updateAvailable: false, behind: 0, method: 'none',
       releaseUrl: `https://github.com/${GITHUB_REPO}`, repo: GITHUB_REPO, checkedAt: new Date().toISOString(),
@@ -149,15 +154,13 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     if (repoRoot && fs.existsSync(path.join(repoRoot, '.git'))) {
       result.method = 'git';
       try {
-        if (doFetch) { try { gitCmd(repoRoot, 'fetch --quiet --tags origin', 20000); } catch { /* evtl. offline */ } }
-        // Upstream-Branch ermitteln (Tracking-Branch oder origin/<branch>)
-        let upstream = '';
-        try { upstream = gitCmd(repoRoot, 'rev-parse --abbrev-ref --symbolic-full-name @{u}', 6000).trim(); } catch { /* */ }
-        if (!upstream) {
-          let br = 'HEAD';
-          try { br = gitCmd(repoRoot, 'rev-parse --abbrev-ref HEAD', 6000).trim(); } catch { /* */ }
-          upstream = `origin/${br}`;
-        }
+        // Konfigurierte Update-Quelle berücksichtigen (Repository-Umzug/Fork/Branch)
+        const { upstream, branch } = syncRemote(repoRoot);
+        const src = getUpdateSource();
+        result.branch = branch;
+        if (src.url) { result.repo = src.url; result.releaseUrl = src.url; }
+        if (doFetch) { try { fetchRemote(repoRoot, 60000); } catch { /* evtl. offline */ } }
+        result.ref = gitSafe(repoRoot, 'rev-parse HEAD', 6000).trim().slice(0, 40) || undefined;
         try { result.behind = parseInt(gitCmd(repoRoot, `rev-list --count HEAD..${upstream}`, 6000).trim()) || 0; } catch { /* */ }
         let remoteVer = '';
         try { remoteVer = gitCmd(repoRoot, `show ${upstream}:VERSION`, 6000).trim().replace(/[^0-9.]/g, ''); } catch { /* */ }
@@ -173,7 +176,7 @@ export async function settingsRoutes(fastify: FastifyInstance) {
         }
         return reply.send(result);
       } catch (e) {
-        result.error = `Git-Prüfung fehlgeschlagen: ${e instanceof Error ? e.message : ''}`;
+        result.error = scrubSecrets(`Git-Prüfung fehlgeschlagen: ${e instanceof Error ? e.message : ''}`);
         // → GitHub-Fallback
       }
     }
@@ -329,10 +332,93 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     }
   });
 
+  // ── Update-Quelle (Git-Repository) verwalten ──────────────────────────────
+  // Erlaubt es, das Repository nachträglich zu ändern (Umzug, eigener Fork) und
+  // für private Repositories Zugangsdaten zu hinterlegen. Das Token/Passwort
+  // wird verschlüsselt gespeichert und nie wieder ausgeliefert.
+  fastify.get('/api/settings/update-source', { preHandler: requireAdmin }, async (_req, reply) => {
+    const src = getUpdateSource();
+    const repoRoot = findRepoRoot();
+    // Aktuell im Checkout eingetragene origin-URL als Vorbelegung/Anhaltspunkt
+    let detectedUrl = '';
+    let detectedBranch = '';
+    if (repoRoot && fs.existsSync(path.join(repoRoot, '.git'))) {
+      detectedUrl = gitSafe(repoRoot, 'remote get-url origin', 6000).trim();
+      detectedBranch = gitSafe(repoRoot, 'rev-parse --abbrev-ref HEAD', 6000).trim();
+    }
+    reply.send({ ...src, detectedUrl: scrubSecrets(detectedUrl), detectedBranch, repoRoot });
+  });
+
+  fastify.put<{ Body: { url?: string; branch?: string; visibility?: string; authType?: string; username?: string; secret?: string } }>(
+    '/api/settings/update-source',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      try {
+        const src = saveUpdateSource(req.body ?? {});
+        // origin sofort mitziehen, damit die Versionsprüfung die neue Quelle nutzt
+        const repoRoot = findRepoRoot();
+        if (repoRoot && fs.existsSync(path.join(repoRoot, '.git'))) { try { syncRemote(repoRoot); } catch { /* */ } }
+        auditQueries.log.run(req.user.id, 'settings.update-source', `${src.url || 'origin'}#${src.branch || 'default'} (${src.visibility})`);
+        reply.send({ ok: true, source: src });
+      } catch (err: unknown) {
+        reply.status(400).send({ error: err instanceof Error ? scrubSecrets(err.message) : 'Ungültige Eingabe' });
+      }
+    },
+  );
+
+  // Verbindungstest gegen die konfigurierte Quelle (prüft auch die Zugangsdaten)
+  fastify.post('/api/settings/update-source/test', { preHandler: requireAdmin }, async (_req, reply) => {
+    const src = getUpdateSource();
+    const repoRoot = findRepoRoot();
+    const url = src.url || (repoRoot ? gitSafe(repoRoot, 'remote get-url origin', 6000).trim() : '');
+    if (!url) return reply.status(400).send({ error: 'Keine Repository-URL konfiguriert.' });
+    try {
+      const out = gitRun(null, `ls-remote --heads ${JSON.stringify(url)}`, 25000);
+      const branches = out.split('\n').filter(Boolean)
+        .map((l) => l.split('\t')[1]?.replace('refs/heads/', '') ?? '')
+        .filter(Boolean);
+      reply.send({ ok: true, url, branches, count: branches.length });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? scrubSecrets(err.message) : 'Verbindung fehlgeschlagen';
+      reply.status(400).send({
+        error: /Authentication|403|401|could not read Username|Invalid username/i.test(msg)
+          ? 'Zugriff verweigert – bitte Benutzername und Token/Passwort prüfen.'
+          : msg,
+      });
+    }
+  });
+
+  // Auswählbare Stände (neueste Version, Tags, ältere Commits → Rollback)
+  fastify.get<{ Querystring: { refresh?: string } }>(
+    '/api/settings/update/versions',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const repoRoot = findRepoRoot();
+      if (!repoRoot || !fs.existsSync(path.join(repoRoot, '.git'))) {
+        return reply.send({ available: false, versions: [], current: APP_VERSION, error: 'Kein Git-Checkout gefunden – Versionsauswahl nicht möglich.' });
+      }
+      try {
+        if (req.query.refresh === '1') { try { fetchRemote(repoRoot, 60000); } catch { /* offline */ } }
+        const versions = listVersions(repoRoot, 25);
+        reply.send({ available: true, versions, current: APP_VERSION, branch: syncRemote(repoRoot).branch });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: err instanceof Error ? scrubSecrets(err.message) : 'Versionsliste fehlgeschlagen' });
+      }
+    },
+  );
+
   // ── In-app update via git pull + install.sh --update (SSE stream) ──
-  fastify.get('/api/settings/update/stream', async (req, reply) => {
+  fastify.get<{ Querystring: { ref?: string } }>('/api/settings/update/stream', async (req, reply) => {
     try { await req.jwtVerify(); if ((req.user as { role: string }).role !== 'admin') { reply.status(403).send(); return; } }
     catch { reply.status(401).send(); return; }
+
+    // Zielstand: leer = neuester Stand des konfigurierten Branches. Sonst ein
+    // Tag/Commit aus /api/settings/update/versions (ermöglicht ein Rollback).
+    const targetRef = (req.query?.ref ?? '').trim();
+    if (targetRef && !isValidRef(targetRef) && !/^[0-9a-f]{7,40}$/.test(targetRef)) {
+      reply.status(400).send({ error: 'Ungültige Versionsangabe' });
+      return;
+    }
 
     // Locate the git checkout to update from. install.sh records the original
     // clone directory in $DATA_DIR/source_dir; prefer that (it has a .git remote
@@ -356,8 +442,9 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       'X-Accel-Buffering': 'no',
     });
 
+    // Ausgabe immer von möglichen Zugangsdaten befreien, bevor sie das Log erreicht.
     const send = (line: string) => {
-      try { reply.raw.write(`data: ${JSON.stringify({ line })}\n\n`); } catch { /* closed */ }
+      try { reply.raw.write(`data: ${JSON.stringify({ line: scrubSecrets(line) })}\n\n`); } catch { /* closed */ }
     };
 
     const runStream = (cmd: string, args: string[], cwd: string): Promise<boolean> =>
@@ -374,22 +461,48 @@ export async function settingsRoutes(fastify: FastifyInstance) {
 
     try {
       send(`[Core-Hub] Quell-Verzeichnis: ${repoRoot}`);
+      // Der Code-Wechsel passiert hier im Backend (nicht in install.sh), weil nur
+      // hier die konfigurierte Quelle inkl. Zugangsdaten für private Repos bekannt
+      // ist. install.sh wird deshalb mit --skip-git aufgerufen.
+      let gitOk = true;
       if (!isGitRepo) {
         send('[!] Kein Git-Checkout gefunden – es wird kein Code aktualisiert, nur install.sh --update läuft.');
         send('    Tipp: Core-Hub aus einem "git clone" installieren, damit Updates automatisch geholt werden.');
+      } else {
+        try {
+          const { upstream, branch } = syncRemote(repoRoot);
+          const src = getUpdateSource();
+          send(`› Quelle: ${src.url || gitSafe(repoRoot, 'remote get-url origin', 6000).trim() || 'origin'} (Branch ${branch}${src.visibility === 'private' ? ', privat' : ''})`);
+          send('› git fetch …');
+          fetchRemote(repoRoot, 120000);
+          const target = targetRef || upstream;
+          const sha = gitSafe(repoRoot, `rev-parse ${JSON.stringify(`${target}^{commit}`)}`, 10000).trim();
+          if (!sha) throw new Error(`Zielstand „${target}" nicht gefunden.`);
+          send(`› Wechsle auf ${target} (${sha.slice(0, 7)})${targetRef ? ' – gewählte Version' : ' – neueste Version'} …`);
+          // Verwaiste, nicht getrackte Quelldateien entfernen (blockieren sonst den Wechsel)
+          gitSafe(repoRoot, 'clean -fd', 30000);
+          gitRun(repoRoot, `reset --hard ${sha}`, 60000);
+          const newVer = gitSafe(repoRoot, 'show HEAD:VERSION', 6000).trim().replace(/[^0-9.]/g, '');
+          if (newVer) send(`› Quellstand jetzt: v${newVer}`);
+        } catch (e) {
+          gitOk = false;
+          send(`[!] Code-Wechsel fehlgeschlagen: ${scrubSecrets(e instanceof Error ? e.message : String(e))}`);
+          send('    Es wird mit dem vorhandenen Quellstand fortgefahren.');
+        }
       }
-      // install.sh --update führt den git pull selbst im Quell-Verzeichnis aus
-      // und baut Backend + Frontend neu. Wir starten es einmal und streamen das Log.
-      send('› bash install.sh --update …');
-      const installOk = await sudo(['bash', 'install.sh', '--update']);
+      // install.sh baut Backend + Frontend neu und startet den Dienst.
+      send('› bash install.sh --update --skip-git …');
+      const installOk = await sudo(['bash', 'install.sh', '--update', '--skip-git']);
+      const ok = installOk && gitOk;
 
-      if (installOk) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
-      else { send('[!] Installer beendet mit Fehler. Bitte Log oben prüfen.'); }
+      if (ok) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
+      else if (!installOk) { send('[!] Installer beendet mit Fehler. Bitte Log oben prüfen.'); }
+      else { send('[!] Neubau erfolgreich, aber der Code-Wechsel schlug fehl – der alte Stand läuft weiter.'); }
       // Explizites Abschluss-Signal: das Frontend schließt daraufhin den Stream
       // (kein Auto-Reconnect) und pollt anschließend den Dienst bis er wieder online ist.
-      try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok: installOk })}\n\n`); } catch { /* closed */ }
+      try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok })}\n\n`); } catch { /* closed */ }
     } catch (e) {
-      send(`[Fehler] ${e instanceof Error ? e.message : 'Unbekannter Fehler'}`);
+      send(`[Fehler] ${scrubSecrets(e instanceof Error ? e.message : 'Unbekannter Fehler')}`);
       try { reply.raw.write(`event: done\ndata: ${JSON.stringify({ ok: false })}\n\n`); } catch { /* closed */ }
     }
     reply.raw.end();

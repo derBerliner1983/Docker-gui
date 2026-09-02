@@ -35,6 +35,7 @@ export const es: Record<string, string> = {
   'sidebar.collapse': 'Contraer',
   'sidebar.toggleTheme': 'Cambiar tema',
   'sidebar.logout': 'Cerrar sesión',
+  'sidebar.hideHint': 'Clic derecho: ocultar elemento del menú',
 
   // ── Acciones comunes ──
   'common.save': 'Guardar',

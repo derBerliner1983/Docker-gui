@@ -140,12 +140,19 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### ⚙️ Einstellungen
 - Passwort & 2FA, System-Info, Version & Update-Prüfung (git + GitHub-Releases)
 - **1-Klick-Update** in der Oberfläche (git pull + install.sh, Live-Log) – nach der Installation erscheint sofort der **„Seite neu laden"**-Button (kein manuelles F5 nötig)
+- **Update-Quelle frei wählbar**: eigenes Git-Repository + Branch eintragen und jederzeit ändern (z. B. nach einem Umzug oder für einen Fork)
+  - **Öffentlich**: keine Zugangsdaten nötig
+  - **Privat**: Benutzername + **Zugriffstoken** (empfohlen) oder Passwort – **AES-256-GCM-verschlüsselt** gespeichert, nie wieder ausgeliefert und niemals im Log sichtbar
+  - **Verbindungstest** direkt in der Oberfläche
+- **Versionsauswahl mit Rollback**: vorgeschlagen wird immer die neueste Version; per Dropdown lässt sich auch ein **früherer Stand** (Tag oder Commit inkl. Datum & Versionsnummer) einspielen
 - **IPv4/IPv6-Umschalter**: standardmäßig **nur IPv4**; IPv6 bei Bedarf aktivierbar (persistent via `sysctl`)
 - **Konfigurations-Migration**: Export/Import als `.tar.gz` (DB + Caddy-Zertifikate + SMB)
 
 ### ↕️ Anpassbare Oberfläche (pro Benutzer)
 - **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
-- Reihenfolge wird **serverseitig pro Benutzer** gespeichert – jeder hat sein eigenes Layout
+- **Menüpunkte ausblenden**: **Rechtsklick** direkt auf den Eintrag in der Seitenleiste → „Menüpunkt ausblenden"
+- **Wieder einblenden** unter *Einstellungen → Menüpunkte* (Schalter je Eintrag, „Alle einblenden") – „Einstellungen" selbst bleibt immer sichtbar
+- Reihenfolge und Sichtbarkeit werden **serverseitig pro Benutzer** gespeichert – jeder hat sein eigenes Layout
 
 ---
 
@@ -162,7 +169,11 @@ sudo bash install.sh
 
 ### Update auf eine neue Version
 
-**In der Oberfläche:** Einstellungen → „Version & Updates" → **„Jetzt aktualisieren"**
+**In der Oberfläche:** *System-Updates* oder *Einstellungen* → „Version & Updates" → **„Jetzt aktualisieren"**
+
+Dort lässt sich außerdem die **Update-Quelle** (Git-Repository, Branch, ggf. Zugangsdaten für ein
+privates Repository) festlegen und über das Dropdown „Version auswählen" gezielt auf einen
+**früheren Stand zurückrollen**.
 
 **Manuell:**
 ```bash
@@ -258,6 +269,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **15** | **IPv4/IPv6-Umschalter** (Standard nur IPv4), **Drag-&-Drop-Sortierung** von Sidebar & Panels (pro Benutzer, serverseitig), **Inline-Macvlan** im Container-/App-Dialog, **Firewall ohne Auto-Schutzregeln** (nur LAN-only-Freigabe für SSH/443 beim Aktivieren), Host-Port-Konflikterkennung inkl. Nicht-Docker-Dienste, Update mit sofortigem Reload-Button | ✅ `v0.7.4` |
 | **16** | **5 Sprachen** (DE/EN/FR/ES/IT), Navigation & Seitentitel auf i18n-Schlüssel, **Reverse-Proxy ein-/ausblendbar** über Einstellungen (Standard aus, Backend-Auswahl vorbereitet) | ✅ `v0.7.5` |
 | **17** | **Tiefe i18n-Abdeckung** (Panels, Dialoge, Buttons, Tooltips, Bestätigungen) nach dem Prinzip „Deutsch = Schlüssel"; ~470 Texte in EN/FR/ES/IT übersetzt, modulweite `tt()`-Funktion für Übersetzung auch in Unterkomponenten | ✅ `v0.7.6` |
+| **18** | **Freie Update-Quelle** (eigenes Git-Repository/Branch, öffentlich oder privat mit verschlüsselt gespeichertem Token/Passwort, Verbindungstest), **Versionsauswahl inkl. Rollback** auf einen früheren Stand, **Menüpunkte per Rechtsklick ausblenden** und in den Einstellungen wieder einblenden | ✅ `v0.24.0` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen

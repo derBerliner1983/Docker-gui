@@ -35,6 +35,7 @@ export const fr: Record<string, string> = {
   'sidebar.collapse': 'Replier',
   'sidebar.toggleTheme': 'Changer de thème',
   'sidebar.logout': 'Déconnexion',
+  'sidebar.hideHint': 'Clic droit : masquer l’élément de menu',
 
   // ── Actions communes ──
   'common.save': 'Enregistrer',

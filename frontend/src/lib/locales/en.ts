@@ -34,6 +34,7 @@ export const en: Record<string, string> = {
   'sidebar.collapse': 'Collapse',
   'sidebar.toggleTheme': 'Toggle theme',
   'sidebar.logout': 'Log out',
+  'sidebar.hideHint': 'Right-click: hide menu item',
 
   // ── Common actions ──
   'common.save': 'Save',
