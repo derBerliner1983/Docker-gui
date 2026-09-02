@@ -187,6 +187,47 @@ export interface UpdateVersion {
   subject: string;
   current: boolean;
   latest: boolean;
+  author: string;
+  /** Ausführlicher Text (Commit-Body bzw. Tag-Beschreibung) – kann leer sein. */
+  body: string;
+}
+
+/** Ein einzelner Commit in den Änderungsnotizen. */
+export interface UpdateCommit {
+  sha: string;
+  short: string;
+  date: string;
+  author: string;
+  subject: string;
+  body: string;
+}
+
+/** Eine geänderte Datei mit Zeilenbilanz. */
+export interface UpdateChangedFile {
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+/** „Was bringt dieser Stand?" – Titel, Text, Commits und geänderte Dateien. */
+export interface UpdateNotes {
+  ref: string;
+  sha: string;
+  shortSha: string;
+  version: string;
+  date: string;
+  author: string;
+  subject: string;
+  body: string;
+  currentSha: string;
+  currentVersion: string;
+  direction: 'forward' | 'backward' | 'same' | 'diverged';
+  commits: UpdateCommit[];
+  truncated: boolean;
+  files: UpdateChangedFile[];
+  filesTruncated: boolean;
+  insertions: number;
+  deletions: number;
 }
 
 export interface Container {

@@ -256,6 +256,47 @@ export function fetchRemote(repoRoot: string, timeout = 60000): void {
   gitRun(repoRoot, 'fetch --tags --prune --force origin', timeout);
 }
 
+// ── Git-Ausgaben mit mehrzeiligen Feldern lesen ─────────────────────────────
+// Commit-Nachrichten enthalten Zeilenumbrüche, deshalb trennen wir Felder mit
+// 0x1f (unit separator) und Datensätze mit 0x1e (record separator) statt mit
+// "|" und "\n" – so bleibt der Fließtext unbeschädigt.
+const FS = '\x1f';
+const RS = '\x1e';
+/** Format für `git log`: SHA, Kurz-SHA, Datum, Autor, Betreff, Text. */
+const FMT_LOG = "'%H%x1f%h%x1f%cI%x1f%an%x1f%s%x1f%b%x1e'";
+/** Format für `git for-each-ref`: Name, Objekt, Datum, Autor, Betreff, Text. */
+const FMT_TAG = "'%(refname:short)%1f%(objectname)%1f%(creatordate:iso-strict)%1f%(taggername)%1f%(contents:subject)%1f%(contents:body)%1e'";
+
+function splitRecords(out: string): string[][] {
+  return out.split(RS)
+    .map((r) => r.replace(/^[\r\n]+/, ''))
+    .filter((r) => r.trim().length > 0)
+    .map((r) => r.split(FS));
+}
+
+export interface CommitInfo {
+  sha: string;
+  short: string;
+  date: string;
+  author: string;
+  subject: string;
+  /** Ausführlicher Text der Commit-Nachricht (kann leer sein). */
+  body: string;
+}
+
+/** Commits eines Bereichs/Refs einlesen (inkl. mehrzeiligem Text). */
+function readCommits(repoRoot: string, range: string, limit: number): CommitInfo[] {
+  const out = gitSafe(repoRoot, `log --max-count=${limit} --format=${FMT_LOG} ${JSON.stringify(range)}`, 20000);
+  return splitRecords(out).map(([sha, short, date, author, subject, body]) => ({
+    sha: (sha ?? '').trim(),
+    short: (short ?? '').trim(),
+    date: (date ?? '').trim(),
+    author: (author ?? '').trim(),
+    subject: subject ?? '',
+    body: (body ?? '').trim(),
+  })).filter((c) => c.sha);
+}
+
 export interface RemoteVersion {
   /** Git-Ref bzw. Commit-SHA, auf den gewechselt wird. */
   ref: string;
@@ -269,6 +310,10 @@ export interface RemoteVersion {
   current: boolean;
   /** true für den neuesten verfügbaren Stand (Branch-Spitze). */
   latest: boolean;
+  /** Autor des Commits/Tags. */
+  author: string;
+  /** Ausführlicher Text (Commit-Body bzw. Tag-Beschreibung) – kann leer sein. */
+  body: string;
 }
 
 /** VERSION-Datei für mehrere Commits in einem einzigen Aufruf auslesen. */
@@ -314,26 +359,18 @@ export function listVersions(repoRoot: string, limit = 25): RemoteVersion[] {
   // 1) Tags (üblicherweise Releases), neueste zuerst
   const tagOut = gitSafe(
     repoRoot,
-    `for-each-ref --sort=-creatordate --count=${limit} --format='%(refname:short)|%(objectname)|%(creatordate:iso-strict)|%(contents:subject)' refs/tags`,
+    `for-each-ref --sort=-creatordate --count=${limit} --format=${FMT_TAG} refs/tags`,
     15000,
   );
   const tagShas: string[] = [];
-  const tags = tagOut.split('\n').filter(Boolean).map((l) => {
-    const [name, sha, date, ...rest] = l.replace(/^'|'$/g, '').split('|');
+  const tags = splitRecords(tagOut).map((rec) => {
+    const [name, sha, date, author, subject, body] = rec;
     if (sha) tagShas.push(sha);
-    return { name, sha: sha ?? '', date: date ?? '', subject: rest.join('|') };
+    return { name: name ?? '', sha: sha ?? '', date: date ?? '', author: author ?? '', subject: subject ?? '', body: (body ?? '').trim() };
   });
 
   // 2) Commits des Ziel-Branches
-  const logOut = gitSafe(
-    repoRoot,
-    `log --max-count=${limit} --format='%H|%h|%cI|%s' ${upstream}`,
-    20000,
-  );
-  const commits = logOut.split('\n').filter(Boolean).map((l) => {
-    const [sha, short, date, ...rest] = l.replace(/^'|'$/g, '').split('|');
-    return { sha, short, date, subject: rest.join('|') };
-  });
+  const commits = readCommits(repoRoot, upstream, limit);
 
   const verMap = versionsFor(repoRoot, [...new Set([...commits.map((c) => c.sha), ...tagShas, headSha].filter(Boolean))]);
 
@@ -347,6 +384,8 @@ export function listVersions(repoRoot: string, limit = 25): RemoteVersion[] {
       shortSha: tipSha.slice(0, 7),
       date: tip?.date ?? '',
       subject: tip?.subject ?? '',
+      author: tip?.author ?? '',
+      body: tip?.body ?? '',
       current: tipSha === headSha,
       latest: true,
     });
@@ -360,6 +399,9 @@ export function listVersions(repoRoot: string, limit = 25): RemoteVersion[] {
       shortSha: t.sha.slice(0, 7),
       date: t.date,
       subject: t.subject,
+      author: t.author,
+      // Ein annotiertes Tag hat einen eigenen Text; sonst den des Commits nehmen.
+      body: t.body || commits.find((c) => c.sha === t.sha)?.body || '',
       current: t.sha === headSha,
       latest: false,
     });
@@ -374,10 +416,147 @@ export function listVersions(repoRoot: string, limit = 25): RemoteVersion[] {
       shortSha: c.short,
       date: c.date,
       subject: c.subject,
+      author: c.author,
+      body: c.body,
       current: c.sha === headSha,
       latest: false,
     });
   }
 
   return rows;
+}
+
+// ── Was bringt ein Stand? (Änderungsnotizen) ────────────────────────────────
+
+export interface ChangedFile {
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+export interface UpdateNotes {
+  /** Angefragter Ref (Branch, Tag oder Commit). */
+  ref: string;
+  sha: string;
+  shortSha: string;
+  version: string;
+  date: string;
+  author: string;
+  /** Überschrift des Ziel-Commits/Tags. */
+  subject: string;
+  /** Ausführlicher Text des Ziel-Commits/Tags. */
+  body: string;
+  /** Aktuell installierter Stand, gegen den verglichen wird. */
+  currentSha: string;
+  currentVersion: string;
+  /**
+   * forward  = Ziel liegt vor dem installierten Stand (normales Update)
+   * backward = Ziel liegt davor (Rollback – die Commits werden entfernt)
+   * same     = bereits installiert
+   * diverged = kein gemeinsamer, gerader Verlauf
+   */
+  direction: 'forward' | 'backward' | 'same' | 'diverged';
+  /** Die Commits, die dazukommen (forward) bzw. wegfallen (backward). */
+  commits: CommitInfo[];
+  /** true, wenn die Liste wegen der Obergrenze gekürzt wurde. */
+  truncated: boolean;
+  files: ChangedFile[];
+  filesTruncated: boolean;
+  insertions: number;
+  deletions: number;
+}
+
+/** Prüft, ob `a` ein Vorfahre von `b` ist. */
+function isAncestor(repoRoot: string, a: string, b: string): boolean {
+  try {
+    gitRun(repoRoot, `merge-base --is-ancestor ${JSON.stringify(a)} ${JSON.stringify(b)}`, 10000);
+    return true;
+  } catch { return false; }
+}
+
+/**
+ * Beschreibt, was ein Wechsel auf `ref` bedeutet: Titel und Text des Ziel-Standes
+ * sowie alle Commits und geänderten Dateien zwischen dem installierten Stand und
+ * dem Ziel. Damit lässt sich vor dem Update entscheiden, ob man ihn haben will.
+ */
+export function getUpdateNotes(repoRoot: string, ref: string, maxCommits = 100, maxFiles = 200): UpdateNotes {
+  const { upstream } = syncRemote(repoRoot);
+  const target = ref || upstream;
+  const sha = gitSafe(repoRoot, `rev-parse ${JSON.stringify(`${target}^{commit}`)}`, 10000).trim();
+  if (!sha) throw new Error(`Zielstand „${target}" nicht gefunden.`);
+  const currentSha = gitSafe(repoRoot, 'rev-parse HEAD', 6000).trim();
+
+  const head = readCommits(repoRoot, sha, 1)[0];
+  const verMap = versionsFor(repoRoot, [sha, currentSha].filter(Boolean));
+
+  // Bei einem annotierten Tag den Tag-Text bevorzugen (dort stehen die Release-Notes).
+  let subject = head?.subject ?? '';
+  let body = head?.body ?? '';
+  if (ref && !ref.startsWith('origin/') && !/^[0-9a-f]{7,40}$/.test(ref)) {
+    const tagOut = gitSafe(repoRoot, `for-each-ref --format=${FMT_TAG} ${JSON.stringify(`refs/tags/${ref}`)}`, 10000);
+    const rec = splitRecords(tagOut)[0];
+    if (rec) {
+      if ((rec[4] ?? '').trim()) subject = rec[4];
+      if ((rec[5] ?? '').trim()) body = rec[5].trim();
+    }
+  }
+
+  let direction: UpdateNotes['direction'] = 'diverged';
+  let range = '';
+  if (sha === currentSha) {
+    direction = 'same';
+  } else if (isAncestor(repoRoot, currentSha, sha)) {
+    direction = 'forward';
+    range = `${currentSha}..${sha}`;
+  } else if (isAncestor(repoRoot, sha, currentSha)) {
+    direction = 'backward';
+    range = `${sha}..${currentSha}`;
+  } else {
+    range = `${currentSha}...${sha}`;   // symmetrische Differenz als Näherung
+  }
+
+  // Eine Zeile mehr holen, um „gekürzt" sicher zu erkennen.
+  const commitsRaw = range ? readCommits(repoRoot, range, maxCommits + 1) : [];
+  const truncated = commitsRaw.length > maxCommits;
+  const commits = commitsRaw.slice(0, maxCommits);
+
+  const files: ChangedFile[] = [];
+  let fileCount = 0;
+  let insertions = 0;
+  let deletions = 0;
+  if (direction !== 'same') {
+    // Immer vom installierten Stand zum Ziel – bei einem Rollback ist das die
+    // Rückwärts-Differenz, also genau das, was auf der Platte passieren wird.
+    const stat = gitSafe(repoRoot, `diff --numstat ${JSON.stringify(`${currentSha}..${sha}`)}`, 25000);
+    for (const line of stat.split('\n')) {
+      const m = line.trim().match(/^(\d+|-)\t(\d+|-)\t(.+)$/);
+      if (!m) continue;
+      const added = m[1] === '-' ? 0 : parseInt(m[1], 10);
+      const deleted = m[2] === '-' ? 0 : parseInt(m[2], 10);
+      insertions += added;
+      deletions += deleted;
+      fileCount++;
+      if (files.length < maxFiles) files.push({ path: m[3], added, deleted });
+    }
+  }
+
+  return {
+    ref: target,
+    sha,
+    shortSha: sha.slice(0, 7),
+    version: verMap.get(sha) ?? '',
+    date: head?.date ?? '',
+    author: head?.author ?? '',
+    subject,
+    body,
+    currentSha,
+    currentVersion: verMap.get(currentSha) ?? '',
+    direction,
+    commits,
+    truncated,
+    files,
+    filesTruncated: fileCount > files.length,
+    insertions,
+    deletions,
+  };
 }

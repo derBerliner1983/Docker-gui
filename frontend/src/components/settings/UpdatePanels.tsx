@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   RefreshCw, ArrowUpCircle, CheckCircle2, RotateCw, ShieldCheck, Trash2,
-  GitBranch, Globe, Lock, Link2, History,
+  GitBranch, Globe, Lock, Link2, History, FileText, GitCommit, AlertTriangle,
 } from 'lucide-react';
 import { Panel } from '../ui/Panel';
+import { Modal } from '../ui/Modal';
 import { api } from '../../lib/api';
 import { timeAgo } from '../../lib/utils';
 import { tt } from '../../lib/i18n';
-import type { VersionInfo, UpdateSource, UpdateVersion } from '../../lib/types';
+import type { VersionInfo, UpdateSource, UpdateVersion, UpdateNotes } from '../../lib/types';
 
 // Core-Hub-Update: Quelle (Git-Repository) und Versionsauswahl.
 // Ausgelagert, damit die Panels sowohl in den Einstellungen als auch auf der
@@ -203,6 +204,11 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
   const [targetRef, setTargetRef] = useState('');
   const [versionsErr, setVersionsErr] = useState('');
   const [loadingVersions, setLoadingVersions] = useState(false);
+  // Änderungsnotizen („Was bringt dieser Stand?") – als Vorschau und im Popup
+  const [notes, setNotes] = useState<UpdateNotes | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesErr, setNotesErr] = useState('');
 
   const check = useCallback(async (refresh = false) => {
     setChecking(true);
@@ -225,8 +231,30 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
   // Beim Laden schnell (ohne git fetch), Button „Prüfen" holt den Remote-Stand frisch
   useEffect(() => { void check(false); void loadVersions(false); }, [check, loadVersions]);
 
+  // Notizen zum gewählten Stand laden (auch für den Standard „neueste Version")
+  const loadNotes = useCallback(async (ref: string) => {
+    setNotesLoading(true); setNotesErr('');
+    try {
+      setNotes(await api.settings.updateNotes(ref));
+    } catch (err) {
+      setNotes(null);
+      setNotesErr(err instanceof Error ? err.message : tt('Änderungen konnten nicht geladen werden'));
+    } finally { setNotesLoading(false); }
+  }, []);
+  // Bei jedem Wechsel im Dropdown die passenden Notizen holen
+  useEffect(() => { void loadNotes(targetRef); }, [targetRef, loadNotes]);
+
   const selected = versions.find((v) => v.ref === targetRef);
   const latestEntry = versions.find((v) => v.latest);
+  const shown = selected ?? latestEntry;
+  /** Vollständiger Text für den Hover-Tooltip (Titel + Beschreibung). */
+  const hoverText = (subject: string, body: string) => [subject, body].filter(Boolean).join('\n\n');
+  const dirLabel: Record<UpdateNotes['direction'], string> = {
+    forward: tt('Neuer als der installierte Stand'),
+    backward: tt('Älter – Rückrollen auf einen früheren Stand'),
+    same: tt('Bereits installiert'),
+    diverged: tt('Abweichender Verlauf'),
+  };
   /** Label für einen Eintrag im Dropdown. */
   const versionLabel = (v: UpdateVersion) => {
     const date = v.date ? new Date(v.date).toLocaleDateString() : '';
@@ -299,6 +327,7 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
   };
 
   return (
+    <>
     <Panel title={tt('Version & Updates')} icon={<ArrowUpCircle size={15} />} subtitle={ver ? `v${ver.current}` : undefined} storageKey="set-version"
       actions={
         <button className="btn btn--outline btn--sm" disabled={checking} onClick={() => check(true)}>
@@ -382,15 +411,65 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
                       {latestEntry ? `${tt('Neueste Version')}${latestEntry.version ? ` (v${latestEntry.version})` : ''}` : tt('Neueste Version')}
                     </option>
                     {versions.filter((v) => !v.latest).map((v) => (
-                      <option key={v.ref} value={v.ref}>{versionLabel(v)}</option>
+                      <option key={v.ref} value={v.ref} title={hoverText(v.subject, v.body)}>{versionLabel(v)}</option>
                     ))}
                   </select>
+
+                  {/* Vorschau des gewählten Standes: Titel + Beschreibung.
+                      Der vollständige Text steht im Tooltip (Hover) und im Popup. */}
+                  {shown && (
+                    <div
+                      className="card" style={{ marginTop: 10, cursor: 'help' }}
+                      title={hoverText(shown.subject, shown.body) || tt('Keine Beschreibung hinterlegt')}
+                    >
+                      <div className="card-body" style={{ padding: '10px 12px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                          <FileText size={13} style={{ color: 'var(--color-muted)' }} />
+                          <span style={{ fontSize: 13, fontWeight: 600 }}>{shown.subject || tt('Ohne Titel')}</span>
+                          {shown.version && <span className="badge badge--paused" style={{ height: 20, padding: '0 8px' }}>v{shown.version}</span>}
+                          <span className="dtable__mono">{shown.shortSha}</span>
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginBottom: shown.body ? 6 : 0 }}>
+                          {[shown.author, shown.date ? new Date(shown.date).toLocaleString() : ''].filter(Boolean).join(' · ')}
+                        </div>
+                        {shown.body ? (
+                          <div style={{
+                            fontSize: 12.5, color: 'var(--color-muted)', whiteSpace: 'pre-wrap',
+                            display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                          }}>
+                            {shown.body}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12.5, color: 'var(--color-faint)' }}>{tt('Keine ausführliche Beschreibung hinterlegt.')}</div>
+                        )}
+                        {notes && notes.direction !== 'same' && (
+                          <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 8 }}>
+                            {tt('{c} Änderung(en) · {f} Datei(en) · +{a}/-{d} Zeilen', {
+                              c: notes.commits.length + (notes.truncated ? '+' : ''),
+                              f: notes.files.length + (notes.filesTruncated ? '+' : ''),
+                              a: notes.insertions, d: notes.deletions,
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {notesErr && <div style={{ fontSize: 12, color: 'var(--color-warning)', marginTop: 8 }}>{notesErr}</div>}
+
                   {isRollback && (
                     <div style={{ fontSize: 12, color: 'var(--color-warning)', marginTop: 8 }}>
                       {tt('Achtung: Ein älterer Stand kann Funktionen entfernen. Deine Daten bleiben erhalten, die Datenbank wird aber nicht zurückgesetzt.')}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                    <button
+                      className="btn btn--outline btn--sm"
+                      disabled={notesLoading}
+                      onClick={() => { setNotesOpen(true); void loadNotes(targetRef); }}
+                      title={tt('Alle Änderungen dieses Standes ansehen')}
+                    >
+                      {notesLoading ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <FileText size={13} />} {tt('Was ist neu?')}
+                    </button>
                     <button
                       className={`btn btn--sm ${isRollback ? 'btn--outline' : 'btn--primary'}`}
                       disabled={!!selected?.current}
@@ -439,5 +518,160 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
         </div>
       </div>
     </Panel>
+
+    {/* Popup „Was ist neu?": Titel, Beschreibung, alle Commits und geänderte
+        Dateien des gewählten Standes – im Design der Seite (Panel-Karten,
+        Badges, dtable). Der volle Text jedes Eintrags steht auch im Tooltip. */}
+    <Modal
+      open={notesOpen}
+      title={tt('Änderungen dieser Version')}
+      onClose={() => setNotesOpen(false)}
+      width={780}
+      footer={
+        notes && notes.direction !== 'same' ? (
+          <button
+            className={`btn btn--sm ${notes.direction === 'backward' ? 'btn--outline' : 'btn--primary'}`}
+            onClick={() => { setNotesOpen(false); startUpdate(targetRef); }}
+          >
+            {notes.direction === 'backward' ? <History size={13} /> : <ArrowUpCircle size={13} />}
+            {notes.direction === 'backward' ? tt('Auf diesen Stand wechseln') : tt('Jetzt installieren')}
+          </button>
+        ) : undefined
+      }
+    >
+      {notesLoading && !notes ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '20px 0', color: 'var(--color-muted)' }}>
+          <span className="spinner" style={{ width: 14, height: 14 }} /> {tt('Lädt…')}
+        </div>
+      ) : notesErr ? (
+        <div style={{ fontSize: 13, color: 'var(--color-warning)' }}>{notesErr}</div>
+      ) : notes ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Kopf: Version, Stand, Richtung */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 16, fontWeight: 700 }}>{notes.subject || tt('Ohne Titel')}</span>
+              {notes.version && <span className="badge badge--paused" style={{ height: 22, padding: '0 9px' }}>v{notes.version}</span>}
+              <span
+                className={`badge badge--${notes.direction === 'backward' ? 'restarting' : notes.direction === 'same' ? 'running' : 'paused'}`}
+                style={{ height: 22, padding: '0 9px' }}
+              >
+                {notes.direction === 'backward' ? <History size={12} /> : notes.direction === 'same' ? <CheckCircle2 size={12} /> : <ArrowUpCircle size={12} />}
+                {dirLabel[notes.direction]}
+              </span>
+            </div>
+            <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6 }}>
+              <span className="dtable__mono">{notes.shortSha}</span>
+              {notes.author ? ` · ${notes.author}` : ''}
+              {notes.date ? ` · ${new Date(notes.date).toLocaleString()}` : ''}
+              {notes.currentVersion ? ` · ${tt('installiert: v{v}', { v: notes.currentVersion })}` : ''}
+            </div>
+          </div>
+
+          {/* Beschreibung des Standes */}
+          {notes.body && (
+            <div className="card">
+              <div className="card-body" style={{ fontSize: 12.5, whiteSpace: 'pre-wrap', lineHeight: 1.65 }}>
+                {notes.body}
+              </div>
+            </div>
+          )}
+
+          {notes.direction === 'same' ? (
+            <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>
+              {tt('Dieser Stand ist bereits installiert – es gibt keine Unterschiede.')}
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <span className="badge badge--stopped" style={{ height: 22, padding: '0 9px' }}>
+                  <GitCommit size={12} /> {tt('{n} Änderung(en)', { n: `${notes.commits.length}${notes.truncated ? '+' : ''}` })}
+                </span>
+                <span className="badge badge--stopped" style={{ height: 22, padding: '0 9px' }}>
+                  <FileText size={12} /> {tt('{n} Datei(en)', { n: `${notes.files.length}${notes.filesTruncated ? '+' : ''}` })}
+                </span>
+                <span className="badge badge--stopped" style={{ height: 22, padding: '0 9px' }}>
+                  <span style={{ color: 'var(--color-success)' }}>+{notes.insertions}</span>
+                  <span style={{ color: 'var(--color-error)' }}>−{notes.deletions}</span>
+                </span>
+              </div>
+
+              {notes.direction === 'backward' && (
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12.5, color: 'var(--color-warning)' }}>
+                  <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>{tt('Diese Änderungen werden beim Wechsel wieder entfernt.')}</span>
+                </div>
+              )}
+
+              {/* Die einzelnen Änderungen mit vollem Text */}
+              {notes.commits.length > 0 && (
+                <div>
+                  <div className="section-heading" style={{ marginBottom: 8 }}>
+                    {notes.direction === 'backward' ? tt('Diese Änderungen entfallen') : tt('Diese Änderungen kommen dazu')}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {notes.commits.map((c) => (
+                      <div key={c.sha} className="card" title={hoverText(c.subject, c.body)}>
+                        <div className="card-body" style={{ padding: '9px 12px' }}>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{c.subject}</div>
+                          <div style={{ fontSize: 11, color: 'var(--color-faint)', marginTop: 3 }}>
+                            <span className="dtable__mono">{c.short}</span>
+                            {c.author ? ` · ${c.author}` : ''}
+                            {c.date ? ` · ${new Date(c.date).toLocaleDateString()}` : ''}
+                          </div>
+                          {c.body && (
+                            <div style={{ fontSize: 12, color: 'var(--color-muted)', whiteSpace: 'pre-wrap', marginTop: 6, lineHeight: 1.6 }}>
+                              {c.body}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {notes.truncated && (
+                    <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6 }}>
+                      {tt('Weitere Änderungen wurden aus Platzgründen nicht aufgelistet.')}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Geänderte Dateien */}
+              {notes.files.length > 0 && (
+                <div>
+                  <div className="section-heading" style={{ marginBottom: 8 }}>{tt('Geänderte Dateien')}</div>
+                  <div className="table-scroll">
+                    <table className="dtable">
+                      <thead>
+                        <tr>
+                          <th>{tt('Datei')}</th>
+                          <th className="dtable__num" style={{ width: 70 }}>+</th>
+                          <th className="dtable__num" style={{ width: 70 }}>−</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {notes.files.map((f) => (
+                          <tr key={f.path}>
+                            <td className="dtable__mono" style={{ wordBreak: 'break-all' }}>{f.path}</td>
+                            <td className="dtable__num" style={{ color: 'var(--color-success)' }}>{f.added || ''}</td>
+                            <td className="dtable__num" style={{ color: 'var(--color-error)' }}>{f.deleted || ''}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {notes.filesTruncated && (
+                    <div style={{ fontSize: 11.5, color: 'var(--color-faint)', marginTop: 6 }}>
+                      {tt('Weitere Dateien wurden aus Platzgründen nicht aufgelistet.')}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : null}
+    </Modal>
+    </>
   );
 }
