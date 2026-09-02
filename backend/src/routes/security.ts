@@ -4,6 +4,7 @@ import Dockerode from 'dockerode';
 import bcrypt from 'bcryptjs';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { safeExec, privExec, hasBinary } from '../lib/privilege';
+import { detectPM, installLogical, packageNames, isLogicalInstalled } from '../lib/pkgmgr';
 import { userQueries, auditQueries } from '../db/index';
 import { ensureLanWebAccess } from './firewall';
 
@@ -107,7 +108,8 @@ function hardeningChecks(): Finding[] {
 
 function updatesCheck(): Finding[] {
   const findings: Finding[] = [];
-  if (hasBinary('apt-get')) {
+  const pm = detectPM();
+  if (pm === 'apt') {
     const upg = safeExec('apt list --upgradable 2>/dev/null', 10000);
     const secCount = (upg.match(/-security/g) ?? []).length;
     const total = upg.split('\n').filter((l) => l.includes('/')).length;
@@ -116,11 +118,27 @@ function updatesCheck(): Finding[] {
         ? { id: 'updates-sec', category: 'Updates', title: `${secCount} Sicherheitsupdates verfügbar`, status: 'critical', detail: `${total} Updates gesamt`, recommendation: 'Spiele die Updates ein.', link: '/updates', linkLabel: 'System-Updates öffnen' }
         : { id: 'updates-sec', category: 'Updates', title: 'Keine offenen Sicherheitsupdates', status: 'ok', detail: `${total} normale Updates`, recommendation: '' }
     );
-    const unattended = safeExec('dpkg -l unattended-upgrades 2>/dev/null | grep -c ^ii').trim();
+  } else if (pm) {
+    // Arch/CachyOS, Fedora & openSUSE trennen Sicherheitsupdates nicht gesondert
+    // aus – hier zählt die Gesamtzahl offener Updates.
+    const cmd = pm === 'pacman' ? 'pacman -Qu 2>/dev/null'
+      : pm === 'dnf' ? 'dnf -q check-update 2>/dev/null'
+      : 'zypper --non-interactive list-updates 2>/dev/null';
+    const total = safeExec(cmd, 15000).split('\n').filter((l) => l.trim().length > 0).length;
     findings.push(
-      unattended !== '0' && unattended !== ''
-        ? { id: 'auto-upd', category: 'Updates', title: 'Automatische Updates aktiv', status: 'ok', detail: 'unattended-upgrades installiert', recommendation: '' }
-        : { id: 'auto-upd', category: 'Updates', title: 'Keine automatischen Sicherheitsupdates', status: 'warn', detail: 'unattended-upgrades fehlt', recommendation: 'Installiere unattended-upgrades für automatische Sicherheitspatches.', fix: 'auto-updates-install' }
+      total > 0
+        ? { id: 'updates-sec', category: 'Updates', title: `${total} Updates verfügbar`, status: 'warn', detail: `Paketmanager: ${pm}`, recommendation: 'Spiele die Updates ein.', link: '/updates', linkLabel: 'System-Updates öffnen' }
+        : { id: 'updates-sec', category: 'Updates', title: 'System ist aktuell', status: 'ok', detail: `Paketmanager: ${pm}`, recommendation: '' }
+    );
+  }
+  // Automatische Sicherheitsupdates: nur dort prüfen, wo es sie überhaupt gibt
+  // (Debian/Ubuntu: unattended-upgrades, Fedora: dnf-automatic).
+  const autoPkg = packageNames('autoupdate')[0];
+  if (autoPkg) {
+    findings.push(
+      isLogicalInstalled('autoupdate')
+        ? { id: 'auto-upd', category: 'Updates', title: 'Automatische Updates aktiv', status: 'ok', detail: `${autoPkg} installiert`, recommendation: '' }
+        : { id: 'auto-upd', category: 'Updates', title: 'Keine automatischen Sicherheitsupdates', status: 'warn', detail: `${autoPkg} fehlt`, recommendation: `Installiere ${autoPkg} für automatische Sicherheitspatches.`, fix: 'auto-updates-install' }
     );
   }
   if (safeExec('test -f /var/run/reboot-required && echo y').trim() === 'y') {
@@ -490,22 +508,30 @@ export async function securityRoutes(fastify: FastifyInstance) {
             // Firewall aktivieren mit sicherer Grundeinstellung: alles eingehend
             // gesperrt, nur SSH (22) und HTTPS (443) fürs LAN offen. Bewusst KEIN
             // OpenSSH/„Anywhere" (das öffnet 22 fürs Internet) und keine weiteren Regeln.
-            if (!hasBinary('ufw')) privExec('apt-get install -y ufw', { timeout: 180000 });
+            if (!hasBinary('ufw')) installLogical('ufw', 180000);
             privExec('ufw default deny incoming', { timeout: 8000 });
             privExec('ufw default allow outgoing', { timeout: 8000 });
             ensureLanWebAccess(true);
             privExec('bash -c "yes | ufw enable"', { timeout: 30000 });
             break;
           case 'fail2ban-install':
-            privExec('apt-get install -y fail2ban', { timeout: 180000 });
+            installLogical('fail2ban', 180000);
             privExec('systemctl enable --now fail2ban', { timeout: 15000 });
             break;
-          case 'auto-updates-install':
-            privExec('apt-get install -y unattended-upgrades', { timeout: 180000 });
-            privExec('bash -c "echo unattended-upgrades unattended-upgrades/enable_auto_updates boolean true | debconf-set-selections; dpkg-reconfigure -f noninteractive unattended-upgrades"', { timeout: 30000 });
+          case 'auto-updates-install': {
+            // Nur Debian/Ubuntu (unattended-upgrades) und Fedora (dnf-automatic)
+            // kennen automatische Sicherheitsupdates; Arch/CachyOS bewusst nicht.
+            installLogical('autoupdate', 180000);
+            const pm = detectPM();
+            if (pm === 'apt') {
+              privExec('bash -c "echo unattended-upgrades unattended-upgrades/enable_auto_updates boolean true | debconf-set-selections; dpkg-reconfigure -f noninteractive unattended-upgrades"', { timeout: 30000 });
+            } else if (pm === 'dnf') {
+              privExec('systemctl enable --now dnf-automatic.timer', { timeout: 15000 });
+            }
             break;
+          }
           case 'antivirus-install':
-            privExec('apt-get install -y clamav clamav-daemon', { timeout: 300000 });
+            installLogical('clamav', 300000);
             break;
           default:
             return reply.status(400).send({ error: 'Unbekannte Aktion' });
