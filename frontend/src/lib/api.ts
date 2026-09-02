@@ -7,7 +7,7 @@ import type {
   InstalledPackage, PackageSearchResult,
   StoreSearchResult, StoreStatus, OllamaStatus, OllamaModel,
   OllamaModelShow, HFSearchResult, KiHardware, KiAccess, HFGgufFile, OllamaPsModel, NetscanJob,
-  UpdateSource, UpdateVersion,
+  UpdateSource, UpdateVersion, UpdateNotes,
 } from './types';
 
 import { tt } from './i18n';
@@ -330,6 +330,8 @@ export const api = {
       req<{ available: boolean; versions: UpdateVersion[]; current: string; branch?: string; error?: string }>(
         `/api/settings/update/versions${refresh ? '?refresh=1' : ''}`,
       ),
+    updateNotes: (ref = '') =>
+      req<UpdateNotes>(`/api/settings/update/notes${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`),
     setProxyVisibility: (enabled: boolean, backend: string) => req<{ ok: boolean; enabled: boolean; backend: string }>('/api/settings/proxy-visibility', { method: 'POST', body: JSON.stringify({ enabled, backend }) }),
     import: async (file: File) => {
       const token = localStorage.getItem('token');

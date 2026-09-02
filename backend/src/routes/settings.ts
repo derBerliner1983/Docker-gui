@@ -8,7 +8,7 @@ import { privExec, safeExec, hasBinary, isRoot } from '../lib/privilege';
 import { auditQueries, appSettingsQueries, DB_PATH } from '../db/index';
 import {
   getUpdateSource, saveUpdateSource, listVersions, syncRemote, fetchRemote,
-  gitRun, gitSafe, scrubSecrets, isValidRef,
+  gitRun, gitSafe, scrubSecrets, isValidRef, getUpdateNotes,
 } from '../lib/updatesource';
 
 function readVersion(): string {
@@ -403,6 +403,28 @@ export async function settingsRoutes(fastify: FastifyInstance) {
         reply.send({ available: true, versions, current: APP_VERSION, branch: syncRemote(repoRoot).branch });
       } catch (err: unknown) {
         reply.status(500).send({ error: err instanceof Error ? scrubSecrets(err.message) : 'Versionsliste fehlgeschlagen' });
+      }
+    },
+  );
+
+  // Änderungsnotizen zu einem Stand: Titel, Text und alle Commits/Dateien
+  // zwischen dem installierten Stand und dem Ziel („Was bringt das Update?").
+  fastify.get<{ Querystring: { ref?: string } }>(
+    '/api/settings/update/notes',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const ref = (req.query?.ref ?? '').trim();
+      if (ref && !isValidRef(ref) && !/^[0-9a-f]{7,40}$/.test(ref)) {
+        return reply.status(400).send({ error: 'Ungültige Versionsangabe' });
+      }
+      const repoRoot = findRepoRoot();
+      if (!repoRoot || !fs.existsSync(path.join(repoRoot, '.git'))) {
+        return reply.status(400).send({ error: 'Kein Git-Checkout gefunden – Änderungsnotizen nicht verfügbar.' });
+      }
+      try {
+        reply.send(getUpdateNotes(repoRoot, ref));
+      } catch (err: unknown) {
+        reply.status(500).send({ error: err instanceof Error ? scrubSecrets(err.message) : 'Änderungsnotizen fehlgeschlagen' });
       }
     },
   );
