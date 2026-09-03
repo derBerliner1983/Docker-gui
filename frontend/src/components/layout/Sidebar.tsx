@@ -2,14 +2,13 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Moon, Sun, ChevronLeft, ChevronRight, LogOut, EyeOff, Settings as SettingsIcon,
+  Moon, Sun, ChevronLeft, ChevronRight, LogOut, EyeOff,
 } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 import { useT, tt } from '../../lib/i18n';
 import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 import { NAV, HIDDEN_NAV_PREF, canHide } from '../../lib/navItems';
-import { useComponents } from '../../lib/components';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -37,11 +36,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const navigate = useNavigate();
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [kiInstalled, setKiInstalled] = useState(false);
-  const [proxyVisible, setProxyVisible] = useState(false);
   const { prefs, setPref } = usePrefs();
-  // Menüpunkte entfernter Komponenten verschwinden mit – egal wo sie stehen.
-  const { isRouteBlocked } = useComponents();
   const order = (prefs.sidebarOrder as Record<string, string[]>) || {};
   // Vom Benutzer ausgeblendete Menüpunkte (pro Konto serverseitig gespeichert)
   const hidden = (prefs[HIDDEN_NAV_PREF] as string[]) || [];
@@ -56,8 +51,6 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
     api.settings.version()
       .then((v) => { setVersion(v.current); setUpdateAvailable(v.updateAvailable); })
       .catch(() => {});
-    api.ki.status().then((s) => setKiInstalled(s.installed)).catch(() => {});
-    api.settings.getProxyVisibility().then((p) => setProxyVisible(p.enabled)).catch(() => {});
   }, []);
 
   // Das Menü wird erst am Mauszeiger gerendert und danach ins sichtbare Fenster
@@ -122,9 +115,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   /** Abschnitt sichtbar? KI-Bereich nur bei installiertem Ollama, Proxy nur wenn aktiviert. */
   const visibleItems = (sectionKey: string, items: typeof NAV[number]['items']) =>
     orderItems(
-      items.filter((it) => (it.to !== '/proxy' || proxyVisible)
-        && !hidden.includes(it.to)
-        && !isRouteBlocked(it.to)),
+      items.filter((it) => !hidden.includes(it.to)),
       order[sectionKey],
     );
 
@@ -136,9 +127,9 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
             <span className="sidebar__title">{tt('Core-Hub')}</span>
             {version && (
-              <NavLink to="/settings" style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)', textDecoration: 'none' }} title={updateAvailable ? t('sidebar.updateAvailable') : undefined}>
+              <span style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)' }} title={updateAvailable ? t('sidebar.updateAvailable') : undefined}>
                 v{version}{updateAvailable ? ' · Update ▲' : ''}
-              </NavLink>
+              </span>
             )}
           </div>
         )}
@@ -149,8 +140,6 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
 
       <nav className="sidebar__nav">
         {NAV.map((section) => {
-          // Der KI-Abschnitt erscheint nur, wenn die KI-Umgebung installiert ist.
-          if (section.optional && section.labelKey === 'nav.section.ai' && !kiInstalled) return null;
           const items = visibleItems(section.labelKey, section.items);
           if (items.length === 0) return null;
           return (
@@ -222,13 +211,6 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
             onClick={() => hideItem(menu.to)}
           >
             <EyeOff size={13} style={{ flexShrink: 0 }} /> {tt('Menüpunkt ausblenden')}
-          </button>
-          <button
-            className="btn btn--outline btn--sm"
-            style={{ width: '100%', justifyContent: 'flex-start', marginTop: 6 }}
-            onClick={() => { setMenu(null); navigate('/settings'); handleNavClick(); }}
-          >
-            <SettingsIcon size={13} style={{ flexShrink: 0 }} /> {tt('Menü in Einstellungen verwalten')}
           </button>
         </div>,
         document.body,

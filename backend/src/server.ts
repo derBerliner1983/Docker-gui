@@ -12,39 +12,10 @@ import './types';
 import { auditQueries } from './db/index';
 import { APP_VERSION } from './routes/settings';
 import { authRoutes } from './routes/auth';
-import { containerRoutes } from './routes/containers';
 import { systemRoutes } from './routes/system';
-import { cronRoutes } from './routes/cron';
-import { vmRoutes } from './routes/vms';
-import { updateRoutes } from './routes/updates';
-import { packageRoutes } from './routes/packages';
-import { backupRoutes } from './routes/backups';
-import { shareRoutes } from './routes/shares';
-import { linuxUserRoutes } from './routes/linuxusers';
-import { proxyRoutes } from './routes/proxy';
 import { settingsRoutes } from './routes/settings';
-import { networkRoutes } from './routes/networks';
-import { firewallRoutes, ensureLanWebAccess } from './routes/firewall';
-import { securityRoutes } from './routes/security';
-import { vmNetworkRoutes } from './routes/vmnetworks';
-import { imageUpdateRoutes } from './routes/imageupdates';
-import { antivirusRoutes } from './routes/antivirus';
-import { notificationRoutes } from './routes/notifications';
-import { appTemplateRoutes } from './routes/apptemplates';
-import { alertRoutes } from './routes/alerts';
 import { terminalRoutes } from './routes/terminal';
-import { fileRoutes } from './routes/files';
-import { kiRoutes } from './routes/ki';
-import { voiceRoutes } from './routes/voice';
 import { prefsRoutes } from './routes/prefs';
-import { sshRoutes } from './routes/ssh';
-import { netscanRoutes } from './routes/netscan';
-import { obsidianRoutes } from './routes/obsidian';
-import { webSearchRoutes } from './routes/websearch';
-import { runDueSchedules } from './routes/backups';
-import { startDockerWatcher } from './lib/dockerwatch';
-import { startAlertMonitor } from './lib/alertmonitor';
-import { startFirewallLogIngest } from './lib/firewalllog';
 
 // JWT_SECRET kommt im Produktivbetrieb aus der Env-Datei (install.sh erzeugt
 // einen dauerhaften, starken Schlüssel). Fällt der weg, wird ein kryptografisch
@@ -85,35 +56,10 @@ async function main() {
   });
 
   await fastify.register(authRoutes);
-  await fastify.register(containerRoutes);
   await fastify.register(systemRoutes);
-  await fastify.register(cronRoutes);
-  await fastify.register(vmRoutes);
-  await fastify.register(updateRoutes);
-  await fastify.register(packageRoutes);
-  await fastify.register(backupRoutes);
-  await fastify.register(shareRoutes);
-  await fastify.register(linuxUserRoutes);
-  await fastify.register(proxyRoutes);
   await fastify.register(settingsRoutes);
-  await fastify.register(networkRoutes);
-  await fastify.register(firewallRoutes);
-  await fastify.register(securityRoutes);
-  await fastify.register(vmNetworkRoutes);
-  await fastify.register(imageUpdateRoutes);
-  await fastify.register(antivirusRoutes);
-  await fastify.register(notificationRoutes);
-  await fastify.register(appTemplateRoutes);
-  await fastify.register(alertRoutes);
   await fastify.register(terminalRoutes);
-  await fastify.register(fileRoutes);
-  await fastify.register(kiRoutes);
-  await fastify.register(voiceRoutes);
   await fastify.register(prefsRoutes);
-  await fastify.register(sshRoutes);
-  await fastify.register(netscanRoutes);
-  await fastify.register(obsidianRoutes);
-  await fastify.register(webSearchRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   if (fs.existsSync(frontendDist)) {
@@ -139,10 +85,8 @@ async function main() {
   }
 
   await fastify.listen({ port: PORT, host: HOST });
-  console.log(`\n⬡ Core-Hub running at http://localhost:${PORT} (proxied via Caddy → https)\n`);
+  console.log(`\n⬡ Core-Hub läuft auf http://localhost:${PORT}\n`);
 
-  // Backup scheduler – check every 30s for due cron-based schedules
-  setInterval(() => { void runDueSchedules(); }, 30_000);
 
   // Audit-log rotation – delete entries older than 90 days, runs daily
   const pruneAuditLog = () => {
@@ -153,17 +97,9 @@ async function main() {
   pruneAuditLog();
   setInterval(pruneAuditLog, 24 * 60 * 60 * 1000);
 
-  // Watch Docker for unexpected container deaths and notify
-  startDockerWatcher();
 
-  // Security/System-Alarme periodisch auswerten (E-Mail bei Auffälligkeiten)
-  startAlertMonitor();
 
-  // Firewall-Verbindungsprotokoll periodisch in die DB einlesen
-  startFirewallLogIngest();
 
-  // Sicherstellen, dass die Web-Oberfläche/SSH immer aus dem LAN erreichbar bleibt
-  try { ensureLanWebAccess(); } catch { /* */ }
 }
 
 main().catch((err) => {

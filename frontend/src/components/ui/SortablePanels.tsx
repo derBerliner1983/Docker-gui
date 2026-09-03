@@ -1,11 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { GripVertical, EyeOff, Plus, RotateCcw, Trash2, PackagePlus } from 'lucide-react';
+import { GripVertical, EyeOff, Plus, RotateCcw } from 'lucide-react';
 import { tt } from '../../lib/i18n';
 import { useOrder, usePrefs } from '../../lib/prefs';
 import { useLayout } from '../../lib/layoutContext';
-import { useComponents } from '../../lib/components';
-import { allNavItems } from '../../lib/navItems';
-import { api } from '../../lib/api';
 
 export interface SortableItem {
   id: string;
@@ -43,8 +40,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
   const wrapRef = useRef<HTMLDivElement>(null);
   // Der Bleistift sitzt in der Topbar – der Modus kommt deshalb aus dem Layout.
   const { editLayout: editing, registerPanels } = useLayout();
-  const { components, componentForPanel, isPanelBlocked, reload: reloadComponents } = useComponents();
-  const [busyId, setBusyId] = useState<string | null>(null);
 
   // Der Topbar melden, dass diese Seite Panels hat (und beim Verlassen abmelden).
   useEffect(() => {
@@ -57,9 +52,7 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
   const hiddenIds = new Set(hidden.map((h) => h.id));
   const setHidden = (next: HiddenPanel[]) => setPref(HIDDEN_PREF, { ...allHidden, [storageKey]: next });
 
-  // Zusätzlich zu manuell ausgeblendeten fallen Panels weg, deren Komponente
-  // nicht installiert ist – egal auf welcher Seite sie liegen.
-  const list = ordered(items, order).filter((i) => !hiddenIds.has(i.id) && !isPanelBlocked(`${storageKey}:${i.id}`));
+  const list = ordered(items, order).filter((i) => !hiddenIds.has(i.id));
 
   /** Titel eines Panels: erst aus dem Item, sonst aus der Überschrift im DOM. */
   const titleOf = (it: SortableItem): string => {
@@ -86,63 +79,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
     setDragId(null); setOverId(null); setArmed(null);
   };
 
-  /** Komponente zu einem Panel entfernen – mit Vorschau der Folgen. */
-  const uninstall = async (panelId: string) => {
-    const panelKey = `${storageKey}:${panelId}`;
-    const c = componentForPanel(panelKey);
-    if (!c) return;
-    // Betroffene Bereiche mit ihren Menünamen benennen – ein Pfad wie
-    // „/containers" sagt beim Lesen wenig.
-    const nav = allNavItems();
-    const betroffen = [
-      ...c.routes.map((r) => {
-        const item = nav.find((n) => n.to === r);
-        return item ? tt(item.labelKey) : r;
-      }),
-      ...c.panels.filter((pk) => pk !== panelKey).map((pk) => `Panel „${pk.split(':').pop()}"`),
-    ];
-    const text = [
-      `„${c.name}" entfernen?`,
-      c.description,
-      '',
-      betroffen.length
-        ? `Dadurch verschwinden auch: ${betroffen.join(', ')}.`
-        : 'Es hängen keine weiteren Bereiche daran.',
-      c.packages.length ? `Paket(e): ${c.packages.join(', ')}` : '',
-      '',
-      'OK = Dienst stoppen UND Paket deinstallieren.',
-    ].filter(Boolean).join('\n');
-    if (!confirm(text)) return;
-    setBusyId(panelKey);
-    try {
-      const r = await api.system.uninstallComponent(c.id, true);
-      await reloadComponents();
-      alert(`„${c.name}" entfernt:\n${r.steps.join('\n')}`);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : tt('Entfernen fehlgeschlagen'));
-    } finally { setBusyId(null); }
-  };
-
-  /** Auf dieser Seite entfernte Komponenten – zum Wiederinstallieren. */
-  const removedHere = components.filter(
-    (c) => !c.installed && c.packages.length > 0
-      && c.panels.some((pk) => items.some((i) => `${storageKey}:${i.id}` === pk)),
-  );
-
-  const install = async (id: string) => {
-    const c = components.find((x) => x.id === id);
-    if (!c) return;
-    if (!confirm(tt('„{name}" wieder installieren? Das kann einige Minuten dauern.', { name: c.name }))) return;
-    setBusyId(id);
-    try {
-      const r = await api.system.installComponent(id);
-      await reloadComponents();
-      alert(`„${c.name}":\n${r.steps.join('\n')}`);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : tt('Installation fehlgeschlagen'));
-    } finally { setBusyId(null); }
-  };
-
   const resetLayout = () => {
     if (!confirm(tt('Reihenfolge und Sichtbarkeit dieser Seite zurücksetzen?'))) return;
     setOrder([]);
@@ -161,33 +97,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
           <button className="btn btn--outline btn--sm" style={{ marginLeft: 'auto' }} onClick={resetLayout}>
             <RotateCcw size={13} /> {tt('Zurücksetzen')}
           </button>
-        </div>
-      )}
-
-      {/* Entfernte Komponenten wieder installieren */}
-      {editing && removedHere.length > 0 && (
-        <div className="card" style={{ marginBottom: 12, borderColor: 'var(--color-warning)' }}>
-          <div className="card-body" style={{ padding: '10px 12px' }}>
-            <div style={{ fontSize: 12, color: 'var(--color-muted)', marginBottom: 8 }}>
-              {tt('Entfernte Komponenten – zum Wiederinstallieren anklicken:')}
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {removedHere.map((c) => (
-                <button
-                  key={c.id}
-                  className="btn btn--outline btn--sm"
-                  disabled={busyId === c.id}
-                  onClick={() => void install(c.id)}
-                  title={c.description}
-                >
-                  {busyId === c.id
-                    ? <span className="spinner" style={{ width: 12, height: 12 }} />
-                    : <PackagePlus size={13} />}
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -210,7 +119,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {list.map((it) => {
           const isOver = overId === it.id && dragId && dragId !== it.id;
-          const comp = componentForPanel(`${storageKey}:${it.id}`);
           return (
             <div
               key={it.id}
@@ -255,26 +163,6 @@ export function SortablePanels({ storageKey, items }: { storageKey: string; item
                   >
                     <EyeOff size={13} /> {tt('Ausblenden')}
                   </button>
-                  {comp && comp.packages.length > 0 && (
-                    <button
-                      type="button"
-                      className="btn btn--outline btn--sm"
-                      title={tt('Komponente vom System entfernen – blendet alle zugehörigen Bereiche aus')}
-                      disabled={busyId === it.id}
-                      onClick={(e) => { e.stopPropagation(); void uninstall(it.id); }}
-                      style={{ color: 'var(--color-error)' }}
-                    >
-                      {busyId === it.id
-                        ? <span className="spinner" style={{ width: 12, height: 12 }} />
-                        : <Trash2 size={13} />}
-                      {tt('Deinstallieren')}
-                    </button>
-                  )}
-                  {comp && (
-                    <span style={{ fontSize: 11.5, color: 'var(--color-faint)' }}>
-                      {tt('gehört zu: {name}', { name: comp.name })}
-                    </span>
-                  )}
                 </div>
               ) : (
                 /* Außerhalb des Modus nur der dezente Griff am Rand. */

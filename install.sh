@@ -223,166 +223,6 @@ primary_ip() {
 }
 
 
-# ── Sprachsteuerung einrichten/aktualisieren (Whisper STT + Piper TTS, lokal) ────
-# Wird von `--voice` UND vom normalen Install/Update aufgerufen (letzteres nur,
-# wenn die Sprachsteuerung bereits installiert ist oder `--with-voice` angegeben
-# wurde). Idempotent: bereits vorhandene venv/Pakete werden nicht neu geladen.
-setup_voice() {
-  local VOICE_DIR="$INSTALL_DIR/voice"
-  local SRC_PY="$INSTALL_DIR/backend/voice/voiced.py"
-  [ -f "$SRC_PY" ] || SRC_PY="$SOURCE_DIR/backend/voice/voiced.py"
-  if [ ! -f "$SRC_PY" ]; then warn "voiced.py nicht gefunden – Sprachsteuerung übersprungen."; return 0; fi
-  mkdir -p "$VOICE_DIR" "$DATA_DIR/voice-cache"
-  cp "$SRC_PY" "$VOICE_DIR/voiced.py"
-
-  if [ ! -d "$VOICE_DIR/venv" ]; then
-    info "Sprachsteuerung: installiere Python + faster-whisper + piper-tts + kokoro (einmalig, kann dauern)..."
-    if ! { pkg_install_logical python && pkg_install_logical ffmpeg && pkg_install_logical espeak; }; then
-      warn "python3/venv/ffmpeg/espeak-ng konnten nicht installiert werden – Sprachsteuerung übersprungen."; return 0
-    fi
-    # Python-Binary: expliziter Override > gemerkte Wahl > System-python3.
-    local VPY="${VOICE_PYTHON:-}"
-    [ -z "$VPY" ] && [ -f "$DATA_DIR/voice-python" ] && VPY="$(cat "$DATA_DIR/voice-python" 2>/dev/null)"
-    command -v "${VPY:-python3}" >/dev/null 2>&1 || VPY="python3"
-    "${VPY:-python3}" -m venv "$VOICE_DIR/venv" || { warn "venv-Erstellung fehlgeschlagen."; return 0; }
-    "$VOICE_DIR/venv/bin/pip" install --upgrade pip >/dev/null 2>&1 || true
-    if ! "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts; then
-      warn "pip-Installation (faster-whisper/piper-tts) fehlgeschlagen – Sprachsteuerung übersprungen."; return 0
-    fi
-    # Kokoro (bessere Englisch-Stimmen) – optional, bricht die Installation nicht ab
-    "$VOICE_DIR/venv/bin/pip" install kokoro-onnx soundfile 2>/dev/null || warn "Kokoro-TTS konnte nicht installiert werden (Englisch bleibt bei Piper)."
-  else
-    if ! "$VOICE_DIR/venv/bin/python" -c "import faster_whisper" 2>/dev/null; then
-      "$VOICE_DIR/venv/bin/pip" install faster-whisper piper-tts || true
-    fi
-    if ! "$VOICE_DIR/venv/bin/python" -c "import kokoro_onnx" 2>/dev/null; then
-      pkg_install_logical espeak || true
-      "$VOICE_DIR/venv/bin/pip" install kokoro-onnx soundfile 2>/dev/null || true
-    fi
-  fi
-
-  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" "$DATA_DIR/voice-cache" 2>/dev/null || true
-  local RUN_USER="$SERVICE_USER"; id "$RUN_USER" &>/dev/null || RUN_USER="root"
-
-  cat > "/etc/systemd/system/core-hub-voice.service" <<EOF
-[Unit]
-Description=Core-Hub Voice Daemon (Whisper STT + Piper TTS)
-After=network.target
-
-[Service]
-Type=simple
-User=$RUN_USER
-Group=$RUN_USER
-Environment=VOICE_PORT=11435
-Environment=WHISPER_MODEL=base
-Environment=WHISPER_COMPUTE=int8
-Environment=VOICE_CACHE=$DATA_DIR/voice-cache
-Environment=QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
-ExecStart=$VOICE_DIR/venv/bin/python $VOICE_DIR/voiced.py
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl daemon-reload
-  systemctl enable core-hub-voice 2>/dev/null || true
-  systemctl restart core-hub-voice 2>/dev/null || true
-  info "Sprachdienst aktiv auf 127.0.0.1:11435 (Whisper lädt beim ersten Start sein Modell)."
-}
-
-# Version des Python im Voice-venv als Zahl (z.B. 314 für 3.14), 0 wenn unbekannt.
-voice_venv_pyver() {
-  local py="$INSTALL_DIR/voice/venv/bin/python"
-  [ -x "$py" ] || { echo 0; return; }
-  "$py" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0
-}
-
-# Version eines Python-Binaries als Zahl (z. B. 312 für 3.12); 0 bei Fehler.
-py_ver_num() {
-  command -v "$1" >/dev/null 2>&1 || return 1
-  "$1" -c 'import sys;print(sys.version_info[0]*100+sys.version_info[1])' 2>/dev/null || echo 0
-}
-
-# Versucht, eine bestimmte Python-Nebenversion zu installieren (z. B. 3.12).
-# Die Paketnamen unterscheiden sich stark je Distribution.
-pkg_install_python_version() {
-  local v="$1" short="${1/./}"     # 3.12 → 312
-  case "$PM" in
-    apt)
-      pkg_install "python$v" "python$v-venv" "python$v-dev" && return 0
-      # deadsnakes-PPA als letzte Option (nur Ubuntu)
-      pkg_install software-properties-common 2>/dev/null || true
-      add-apt-repository -y ppa:deadsnakes/ppa 2>/dev/null || return 1
-      PKG_REFRESHED=0; pkg_refresh
-      pkg_install "python$v" "python$v-venv" "python$v-dev"
-      ;;
-    dnf|zypper)
-      pkg_install "python$v" "python$v-devel"
-      ;;
-    pacman)
-      # Arch/CachyOS führen nur das aktuelle „python". Ältere Nebenversionen
-      # liegen im AUR (python311/python312) – das bauen wir hier bewusst nicht
-      # als root. Stattdessen: passt das System-Python, wird es genutzt.
-      pkg_install "python$short" 2>/dev/null || return 1
-      ;;
-    *) return 1 ;;
-  esac
-}
-
-# Ein installierbares/vorhandenes Python < 3.14 finden (für PyTorch/torchaudio).
-# Gibt den Binary-Namen/-Pfad aus oder nichts.
-find_compatible_python() {
-  local c v n
-  for c in python3.12 python3.13 python3.11; do
-    command -v "$c" >/dev/null 2>&1 && { echo "$c"; return 0; }
-    [ -x "/usr/bin/$c" ] && { echo "/usr/bin/$c"; return 0; }
-  done
-  # Passt das System-Python schon? (Auf Arch/CachyOS ist das der Normalfall,
-  # dort gibt es keine parallel installierbaren älteren Nebenversionen.)
-  for c in python3 python; do
-    n="$(py_ver_num "$c" || echo 0)"
-    if [ "${n:-0}" -ge 311 ] && [ "${n:-0}" -lt 314 ]; then echo "$c"; return 0; fi
-  done
-  pkg_refresh
-  for v in 3.12 3.13 3.11; do
-    if pkg_install_python_version "$v"; then
-      command -v "python$v" >/dev/null 2>&1 && { echo "python$v"; return 0; }
-    fi
-  done
-  return 1
-}
-
-# Voice-venv mit einem gegebenen Python-Binary neu aufsetzen und die Wahl merken.
-rebuild_voice_venv() {
-  local pybin="$1"
-  info "Baue Voice-venv mit '$pybin' neu auf..."
-  rm -rf "$INSTALL_DIR/voice/venv"
-  mkdir -p "$DATA_DIR"
-  echo "$pybin" > "$DATA_DIR/voice-python"   # für künftige Updates merken
-  VOICE_PYTHON="$pybin" setup_voice
-}
-
-# Selbstheilung: Wenn das Voice-venv auf zu neuem Python (>=3.14) läuft, für das
-# es kein PyTorch/torchaudio gibt, automatisch auf ein kompatibles Python
-# umstellen. Wird vor der Qwen-Installation aufgerufen.
-ensure_voice_python_for_torch() {
-  local ver; ver="$(voice_venv_pyver)"
-  if [ "$ver" -ge 314 ]; then
-    warn "Voice-venv nutzt Python $((ver/100)).$((ver%100)) – dafür gibt es kein PyTorch/torchaudio."
-    info "Stelle automatisch auf ein kompatibles Python um..."
-    local pybin; pybin="$(find_compatible_python || true)"
-    if [ -z "$pybin" ]; then
-      case "$PM" in
-        pacman) error "Kein kompatibles Python (3.11–3.13) verfügbar. Auf Arch/CachyOS liegt eine ältere Nebenversion im AUR – z. B. 'yay -S python312' (als normaler Benutzer) – danach 'sudo bash install.sh --voice-py 3.12'." ;;
-        apt)    error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren, z.B. 'apt install python3.12 python3.12-venv'." ;;
-        *)      error "Kein kompatibles Python (3.11–3.13) verfügbar. Bitte manuell installieren und danach 'sudo bash install.sh --voice-py 3.12' ausführen." ;;
-      esac
-    fi
-    rebuild_voice_venv "$pybin"
-  fi
-}
-
 # ── sudoers-Allowlist schreiben (passwortloses sudo nur für nötige Befehle) ─────
 # Wichtig: jeder Befehl wird unter allen üblichen Pfaden eingetragen
 # (/usr/bin, /usr/sbin, /bin, /sbin). sudo vergleicht den Pfad, zu dem die
@@ -435,154 +275,6 @@ if [ "${1:-}" = "--fix-perms" ] || [ "${1:-}" = "--permissions" ] || [ "${1:-}" 
   info "=== $APP_NAME – Berechtigungen (sudoers) neu setzen ==="
   write_sudoers
   info "Fertig. Firewall/Updates/Pakete funktionieren nun ohne Root-Rechte-Fehler."
-  exit 0
-fi
-
-# ── KI-Erweiterung: Ollama installieren ──────────────────────────────────────
-if [ "${1:-}" = "--ki" ]; then
-  info "=== $APP_NAME – KI-Erweiterung (Ollama) ==="
-  if command -v ollama &>/dev/null; then
-    info "Ollama ist bereits installiert ($(ollama --version 2>/dev/null || echo 'unbekannte Version'))."
-  else
-    info "Lade und installiere Ollama..."
-    curl -fsSL https://ollama.com/install.sh | sh
-    info "Ollama installiert."
-  fi
-  systemctl enable ollama 2>/dev/null || true
-  systemctl start  ollama 2>/dev/null || true
-  info "Ollama-Dienst aktiviert und gestartet (Port 11434)."
-  info "KI-Modelle jetzt unter dem Reiter 'KI-Modelle' in Core-Hub verwalten."
-  exit 0
-fi
-
-# ── Sprachsteuerung: lokaler Voice-Daemon (Whisper STT + Piper TTS) ──────────────
-if [ "${1:-}" = "--voice" ]; then
-  info "=== $APP_NAME – Sprachsteuerung (Whisper + Piper, lokal) ==="
-  setup_voice
-  info "Sprache & Weckwort in Core-Hub unter 'Einstellungen → Sprachsteuerung' festlegen."
-  info "Ab jetzt wird die Sprachsteuerung bei jedem Update automatisch mit aktualisiert."
-  info "Erkennungsmodell wählst du in der GUI (Einstellungen → Sprachsteuerung → Whisper): small/medium = schnell+genau, large-v3 = beste Genauigkeit (lädt beim ersten Mal ~3 GB)."
-  exit 0
-fi
-
-# ── Voice-venv mit bestimmter Python-Version neu aufsetzen ───────────────────────
-# Nötig, wenn die System-Python-Version zu neu für PyTorch/torchaudio ist
-# (z.B. 3.14). Beispiel: sudo bash install.sh --voice-py 3.12
-if [ "${1:-}" = "--voice-py" ]; then
-  PYV="${2:-3.12}"
-  info "=== $APP_NAME – Voice-venv auf Python $PYV umstellen ==="
-  VOICE_DIR="$INSTALL_DIR/voice"
-  # Kandidaten-Binaries (z.B. python3.12). Manche Distros liefern es unter /usr/bin.
-  find_py() { command -v "python$PYV" 2>/dev/null || command -v "python${PYV%%.*}.${PYV#*.}" 2>/dev/null || { [ -x "/usr/bin/python$PYV" ] && echo "/usr/bin/python$PYV"; }; }
-  PYBIN_NEW="$(find_py || true)"
-  if [ -z "$PYBIN_NEW" ]; then
-    info "python$PYV nicht vorhanden – versuche Installation über $PM..."
-    pkg_install_python_version "$PYV" || warn "python$PYV ließ sich nicht über $PM installieren."
-    PYBIN_NEW="$(find_py || true)"
-  fi
-  if [ -z "$PYBIN_NEW" ]; then
-    case "$PM" in
-      pacman) error "python$PYV ließ sich nicht installieren. Arch/CachyOS führen nur das aktuelle „python\" – ältere Nebenversionen liegen im AUR: 'yay -S python${PYV/./}' (als normaler Benutzer), danach erneut versuchen. Ist das System-Python bereits < 3.14, genügt 'sudo bash install.sh --voice'." ;;
-      apt)    error "python$PYV ließ sich nicht installieren. Bitte manuell installieren (z.B. 'apt install python$PYV python$PYV-venv') und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13" ;;
-      *)      error "python$PYV ließ sich nicht installieren. Bitte manuell installieren und erneut versuchen – oder eine andere Version wählen: sudo bash install.sh --voice-py 3.13" ;;
-    esac
-  fi
-  info "Nutze Python-Binary: $PYBIN_NEW"
-  rebuild_voice_venv "$PYBIN_NEW" || error "Neuaufbau des Voice-venv fehlgeschlagen."
-  info "Fertig. Voice-venv nutzt jetzt Python $PYV (wird für künftige Updates gemerkt)."
-  info "Für Qwen-Stimmen jetzt: sudo bash install.sh --voice-qwen"
-  exit 0
-fi
-
-# ── Qwen3-TTS für Deutsch (optional, schwer: PyTorch + mehrere GB Modell) ────────
-if [ "${1:-}" = "--voice-qwen" ]; then
-  info "=== $APP_NAME – Qwen3-TTS (sehr gute Stimme inkl. DEUTSCH) ==="
-  VOICE_DIR="$INSTALL_DIR/voice"
-  if [ ! -d "$VOICE_DIR/venv" ]; then
-    info "Voice-Basis fehlt – richte zuerst Whisper/Piper ein..."
-    setup_voice
-  fi
-  [ -d "$VOICE_DIR/venv" ] || error "Voice-venv fehlt. Zuerst: sudo bash install.sh --voice"
-  # Selbstheilung: bei zu neuem Python (>=3.14) automatisch auf ein kompatibles
-  # Python umstellen, damit PyTorch/torchaudio überhaupt installierbar sind.
-  ensure_voice_python_for_torch
-  PYBIN="$VOICE_DIR/venv/bin/python"
-  PIP="$VOICE_DIR/venv/bin/pip"
-  PYVER="$("$PYBIN" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo '?')"
-  info "Voice-venv nutzt Python $PYVER."
-  # SoX + FFmpeg werden von qwen-tts/torchaudio für die Audio-Verarbeitung benötigt.
-  { pkg_install_logical sox && pkg_install_logical ffmpeg; } || warn "sox/ffmpeg konnten nicht installiert werden – Qwen-Audio evtl. eingeschränkt."
-  info "Installiere PyTorch + qwen-tts (mehrere GB, kann lange dauern)..."
-  "$PIP" install --upgrade pip >/dev/null 2>&1 || true
-  # qwen-tts zuerst (zieht seine Abhängigkeiten), danach torch+torchaudio als
-  # ZUSAMMENPASSENDES PAAR aus dem CPU-Wheel-Index erzwingen. Das verhindert den
-  # häufigen Fehler „Could not load _torchaudio.abi3.so" (torch/torchaudio-Mismatch).
-  # Für NVIDIA/AMD-GPU ggf. cu124- bzw. rocm6.2-Index verwenden.
-  "$PIP" install qwen-tts soundfile || error "qwen-tts-Installation fehlgeschlagen."
-  "$PIP" install --force-reinstall torch torchaudio --index-url https://download.pytorch.org/whl/cpu 2>/dev/null \
-    || "$PIP" install --force-reinstall torch torchaudio || error "PyTorch/torchaudio-Installation fehlgeschlagen."
-  # Verifizieren, dass torchaudio wirklich lädt – sonst klare Meldung statt Laufzeitfehler.
-  if ! "$PYBIN" -c 'import torch, torchaudio' 2>/dev/null; then
-    warn "torchaudio lädt noch nicht. Meist Python-Version zu neu ($PYVER)."
-    warn "Lösung: venv mit Python 3.12 neu aufsetzen (sudo bash install.sh --voice-py 3.12) und danach erneut --voice-qwen."
-    error "Qwen-TTS nicht einsatzbereit (torchaudio inkompatibel)."
-  fi
-  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VOICE_DIR" 2>/dev/null || true
-  systemctl restart core-hub-voice 2>/dev/null || true
-  info "Qwen3-TTS installiert & torchaudio geprüft. Das Modell (~3–4 GB) wird beim ersten Nutzen automatisch geladen."
-  info "In Einstellungen unter 'Stimme' die '… · Qwen'-Stimmen für Deutsch wählen."
-  info "Kleiner/schneller: QWEN_TTS_MODEL=Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice in /etc/systemd/system/core-hub-voice.service."
-  exit 0
-fi
-
-# ── Obsidian als Wissensbasis („Gehirn") ────────────────────────────────────────
-# Legt einen Vault-Ordner an und installiert – falls noch nicht vorhanden und ein
-# Desktop verfügbar ist – die Obsidian-App. Für die KI-Anbindung genügt der Ordner
-# mit .md-Notizen; Core-Hub liest ihn ein (Einstellungen → KI → Wissensbasis).
-if [ "${1:-}" = "--obsidian" ]; then
-  info "=== $APP_NAME – Obsidian als Wissensbasis anbinden ==="
-  VAULT_DIR="${OBSIDIAN_VAULT:-$INSTALL_DIR/data/brain}"
-  mkdir -p "$VAULT_DIR"
-  if [ ! -f "$VAULT_DIR/Willkommen.md" ]; then
-    cat > "$VAULT_DIR/Willkommen.md" <<'EOF'
-# Willkommen in deinem Core-Hub-Gehirn
-
-Lege hier Markdown-Notizen (.md) ab – Core-Hub liest sie ein und die KI nutzt sie
-als Wissensbasis. Verbinde denselben Ordner in der Obsidian-App als Vault.
-EOF
-  fi
-  id "$SERVICE_USER" &>/dev/null && chown -R "$SERVICE_USER:$SERVICE_USER" "$VAULT_DIR" 2>/dev/null || true
-
-  if command -v obsidian >/dev/null 2>&1 || [ -f /var/lib/flatpak/exports/bin/md.obsidian.Obsidian ]; then
-    info "Obsidian ist bereits installiert."
-  elif [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && [ ! -d /usr/share/xsessions ]; then
-    info "Kein Desktop erkannt – überspringe die Obsidian-App (Server-Betrieb)."
-    info "Die KI-Anbindung funktioniert trotzdem über den Vault-Ordner: $VAULT_DIR"
-  elif command -v flatpak >/dev/null 2>&1; then
-    info "Installiere Obsidian per Flatpak..."
-    flatpak install -y flathub md.obsidian.Obsidian 2>/dev/null || warn "Flatpak-Installation fehlgeschlagen – Vault-Ordner genügt für die KI."
-  elif command -v snap >/dev/null 2>&1; then
-    info "Installiere Obsidian per Snap..."
-    snap install obsidian --classic 2>/dev/null || warn "Snap-Installation fehlgeschlagen – Vault-Ordner genügt für die KI."
-  else
-    warn "Weder Flatpak noch Snap gefunden – Obsidian-App nicht installiert."
-    info "Die KI-Anbindung funktioniert dennoch über den Vault-Ordner: $VAULT_DIR"
-  fi
-
-  info "Vault-Ordner: $VAULT_DIR"
-  info "In Core-Hub unter 'KI-Modelle → Wissensbasis (Obsidian)' aktivieren und diesen Pfad eintragen."
-  exit 0
-fi
-
-# ── Web-MCP-Server (Internetzugriff als MCP-Werkzeug für externe Agenten) ────────
-if [ "${1:-}" = "--web-mcp" ]; then
-  info "=== $APP_NAME – Web-MCP-Server (Websuche/Seitenabruf) ==="
-  MCP_DIR="$INSTALL_DIR/mcp/core-hub-web"
-  [ -d "$MCP_DIR" ] || error "MCP-Verzeichnis nicht gefunden: $MCP_DIR"
-  ( cd "$MCP_DIR" && npm install --no-audit --no-fund ) || error "npm install im MCP-Server fehlgeschlagen."
-  info "Fertig. In den MCP-Client eintragen (Beispiel):"
-  info "  \"core-hub-web\": { \"command\": \"node\", \"args\": [\"$MCP_DIR/index.mjs\"] }"
-  info "Details: $MCP_DIR/README.md"
   exit 0
 fi
 
@@ -792,46 +484,10 @@ fi
 # Auf Arch/Fedora startet der Docker-Dienst nicht von selbst (bei Debian schon).
 command -v docker &>/dev/null && svc_enable docker
 
-if ! command -v virsh &>/dev/null; then
-  info "Installiere libvirt/KVM..."
-  pkg_install_logical libvirt || warn "libvirt/KVM konnte nicht installiert werden – VM-Verwaltung bleibt inaktiv."
-fi
-command -v virsh &>/dev/null && svc_enable libvirtd
-
-if ! command -v smbd &>/dev/null; then
-  info "Installiere Samba..."
-  pkg_install_logical samba || warn "Samba konnte nicht installiert werden – SMB-Freigaben bleiben inaktiv."
-fi
-
-if ! command -v caddy &>/dev/null; then
-  info "Installiere Caddy..."
-  if [ "$PM" = "apt" ]; then
-    # Debian/Ubuntu haben Caddy nicht in den Standardquellen → offizielles Repo.
-    pkg_install debian-keyring debian-archive-keyring apt-transport-https 2>/dev/null || true
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
-      | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null || true
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
-      | tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
-    PKG_REFRESHED=0   # neue Quelle → Index erneut einlesen
-    pkg_refresh
-  fi
-  pkg_install_logical caddy || warn "Caddy konnte nicht installiert werden – HTTPS-Proxy bleibt inaktiv."
-fi
-
-if ! command -v clamscan &>/dev/null; then
-  info "Installiere ClamAV..."
-  pkg_install_logical clamav || warn "ClamAV konnte nicht installiert werden – Virenschutz bleibt inaktiv."
-fi
-
-if ! command -v ufw &>/dev/null; then
-  info "Installiere UFW (Firewall)..."
-  pkg_install_logical ufw || warn "UFW konnte nicht installiert werden – Firewall-Verwaltung bleibt inaktiv."
-fi
-
-if ! command -v fail2ban-client &>/dev/null; then
-  info "Installiere fail2ban..."
-  pkg_install_logical fail2ban || warn "fail2ban konnte nicht installiert werden."
-fi
+# Diese Fassung liefert nur Dashboard und Terminal. libvirt/KVM, Samba, Caddy,
+# ClamAV, UFW und fail2ban werden deshalb NICHT mehr installiert – sie gehören
+# zu Bereichen, die hier nicht enthalten sind. Kommen die Bereiche zurück,
+# gehören ihre Pakete wieder hierher.
 
 # Automatische Sicherheitsupdates – gibt es so nur auf Debian/Ubuntu und Fedora.
 AUTOUPD_PKG="$(pkg_names autoupdate)"
@@ -845,7 +501,7 @@ fi
 if [ "$FORCE_UPDATE" = "1" ]; then
   info "Aktualisiere installierte Abhängigkeiten (--update)..."
   UPD_PKGS=""
-  for logical in docker libvirt samba caddy clamav ufw fail2ban autoupdate; do
+  for logical in docker autoupdate; do
     for pkg in $(pkg_names "$logical"); do
       pkg_have "$pkg" && UPD_PKGS="$UPD_PKGS $pkg"
     done
@@ -1022,42 +678,8 @@ fi
 
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
-# Caddy: HTTP→HTTPS-Weiterleitung + HTTPS-Proxy für Core-Hub
-info "Konfiguriere Caddy (HTTPS + HTTP-Redirect)..."
-CADDYFILE="/etc/caddy/Caddyfile"
-# Server-IP und Hostname ermitteln
-SERVER_IP="$(primary_ip)"
-SERVER_HOST=$(hostname -s 2>/dev/null || echo "")
-# Caddy-Adressen: IP immer, Hostname zusätzlich wenn verschieden
-CADDY_ADDR="https://${SERVER_IP}"
-if [ -n "$SERVER_HOST" ] && [ "$SERVER_HOST" != "$SERVER_IP" ]; then
-  CADDY_ADDR="${CADDY_ADDR}, https://${SERVER_HOST}"
-fi
-# Bestehenden managed block (Docker-Container-Proxies) sichern
-MANAGED_BLOCK=""
-if [ -f "$CADDYFILE" ]; then
-  MANAGED_BLOCK=$(awk '/# >>> core-hub managed/,/# <<< core-hub managed <<</{ print }' "$CADDYFILE" 2>/dev/null || true)
-fi
-mkdir -p /etc/caddy
-{
-  echo "# core-hub-base – HTTP→HTTPS + Core-Hub-Proxy (vom Installer verwaltet)"
-  echo "http://:80 {"
-  echo "    redir https://{host}{uri} permanent"
-  echo "}"
-  echo ""
-  echo "${CADDY_ADDR} {"
-  echo "    tls internal"
-  echo "    reverse_proxy localhost:${PORT}"
-  echo "}"
-  if [ -n "$MANAGED_BLOCK" ]; then
-    echo ""
-    echo "$MANAGED_BLOCK"
-  fi
-} > "$CADDYFILE"
-chmod 644 "$CADDYFILE"
-systemctl enable caddy 2>/dev/null || true
-systemctl restart caddy 2>/dev/null || true
-sleep 1
+# Kein Caddy mehr: Core-Hub ist direkt über seinen Port erreichbar. Wer HTTPS
+# möchte, setzt einen Reverse-Proxy eigener Wahl davor (z. B. Pangolin).
 
 # Hinweis: Es werden bewusst KEINE Firewall-Regeln automatisch hinzugefügt.
 # Der Admin entscheidet selbst über Freigaben (in Core-Hub unter „Sicherheit").
@@ -1085,7 +707,7 @@ info "Installiere systemd-Service..."
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
 Description=$APP_NAME – Linux Server Management
-After=network.target caddy.service docker.service
+After=network.target docker.service
 Wants=docker.service
 
 [Service]
@@ -1111,17 +733,6 @@ systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
 systemctl restart "$SERVICE_NAME"
 
-# ── Sprachsteuerung automatisch mitziehen ──
-# Bei jedem Install/Update aktualisieren, wenn sie schon eingerichtet ist
-# (systemd-Unit oder venv vorhanden) oder wenn `--with-voice` angegeben wurde.
-WANT_VOICE=0
-case " $* " in *" --with-voice "*) WANT_VOICE=1;; esac
-if [ -f /etc/systemd/system/core-hub-voice.service ] || [ -d "$INSTALL_DIR/voice/venv" ]; then WANT_VOICE=1; fi
-if [ "$WANT_VOICE" = "1" ]; then
-  info "Aktualisiere Sprachsteuerung mit..."
-  setup_voice || warn "Sprachsteuerung konnte nicht aktualisiert werden."
-fi
-
 sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP="$(primary_ip)"
@@ -1132,7 +743,8 @@ if systemctl is-active --quiet "$SERVICE_NAME"; then
     info "✅ $APP_NAME v$NEW_VERSION erfolgreich installiert!"
   fi
   info ""
-  info "   Zugriff: https://${IP}  (HTTP :80 leitet automatisch um)"
+  info "   Zugriff: http://${IP}:${PORT}"
+  info "   (Für HTTPS einen Reverse-Proxy eigener Wahl davorsetzen.)"
   if [ "$MODE" != "update" ]; then
     info "   Login:   admin / admin"
     info ""
