@@ -768,3 +768,20 @@ export interface HardwareInfo {
   sharedMemory: boolean;
   hints: string[];
 }
+
+/** Optionale System-Komponente, die sich entfernen und wieder installieren lässt. */
+export interface SystemComponent {
+  id: string;
+  name: string;
+  description: string;
+  binary: string;
+  services: string[];
+  /** Navigationspfade, die ohne diese Komponente verschwinden. */
+  routes: string[];
+  /** Panel-Kennungen (storageKey), die davon abhängen. */
+  panels: string[];
+  installed: boolean;
+  active: boolean;
+  /** Echte Paketnamen dieser Distribution (leer = hier nicht verfügbar). */
+  packages: string[];
+}

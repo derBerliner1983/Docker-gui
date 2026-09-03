@@ -105,6 +105,11 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 ### 🦠 Virenschutz (ClamAV)
 - ClamAV installieren, Signaturen aktualisieren, Verzeichnisse scannen (Live-Fortschritt)
 
+### 🔌 Betrieb hinter einem Reverse-Proxy
+- Läuft ohne Zusatzkonfiguration hinter Caddy, nginx, Traefik oder Pangolin (Root-Pfad)
+- Für Auslieferung unter einem **Unterpfad** den Basispfad beim Bauen setzen: `VITE_BASE=/corehub/ npm run build` – ohne das fordert der Browser die Asset-Dateien unter `/assets/…` an und die Seite bleibt weiß
+- `X-Forwarded-*` wird ausgewertet, damit Client-Adresse und Protokoll stimmen
+
 ### 🔄 System-Updates
 - apt / dnf / pacman: Updates suchen, einzeln oder alle installieren
 - **„Nach Updates suchen"** und **„Alle installieren"** stehen direkt am Panel „Verfügbare Updates" – also bei der Liste, auf die sie sich beziehen
@@ -162,7 +167,8 @@ es den Host selbst verwalten (Updates, Dienste, Benutzer, Firewall …).
 - **Konfigurations-Migration**: Export/Import als `.tar.gz` (DB + Caddy-Zertifikate + SMB)
 
 ### ↕️ Anpassbare Oberfläche (pro Benutzer)
-- **Layout bearbeiten**: der **Bleistift oben in der Titelleiste** schaltet den Modus ein (nur auf Seiten mit Panels) – darin lassen sich Panels sortieren, **ausblenden** und über Chips wieder **einblenden**; „Zurücksetzen" stellt den Auslieferungszustand her
+- **Layout bearbeiten**: der **Bleistift oben in der Titelleiste** schaltet den Modus ein (nur auf Seiten mit Panels). Über jedem Panel erscheint dann eine Leiste mit **Griff**, **Ausblenden** und – wenn das Panel zu einer optionalen Komponente gehört – **Deinstallieren**; „Zurücksetzen" stellt den Auslieferungszustand her
+- **Komponenten entfernen statt nur ausblenden**: Docker, KVM/libvirt, Samba, Caddy, ClamAV, UFW und fail2ban lassen sich samt Paket entfernen. Vorher wird gezeigt, **welche Bereiche dadurch verschwinden** (Menüpunkte und Panels, auch auf anderen Seiten). Danach blendet Core-Hub sie überall automatisch aus – im Bearbeiten-Modus lassen sie sich per Klick **wieder installieren**
 - **Sidebar-Einträge** und **Panels** per **Drag & Drop** sortieren (Greifpunkt zum Ziehen)
 - **Menüpunkte ausblenden**: **Rechtsklick** direkt auf den Eintrag in der Seitenleiste → „Menüpunkt ausblenden"
 - **Wieder einblenden** unter *Einstellungen → Menüpunkte* (Schalter je Eintrag, „Alle einblenden") – „Einstellungen" selbst bleibt immer sichtbar
@@ -334,6 +340,7 @@ npm run dev                # Backend (4200) + Frontend (5173) parallel
 | **19** | **Distributionsunabhängiger Installer**: Arch/CachyOS (`pacman`), Fedora (`dnf`) und openSUSE (`zypper`) zusätzlich zu Debian/Ubuntu – inkl. übersetzter Paketnamen, Dienst-Aktivierung, Samba-/ClamAV-Grundkonfiguration und pfadunabhängiger sudoers-Allowlist · **npm-12-Freigaben** für native Module (`better-sqlite3`) inkl. Selbstreparatur im Installer · **better-sqlite3 12.x** für Node 24+/C++20 | ✅ `v0.26.0` |
 | **20** | **Hardware- & Speicheraufteilung** (BIOS vs. Kernel vs. GPU-UMA/GTT, Kernel-Parameter) für APUs mit gemeinsamem Speicher, **Reverse-Proxy entfernbar**, echte Fehlerursachen statt pauschalem „keine Root-Rechte" | ✅ `v0.27.0` |
 | **21** | **Editor-Modus** für Panels (sortieren, ausblenden, einblenden, zurücksetzen), **Update-Installation als Live-Stream**, Git `safe.directory` systemweit, verwaiste pacman-Sperre wird gelöst | ✅ `v0.28.0` |
+| **22** | **Komponenten deinstallieren/wiederinstallieren** aus dem Layout-Editor heraus, inklusive Warnung über betroffene Bereiche und automatischem Ausblenden überall; **Unterpfad-Betrieb** hinter Reverse-Proxys (`VITE_BASE`) | ✅ `v0.29.0` |
 
 ### Geplant / Ideen
 - ⏳ Restliche Detailtexte/Backend-Meldungen übersetzen

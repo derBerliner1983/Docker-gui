@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
 import { PrefsProvider } from './lib/prefs';
+import { ComponentsProvider } from './lib/components';
 import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -75,10 +76,14 @@ function AppRoutes() {
 export function App() {
   return (
     <I18nProvider>
-      <BrowserRouter>
+      {/* basename aus dem Build-Basispfad: nur so stimmen die Routen auch,
+          wenn die Oberfläche unter einem Unterpfad ausgeliefert wird. */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AuthProvider>
           <PrefsProvider>
-            <AppRoutes />
+            <ComponentsProvider>
+              <AppRoutes />
+            </ComponentsProvider>
           </PrefsProvider>
         </AuthProvider>
       </BrowserRouter>

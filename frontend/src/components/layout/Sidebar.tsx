@@ -9,6 +9,7 @@ import { useT, tt } from '../../lib/i18n';
 import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 import { NAV, HIDDEN_NAV_PREF, canHide } from '../../lib/navItems';
+import { useComponents } from '../../lib/components';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -39,6 +40,8 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const [kiInstalled, setKiInstalled] = useState(false);
   const [proxyVisible, setProxyVisible] = useState(false);
   const { prefs, setPref } = usePrefs();
+  // Menüpunkte entfernter Komponenten verschwinden mit – egal wo sie stehen.
+  const { isRouteBlocked } = useComponents();
   const order = (prefs.sidebarOrder as Record<string, string[]>) || {};
   // Vom Benutzer ausgeblendete Menüpunkte (pro Konto serverseitig gespeichert)
   const hidden = (prefs[HIDDEN_NAV_PREF] as string[]) || [];
@@ -119,7 +122,9 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   /** Abschnitt sichtbar? KI-Bereich nur bei installiertem Ollama, Proxy nur wenn aktiviert. */
   const visibleItems = (sectionKey: string, items: typeof NAV[number]['items']) =>
     orderItems(
-      items.filter((it) => (it.to !== '/proxy' || proxyVisible) && !hidden.includes(it.to)),
+      items.filter((it) => (it.to !== '/proxy' || proxyVisible)
+        && !hidden.includes(it.to)
+        && !isRouteBlocked(it.to)),
       order[sectionKey],
     );
 

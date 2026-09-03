@@ -5,6 +5,9 @@ import { execSync } from 'child_process';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 
 import { readHardware } from '../lib/hardware';
+import { listComponents, uninstallComponent, installComponent, getComponent } from '../lib/components';
+import { describeExecError } from '../lib/privilege';
+import { auditQueries } from '../db/index';
 const docker = new Dockerode({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 
 function safeExec(cmd: string, timeout = 5000): string {
@@ -112,6 +115,47 @@ function detectGpus(): GpuStat[] {
 }
 
 export async function systemRoutes(fastify: FastifyInstance) {
+
+  // ── Optionale Komponenten (installieren / entfernen) ────────────────────
+  // Wer sein System schlank halten will, entfernt hier ganze Komponenten.
+  // Jede kennt die Oberflächenbereiche, die von ihr abhängen – das Frontend
+  // blendet sie danach überall aus und warnt vorher, was betroffen ist.
+  fastify.get('/api/system/components', { preHandler: requireAuth }, async (_req, reply) => {
+    reply.send({ components: listComponents() });
+  });
+
+  fastify.post<{ Params: { id: string }; Body: { purge?: boolean } }>(
+    '/api/system/components/:id/uninstall',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const c = getComponent(req.params.id);
+      if (!c) return reply.status(404).send({ error: 'Unbekannte Komponente' });
+      try {
+        const steps = uninstallComponent(c.id, !!req.body?.purge);
+        auditQueries.log.run(req.user.id, 'system.component.uninstall', `${c.id}${req.body?.purge ? ' (Paket entfernt)' : ''}`);
+        reply.send({ ok: true, steps, components: listComponents() });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: describeExecError(err, 'Entfernen fehlgeschlagen') });
+      }
+    },
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/api/system/components/:id/install',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const c = getComponent(req.params.id);
+      if (!c) return reply.status(404).send({ error: 'Unbekannte Komponente' });
+      try {
+        const steps = installComponent(c.id);
+        auditQueries.log.run(req.user.id, 'system.component.install', c.id);
+        reply.send({ ok: true, steps, components: listComponents() });
+      } catch (err: unknown) {
+        reply.status(500).send({ error: describeExecError(err, 'Installation fehlgeschlagen') });
+      }
+    },
+  );
+
   // ── Hardware & Speicheraufteilung ───────────────────────────────────────
   // Trennt bewusst nach Quelle: was das BIOS als verbaut meldet, was der Kernel
   // als Arbeitsspeicher sieht, was fest der GPU zugeteilt ist (UMA) und was sie
