@@ -237,7 +237,8 @@ write_sudoers() {
   # Erlaubte Befehle (ohne Pfad) – die Pfadvarianten erzeugt die Schleife unten.
   local CMDS="apt-get apt dnf pacman zypper systemctl \
     useradd userdel usermod groupadd chpasswd smbpasswd smbcontrol \
-    cp tar mkdir rm mv sed chown chmod tee bash \
+    cp tar mkdir rm mv sed chown chmod tee bash find cat stat \
+    journalctl systemd-analyze \
     virsh virt-install qemu-img caddy nginx ufw ss sysctl reboot dmidecode \
     dpkg-reconfigure debconf-set-selections freshclam clamscan clamdscan git"
 

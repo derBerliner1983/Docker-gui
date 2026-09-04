@@ -13,6 +13,19 @@ export function privExec(cmd: string, opts: ExecSyncOptions = {}): string {
   return execSync(full, { timeout: 15000, ...opts }).toString();
 }
 
+/**
+ * Wie privExec, aber über eine Shell: `sudo -n bash -c "…"`.
+ *
+ * Gedacht für Werkzeuge, die nicht einzeln in der sudoers-Allowlist stehen
+ * (find, cat, stat, journalctl …). Sicherheitlich ändert das nichts: bash steht
+ * dort ohne Einschränkung und kann ohnehin jedes Programm starten. Der Umweg
+ * sorgt nur dafür, dass eine ältere Allowlist nicht zu „sudo: … can't do that"
+ * führt, bevor install.sh --fix-perms gelaufen ist.
+ */
+export function privShell(cmd: string, opts: ExecSyncOptions = {}): string {
+  return privExec(`bash -c ${JSON.stringify(cmd)}`, opts);
+}
+
 /** execFile variant (no shell parsing) with optional sudo prefix. */
 export function privExecFile(bin: string, args: string[], opts: ExecSyncOptions = {}): string {
   if (isRoot) {

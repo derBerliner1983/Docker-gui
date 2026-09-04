@@ -3,7 +3,7 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { requireAdmin } from '../middleware/auth';
-import { privExec, isRoot, describeExecError, isPermissionError } from '../lib/privilege';
+import { privExec, privShell, isRoot, describeExecError, isPermissionError } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 /**
@@ -126,9 +126,11 @@ async function listDirect(dir: string): Promise<FileEntry[]> {
  * Datensätze.
  */
 function listEscalated(dir: string): FileEntry[] {
-  const fmt = '%y\\x1f%s\\x1f%T@\\x1f%m\\x1f%u\\x1f%g\\x1f%l\\x1f%f\\x1e';
+  // Trennzeichen oktal: „find -printf" kennt \\xNN nicht und würde es mit einer
+  // Warnung wörtlich ausgeben – \\037 (0x1f) und \\036 (0x1e) versteht es.
+  const fmt = '%y\\037%s\\037%T@\\037%m\\037%u\\037%g\\037%l\\037%f\\036';
   const cmd = `find ${JSON.stringify(dir)} -maxdepth 1 -mindepth 1 -printf ${JSON.stringify(fmt)}`;
-  const out = privExec(cmd, { timeout: 20000, maxBuffer: 16 * 1024 * 1024 });
+  const out = privShell(cmd, { timeout: 20000, maxBuffer: 16 * 1024 * 1024 });
   const entries: FileEntry[] = [];
   for (const rec of out.split('\x1e')) {
     if (!rec.trim()) continue;
@@ -247,7 +249,7 @@ export async function filesRoutes(fastify: FastifyInstance) {
         }
         const st = await withEscalation(
           () => fsp.lstat(target),
-          () => ({ isDirectory: () => privExec(`bash -c ${JSON.stringify(`test -d ${JSON.stringify(target)}`)}`, { timeout: 8000 }) !== undefined }) as unknown as fs.Stats,
+          () => ({ isDirectory: () => privShell(`test -d ${JSON.stringify(target)}`, { timeout: 8000 }) !== undefined }) as unknown as fs.Stats,
         );
         const isDir = st.isDirectory();
         if (isDir && !req.body?.recursive) {
@@ -318,14 +320,14 @@ export async function filesRoutes(fastify: FastifyInstance) {
         const target = safePath(req.query.path);
         const st = await withEscalation(
           () => fsp.stat(target),
-          () => ({ size: parseInt(privExec(`bash -c ${JSON.stringify(`stat -c %s ${JSON.stringify(target)}`)}`, { timeout: 8000 }).trim(), 10) }) as fs.Stats,
+          () => ({ size: parseInt(privShell(`stat -c %s ${JSON.stringify(target)}`, { timeout: 8000 }).trim(), 10) }) as fs.Stats,
         );
         if (st.size > MAX_TEXT_BYTES) {
           return reply.status(413).send({ error: `Die Datei ist ${(st.size / 1024 / 1024).toFixed(1)} MB groß – der Editor öffnet bis 1 MB.` });
         }
         const content = await withEscalation(
           () => fsp.readFile(target, 'utf8'),
-          () => privExec(`cat ${JSON.stringify(target)}`, { timeout: 15000, maxBuffer: MAX_TEXT_BYTES * 2 }),
+          () => privShell(`cat ${JSON.stringify(target)}`, { timeout: 15000, maxBuffer: MAX_TEXT_BYTES * 2 }),
         );
         reply.send({ path: target, content, size: st.size });
       } catch (err: unknown) {
@@ -380,7 +382,7 @@ export async function filesRoutes(fastify: FastifyInstance) {
           const code = (err as NodeJS.ErrnoException)?.code;
           if (isRoot || (code !== 'EACCES' && code !== 'EPERM')) throw err;
           // Nur mit erhöhten Rechten lesbar: über cat, mit Größenbegrenzung
-          const buf = privExec(`cat ${JSON.stringify(target)}`, { timeout: 60000, maxBuffer: MAX_DOWNLOAD_ESCALATED, encoding: 'buffer' } as never);
+          const buf = privShell(`cat ${JSON.stringify(target)}`, { timeout: 60000, maxBuffer: MAX_DOWNLOAD_ESCALATED, encoding: 'buffer' } as never);
           return reply.send(buf);
         }
       } catch (err: unknown) {
