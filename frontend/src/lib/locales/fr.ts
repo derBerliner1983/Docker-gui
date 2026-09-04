@@ -1008,4 +1008,9 @@ export const fr: Record<string, string> = {
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Dépôt public – aucun identifiant nécessaire.',
 
   'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Serveur injoignable – le service est probablement en train de redémarrer. Rechargez la page dans quelques secondes.',
+  'von': 'sur',
+  '✗ Update fehlgeschlagen – die bisherige Version läuft weiter. Bitte das Protokoll oben lesen.': '✗ Échec de la mise à jour – la version précédente continue de tourner. Veuillez lire le journal ci-dessus.',
+  '… Verbindung beendet – der Dienst startet vermutlich neu. Es wird geprüft, welche Version danach läuft.': '… Connexion terminée – le service redémarre probablement. Vérification de la version qui revient.',
+  '✓ Installation abgeschlossen. Der Dienst wird neu gestartet…': '✓ Installation terminée. Le service redémarre…',
+  'klicken, um es einzuspielen': 'cliquer pour l’installer',
 };

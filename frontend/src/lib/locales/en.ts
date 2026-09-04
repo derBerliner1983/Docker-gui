@@ -1121,4 +1121,9 @@ export const en: Record<string, string> = {
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Public repository – no credentials needed.',
 
   'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Server unreachable – the service is probably restarting. Please reload the page in a few seconds.',
+  'von': 'of',
+  '✗ Update fehlgeschlagen – die bisherige Version läuft weiter. Bitte das Protokoll oben lesen.': '✗ Update failed – the previous version keeps running. Please read the log above.',
+  '… Verbindung beendet – der Dienst startet vermutlich neu. Es wird geprüft, welche Version danach läuft.': '… Connection ended – the service is probably restarting. Checking which version comes back.',
+  '✓ Installation abgeschlossen. Der Dienst wird neu gestartet…': '✓ Installation finished. The service is restarting…',
+  'klicken, um es einzuspielen': 'click to install it',
 };

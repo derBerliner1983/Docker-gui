@@ -3,7 +3,7 @@ import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'child_
 import fs from 'fs';
 import os from 'os';
 import { auditQueries } from '../db/index';
-import { isRoot, safeExec } from '../lib/privilege';
+import { isRoot, safeExec, execOutput } from '../lib/privilege';
 
 // node-pty ist eine optionale (native) Abhängigkeit. Wenn sie nicht gebaut
 // werden konnte, fallen wir auf `script` zurück (ohne Live-Resize).
@@ -44,24 +44,55 @@ const SU_BIN = findBin('su');
 const LOGIN_BIN = findBin('login');
 const BASH_BIN = findBin('bash') ?? '/bin/bash';
 
+const SUDOERS_FILE = '/etc/sudoers.d/core-hub';
+
 // Das Ergebnis kurz merken: die Prüfung startet einen sudo-Prozess und wird
 // bei jeder Eingabe im Terminal gebraucht.
-let rootCheck: { at: number; ok: boolean } | null = null;
+let rootCheck: { at: number; ok: boolean; detail: string } | null = null;
 
-/** Kann der Dienst (ohne Passwort) zu root wechseln? */
-function canBecomeRoot(): boolean {
-  if (isRoot) return true;
-  if (rootCheck && Date.now() - rootCheck.at < 60_000) return rootCheck.ok;
+/**
+ * Kann der Dienst (ohne Passwort) zu root wechseln?
+ *
+ * Schlägt das fehl, ist die Ursache fast immer die sudoers-Allowlist – und die
+ * kennt nur sudo selbst. Deshalb wird die Fehlerausgabe aufgehoben und der
+ * Oberfläche mitgegeben: „kein passwortloses sudo" allein hilft niemandem
+ * weiter, „is not allowed to execute" oder „a password is required" schon.
+ */
+function checkRoot(): { ok: boolean; detail: string } {
+  if (isRoot) return { ok: true, detail: '' };
+  if (rootCheck && Date.now() - rootCheck.at < 60_000) return rootCheck;
   let ok = false;
+  let detail = '';
   try {
     // -n: niemals nach einem Passwort fragen. Erfolg heißt: sudoers erlaubt bash.
-    execFileSync('sudo', ['-n', BASH_BIN, '-c', 'exit 0'], { timeout: 5000, stdio: 'ignore' });
+    execFileSync('sudo', ['-n', BASH_BIN, '-c', 'exit 0'], { timeout: 5000, stdio: 'pipe' });
     ok = true;
-  } catch {
+  } catch (err) {
     ok = false;
+    // Erste nicht-leere Zeile der sudo-Ausgabe, gekürzt – das ist die Aussage.
+    detail = execOutput(err).split('\n').map((l) => l.trim()).filter(Boolean)[0]?.slice(0, 160) ?? '';
   }
-  rootCheck = { at: Date.now(), ok };
-  return ok;
+  rootCheck = { at: Date.now(), ok, detail };
+  return rootCheck;
+}
+
+function canBecomeRoot(): boolean {
+  return checkRoot().ok;
+}
+
+/** Verständlicher Grund, warum die root-Wege gerade nicht angeboten werden. */
+function rootReason(): string {
+  const { detail } = checkRoot();
+  const sudoersMissing = !fs.existsSync(SUDOERS_FILE);
+  const parts = [
+    `Der Dienst (${serviceUserName()}) darf nicht ohne Passwort zu root wechseln.`,
+    detail ? `sudo meldet: „${detail}"` : '',
+    sudoersMissing
+      ? `Die Datei ${SUDOERS_FILE} fehlt.`
+      : `Die Datei ${SUDOERS_FILE} ist vorhanden, erlaubt aber ${BASH_BIN} offenbar nicht.`,
+    'Beheben mit: sudo bash install.sh --fix-perms (danach diese Seite neu laden).',
+  ];
+  return parts.filter(Boolean).join(' ');
 }
 
 export interface LinuxUser { name: string; uid: number; shell: string; home: string }
@@ -203,9 +234,15 @@ export async function terminalRoutes(fastify: FastifyInstance) {
       serviceUser: serviceUserName(),
       users,
       modes: {
-        root: { available: root, reason: root ? null : 'Der Dienst hat kein passwortloses sudo (install.sh --fix-perms).' },
-        user: { available: root && !!SU_BIN && users.length > 0, reason: !SU_BIN ? '„su" fehlt.' : !root ? 'Ohne Root-Rechte nicht möglich.' : null },
-        login: { available: root && !!LOGIN_BIN, reason: !LOGIN_BIN ? '„login" fehlt (util-linux).' : !root ? 'Ohne Root-Rechte nicht möglich.' : null },
+        root: { available: root, reason: root ? null : rootReason() },
+        user: {
+          available: root && !!SU_BIN && users.length > 0,
+          reason: !SU_BIN ? '„su" ist auf diesem System nicht vorhanden.' : !root ? rootReason() : null,
+        },
+        login: {
+          available: root && !!LOGIN_BIN,
+          reason: !LOGIN_BIN ? '„login" fehlt (Paket util-linux).' : !root ? rootReason() : null,
+        },
         service: { available: true, reason: null },
       },
       defaultMode: (root ? 'root' : 'service') as TerminalMode,

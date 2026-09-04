@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { SlidersHorizontal, Info } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
@@ -114,6 +115,15 @@ export function Settings() {
   const isAdmin = user?.role === 'admin';
   // Nach dem Wechsel der Quelle die Versionsliste neu aufbauen
   const [sourceKey, setSourceKey] = useState(0);
+  // Aus der Seitenleiste kommt man über /settings#updates direkt hierher,
+  // wenn ein Update bereitsteht – dann dorthin scrollen statt oben zu landen.
+  const { hash } = useLocation();
+  const updatesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (hash !== '#updates') return;
+    const t = setTimeout(() => updatesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+    return () => clearTimeout(t);
+  }, [hash, isAdmin]);
   return (
     <>
       <Topbar title={tt('Einstellungen')} subtitle={tt('Globale Einstellungen der Anwendung')} />
@@ -123,7 +133,11 @@ export function Settings() {
           {/* Update-Quelle und Versionsauswahl nur für Administratoren –
               die zugehörigen Endpunkte verlangen ohnehin Admin-Rechte. */}
           {isAdmin && <UpdateSourcePanel onChanged={() => setSourceKey((k) => k + 1)} />}
-          {isAdmin && <VersionPanel key={sourceKey} installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />}
+          {isAdmin && (
+            <div id="updates" ref={updatesRef} style={{ scrollMarginTop: 12 }}>
+              <VersionPanel key={sourceKey} installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />
+            </div>
+          )}
           <SystemInfoPanel />
         </div>
       </main>
