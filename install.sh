@@ -257,16 +257,62 @@ write_sudoers() {
   LIST="$(echo "$LIST" | sed 's/^ *//')"
   if [ -z "$LIST" ]; then warn "Keine erlaubten Befehle gefunden – sudoers übersprungen."; return 0; fi
 
-  cat > /etc/sudoers.d/core-hub <<EOF
+  # Erst in eine Datei außerhalb von /etc/sudoers.d schreiben: eine fehlerhafte
+  # Datei dort würde sudo für ALLE Benutzer lahmlegen.
+  local TMP_SUDO="/tmp/core-hub.sudoers.$$"
+  cat > "$TMP_SUDO" <<EOF
 # Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle
 # (automatisch erzeugt von install.sh – Pfade passend zur Distribution)
 $SERVICE_USER ALL=(root) NOPASSWD: $LIST
 EOF
-  chmod 0440 /etc/sudoers.d/core-hub
-  if visudo -c -f /etc/sudoers.d/core-hub >/dev/null 2>&1; then
-    info "sudoers-Allowlist aktiv."
+  chmod 0440 "$TMP_SUDO"
+
+  # Syntaxprüfung – aber nur, wenn visudo sie hier überhaupt beherrscht.
+  # Ersatz-Implementierungen (etwa sudo-rs auf Arch/CachyOS) kennen „-c -f"
+  # teilweise nicht. Deren Fehlschlag als „Datei ungültig" zu werten hieße,
+  # gar keine Allowlist zu installieren – und dann fehlen dem Dienst später
+  # sämtliche Rechte, ohne dass jemand weiß warum. Deshalb wird visudo zuerst
+  # an einer garantiert gültigen Datei getestet.
+  local VISUDO_USABLE=0 VISUDO_OUT="" VALID=1
+  if command -v visudo >/dev/null 2>&1; then
+    printf 'root ALL=(ALL) ALL\n' > "$TMP_SUDO.ref"
+    chmod 0440 "$TMP_SUDO.ref"
+    visudo -c -f "$TMP_SUDO.ref" >/dev/null 2>&1 && VISUDO_USABLE=1
+    rm -f "$TMP_SUDO.ref"
+  fi
+  if [ "$VISUDO_USABLE" = "1" ]; then
+    VISUDO_OUT="$(visudo -c -f "$TMP_SUDO" 2>&1)" || VALID=0
   else
-    rm -f /etc/sudoers.d/core-hub; warn "sudoers ungültig – übersprungen."
+    warn "visudo kann hier nicht prüfen – die Syntaxprüfung wird übersprungen."
+  fi
+
+  if [ "$VALID" = "0" ]; then
+    warn "Der sudoers-Entwurf ist ungültig und wurde NICHT installiert:"
+    echo "$VISUDO_OUT" | sed 's/^/       /'
+    rm -f "$TMP_SUDO"
+    return 0
+  fi
+
+  install -m 0440 -o root -g root "$TMP_SUDO" /etc/sudoers.d/core-hub
+  rm -f "$TMP_SUDO"
+
+  # Funktionsprüfung: kann der Dienstbenutzer jetzt wirklich ohne Passwort?
+  # Nur das zählt – eine syntaktisch gültige Datei nützt nichts, wenn sudo sie
+  # anders auslegt als erwartet.
+  local BASH_PATH TEST_OUT=""
+  BASH_PATH="$(command -v bash || echo /bin/bash)"
+  if TEST_OUT="$(sudo -u "$SERVICE_USER" sudo -n "$BASH_PATH" -c 'exit 0' 2>&1)"; then
+    info "sudoers-Allowlist aktiv (Funktionstest bestanden)."
+  else
+    warn "sudoers-Datei geschrieben, aber der Funktionstest schlägt fehl:"
+    warn "  ${TEST_OUT:-keine Ausgabe}"
+    warn "  Nachstellen mit: sudo -u $SERVICE_USER sudo -n $BASH_PATH -c 'echo ok'"
+    warn "  Ohne das bleiben Terminal (root), Updates und Paketaktionen gesperrt."
+    # Sicherheitsnetz: falls sudo dadurch generell gestört ist, Datei zurücknehmen.
+    if ! sudo -n true >/dev/null 2>&1; then
+      rm -f /etc/sudoers.d/core-hub
+      warn "  sudo war danach generell gestört – die Datei wurde wieder entfernt."
+    fi
   fi
 }
 
