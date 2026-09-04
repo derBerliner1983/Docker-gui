@@ -229,8 +229,8 @@ export function Files() {
                   <span className="spinner" style={{ width: 20, height: 20 }} />
                 </div>
               ) : (
-                {/* Höher als der Standard von 460 px: ein Dateimanager lebt
-                    davon, viele Einträge auf einmal zu zeigen. */}
+                // Höher als der Standard von 460 px: ein Dateimanager lebt
+                // davon, viele Einträge auf einmal zu zeigen.
                 <div className="table-scroll" style={{ maxHeight: 'max(320px, calc(100vh - 340px))' }}>
                   <table className="dtable">
                     <thead>
