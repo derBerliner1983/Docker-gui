@@ -1008,4 +1008,9 @@ export const it: Record<string, string> = {
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Repository pubblico: non servono credenziali.',
 
   'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Server non raggiungibile: probabilmente il servizio si sta riavviando. Ricarica la pagina tra qualche secondo.',
+  'von': 'di',
+  '✗ Update fehlgeschlagen – die bisherige Version läuft weiter. Bitte das Protokoll oben lesen.': '✗ Aggiornamento non riuscito: resta attiva la versione precedente. Leggi il registro qui sopra.',
+  '… Verbindung beendet – der Dienst startet vermutlich neu. Es wird geprüft, welche Version danach läuft.': '… Connessione terminata: il servizio si sta probabilmente riavviando. Verifico quale versione torna attiva.',
+  '✓ Installation abgeschlossen. Der Dienst wird neu gestartet…': '✓ Installazione completata. Il servizio si sta riavviando…',
+  'klicken, um es einzuspielen': 'clicca per installarlo',
 };

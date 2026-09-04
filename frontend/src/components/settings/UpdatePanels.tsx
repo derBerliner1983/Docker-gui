@@ -307,12 +307,31 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
     const priorBuild = ver?.current;
     let finished = false;
 
-    const onDone = () => {
+    /**
+     * Abschluss des Update-Laufs.
+     * `ok` kommt aus dem done-Ereignis des Servers; `null` heißt: die Verbindung
+     * brach ab, ohne dass ein Ergebnis kam – das ist der Normalfall, wenn der
+     * Dienst sich am Ende selbst neu startet.
+     *
+     * Wichtig: bei einem Fehlschlag darf hier NICHT „Installation abgeschlossen"
+     * stehen. Vorher meldete die Oberfläche Erfolg, obwohl der Installer
+     * abgebrochen hatte – die alte Version lief weiter und niemand verstand,
+     * warum.
+     */
+    const onDone = (ok: boolean | null) => {
       if (finished) return;
       finished = true;
-      setUpdateLog(l => [...l, '', '✓ Installation abgeschlossen. Core-Hub wird neu gestartet…']);
       setUpdating(false);
       setUpdateDone(true);
+      if (ok === false) {
+        setUpdateLog(l => [...l, '', tt('✗ Update fehlgeschlagen – die bisherige Version läuft weiter. Bitte das Protokoll oben lesen.')]);
+        void check(false);
+        void loadVersions(false);
+        return;   // kein Warten auf eine neue Version – es kommt keine
+      }
+      setUpdateLog(l => [...l, '', ok === null
+        ? tt('… Verbindung beendet – der Dienst startet vermutlich neu. Es wird geprüft, welche Version danach läuft.')
+        : tt('✓ Installation abgeschlossen. Der Dienst wird neu gestartet…')]);
       void check(false);
       void loadVersions(false);
       void pollForNewVersion(priorBuild);
@@ -325,8 +344,13 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
         setUpdateLog(l => [...l, d.line]);
       } catch { /* */ }
     };
-    es.addEventListener('done', () => { es.close(); onDone(); });
-    es.onerror = () => { es.close(); onDone(); };
+    es.addEventListener('done', (evt) => {
+      let ok: boolean | null = null;
+      try { ok = !!JSON.parse((evt as MessageEvent).data).ok; } catch { /* ohne Nutzdaten */ }
+      es.close();
+      onDone(ok);
+    });
+    es.onerror = () => { es.close(); onDone(null); };
   };
 
   return (

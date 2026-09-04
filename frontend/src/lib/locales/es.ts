@@ -1008,4 +1008,9 @@ export const es: Record<string, string> = {
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Repositorio público: no se necesitan credenciales.',
 
   'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Servidor no accesible: probablemente el servicio se está reiniciando. Recarga la página en unos segundos.',
+  'von': 'de',
+  '✗ Update fehlgeschlagen – die bisherige Version läuft weiter. Bitte das Protokoll oben lesen.': '✗ La actualización falló: la versión anterior sigue funcionando. Lee el registro de arriba.',
+  '… Verbindung beendet – der Dienst startet vermutlich neu. Es wird geprüft, welche Version danach läuft.': '… Conexión finalizada: el servicio probablemente se reinicia. Se comprueba qué versión queda activa.',
+  '✓ Installation abgeschlossen. Der Dienst wird neu gestartet…': '✓ Instalación finalizada. El servicio se está reiniciando…',
+  'klicken, um es einzuspielen': 'haz clic para instalarlo',
 };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Cpu, RefreshCw, MemoryStick, MonitorCog, Terminal } from 'lucide-react';
 import { Panel } from '../ui/Panel';
+import { donutColor } from '../ui/Donut';
 import { api } from '../../lib/api';
 import { tt } from '../../lib/i18n';
 import type { HardwareInfo } from '../../lib/types';
@@ -35,6 +36,40 @@ function Bar({ segments }: { segments: Array<{ label: string; bytes: number; col
         ))}
       </div>
     </>
+  );
+}
+
+/**
+ * Auslastung eines einzelnen Speichertopfs: wie viel von wie viel belegt ist.
+ *
+ * Für den Grafikspeicher aussagekräftiger als ein Aufteilungsbalken: fest
+ * zugeteilter (UMA) und dynamisch geliehener Speicher (GTT) unterscheiden sich
+ * auf APUs um Größenordnungen (0,5 GB neben 96 GB). Ein gemeinsamer Balken –
+ * und erst recht ein Kreis – zeigte davon nichts Brauchbares; interessant ist,
+ * wie voll jeder Topf für sich ist. Die Farbschwelle ist dieselbe wie bei den
+ * Ringdiagrammen des Dashboards (ab 75 % gelb, ab 90 % rot).
+ */
+function UsageBar({ label, used, total }: { label: string; used: number; total: number }) {
+  if (total <= 0) return null;
+  const p = pct(used, total);
+  const color = donutColor(p);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12.5 }}>{label}</span>
+        <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>
+          <span style={{ color: 'var(--color-fg)', fontWeight: 600 }}>{gb(used)}</span> {tt('von')} {gb(total)}
+        </span>
+        <span style={{ fontWeight: 700, fontSize: 12.5, color, minWidth: 40, textAlign: 'right' }}>{p}&nbsp;%</span>
+      </div>
+      <div
+        title={`${label}: ${gb(used)} / ${gb(total)} (${p} %)`}
+        style={{ height: 10, borderRadius: 5, overflow: 'hidden', background: 'var(--color-surface-sunken)' }}
+      >
+        {/* minWidth: belegter Speicher soll auch bei winzigem Anteil sichtbar bleiben */}
+        <div style={{ width: `${p}%`, minWidth: used > 0 ? 3 : 0, height: '100%', background: color, transition: 'width .3s' }} />
+      </div>
+    </div>
   );
 }
 
@@ -159,21 +194,23 @@ export function HardwarePanel() {
                         </span>
                       )}
                     </div>
-                    <Bar segments={[
-                      { label: tt('Fest zugeteilt (BIOS/UMA)'), bytes: g.vramTotalBytes, color: 'var(--color-accent)' },
-                      { label: tt('Dynamisch leihbar (GTT)'), bytes: g.gttTotalBytes, color: 'var(--color-info)' },
-                    ]} />
-                    <div className="table-scroll" style={{ marginTop: 12 }}>
-                      <table className="dtable">
-                        <tbody>
-                          <tr><td className="text-muted" style={{ width: 260 }}>{tt('Fest zugeteilt (BIOS/UMA)')}</td><td>{gb(g.vramTotalBytes)} · {tt('belegt')}: {gb(g.vramUsedBytes)}</td></tr>
-                          <tr><td className="text-muted">{tt('Dynamisch leihbar (GTT)')}</td><td>{gb(g.gttTotalBytes)} · {tt('belegt')}: {gb(g.gttUsedBytes)}</td></tr>
-                          {g.visibleVramBytes > 0 && (
-                            <tr><td className="text-muted">{tt('Für die CPU sichtbar (Resizable BAR)')}</td><td>{gb(g.visibleVramBytes)}</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                    {/* Ein Auslastungsbalken je Topf statt eines Aufteilungs-
+                        balkens: die Größen liegen um Faktor 100+ auseinander,
+                        die Aufteilung sagt daher nichts – die Füllung schon. */}
+                    <UsageBar label={tt('Fest zugeteilt (BIOS/UMA)')} used={g.vramUsedBytes} total={g.vramTotalBytes} />
+                    <UsageBar label={tt('Dynamisch leihbar (GTT)')} used={g.gttUsedBytes} total={g.gttTotalBytes} />
+                    {g.visibleVramBytes > 0 && (
+                      <div className="table-scroll" style={{ marginTop: 12 }}>
+                        <table className="dtable">
+                          <tbody>
+                            <tr>
+                              <td className="text-muted" style={{ width: 260 }}>{tt('Für die CPU sichtbar (Resizable BAR)')}</td>
+                              <td>{gb(g.visibleVramBytes)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

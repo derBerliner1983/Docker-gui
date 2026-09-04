@@ -131,11 +131,22 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         {!collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
             <span className="sidebar__title">{appName}</span>
-            {version && (
-              <span style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)' }} title={updateAvailable ? t('sidebar.updateAvailable') : undefined}>
-                v{version}{updateAvailable ? ' · Update ▲' : ''}
-              </span>
-            )}
+            {/* Steht ein Update bereit, führt die Versionszeile direkt zur
+                Stelle, an der es sich einspielen lässt. Ohne Update bleibt sie
+                schlichter Text – ein Link, der nur zur Versionsanzeige führt,
+                wäre eine leere Verheißung. */}
+            {version && (updateAvailable ? (
+              <NavLink
+                to="/settings#updates"
+                onClick={handleNavClick}
+                title={`${t('sidebar.updateAvailable')} – ${tt('klicken, um es einzuspielen')}`}
+                style={{ fontSize: 10.5, color: 'var(--color-warning)', textDecoration: 'none', fontWeight: 600 }}
+              >
+                v{version} · Update ▲
+              </NavLink>
+            ) : (
+              <span style={{ fontSize: 10.5, color: 'var(--color-faint)' }}>v{version}</span>
+            ))}
           </div>
         )}
         <button className="sidebar__collapse" onClick={onToggle} title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}>

@@ -534,9 +534,22 @@ export async function settingsRoutes(fastify: FastifyInstance) {
     });
 
     // Ausgabe immer von möglichen Zugangsdaten befreien, bevor sie das Log erreicht.
+    // Die letzten Zeilen werden mitgeschnitten, damit am Ende erkennbar ist,
+    // ob der Installer an fehlenden sudo-Rechten gescheitert ist.
+    const tailLines: string[] = [];
     const send = (line: string) => {
-      try { reply.raw.write(`data: ${JSON.stringify({ line: scrubSecrets(line) })}\n\n`); } catch { /* closed */ }
+      const clean = scrubSecrets(line);
+      tailLines.push(clean);
+      if (tailLines.length > 200) tailLines.shift();
+      try { reply.raw.write(`data: ${JSON.stringify({ line: clean })}\n\n`); } catch { /* closed */ }
     };
+
+    /**
+     * Hat sudo den Aufruf abgelehnt? Die Meldung hängt von Distribution und
+     * sudo-Konfiguration ab (Arch/CachyOS zeigt mit „insults" sogar Sprüche wie
+     * „I'm sorry … I'm afraid I can't do that"), deshalb mehrere Muster.
+     */
+    const sudoDenied = () => tailLines.some((l) => /sudo:|not allowed to execute|password is required|afraid I can't do that|Berechtigung|not in the sudoers/i.test(l));
 
     const runStream = (cmd: string, args: string[], cwd: string): Promise<boolean> =>
       new Promise((resolve) => {
@@ -587,7 +600,17 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       const ok = installOk && gitOk;
 
       if (ok) { send('[✓] Update abgeschlossen – Dienst wird neu gestartet…'); }
-      else if (!installOk) { send('[!] Installer beendet mit Fehler. Bitte Log oben prüfen.'); }
+      else if (!installOk) {
+        send('[!] Installer beendet mit Fehler – der bisherige Stand läuft unverändert weiter.');
+        if (sudoDenied()) {
+          // Häufigster Fall: die sudoers-Allowlist fehlt oder ist veraltet.
+          send('[Hinweis] Der Dienst darf install.sh nicht per sudo starten.');
+          send('          Auf dem Server ausführen:  sudo bash install.sh --fix-perms');
+          send('          Danach das Update hier erneut starten.');
+        } else {
+          send('          Bitte das Protokoll oben prüfen.');
+        }
+      }
       else { send('[!] Neubau erfolgreich, aber der Code-Wechsel schlug fehl – der alte Stand läuft weiter.'); }
       // Explizites Abschluss-Signal: das Frontend schließt daraufhin den Stream
       // (kein Auto-Reconnect) und pollt anschließend den Dienst bis er wieder online ist.
