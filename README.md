@@ -119,7 +119,8 @@ Installiert werden nur: Node.js, Build-Werkzeuge (für `better-sqlite3`),
 Dashboard) und – wo vorhanden – automatische Sicherheitsupdates.
 
 Gut zu wissen:
-- **Node.js** kommt auf Debian/Ubuntu über NodeSource, sonst aus den Distributionsquellen
+- **Node.js 20.19+ oder 22.12+** wird vorausgesetzt (der Frontend-Build mit Vite 7 verlangt das);
+  auf Debian/Ubuntu kommt Node 22 LTS über NodeSource, sonst aus den Distributionsquellen
 - Eine liegengebliebene **pacman-Sperre** (`db.lck`) wird gelöst, sofern kein Paketvorgang läuft
 - Die **sudoers-Allowlist** wird mit allen Pfadvarianten geschrieben (`/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`),
   weil Arch alles unter `/usr/bin` führt

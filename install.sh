@@ -447,16 +447,30 @@ if ! command -v node &>/dev/null; then
   info "Installiere Node.js..."
   if [ "$PM" = "apt" ]; then
     # Debian/Ubuntu liefern oft ein zu altes Node – deshalb NodeSource.
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    # 22.x = aktuelles LTS; Node 20 ist seit April 2026 ohne Pflege.
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     pkg_install_full nodejs
   else
     # Arch/CachyOS, Fedora & openSUSE liefern ein aktuelles Node in den eigenen Quellen.
     pkg_install_full nodejs npm || pkg_install_full nodejs
   fi
 fi
-command -v node &>/dev/null || error "Node.js konnte nicht installiert werden – bitte manuell installieren (Node.js >= 20)."
-NODE_VER=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-[ "$NODE_VER" -lt 20 ] && error "Node.js >= 20 erforderlich (aktuell: $(node -v))"
+command -v node &>/dev/null || error "Node.js konnte nicht installiert werden – bitte manuell installieren (Node.js >= 20.19)."
+# Genaue Prüfung statt nur der Hauptversion: Vite 7 (Frontend-Build) verlangt
+# ^20.19 || >=22.12. Ein Node 20.10 oder 22.5 würde den Bau sonst erst später
+# mit einer schwer deutbaren Meldung abbrechen.
+NODE_VER=$(node -v | cut -d'v' -f2)
+NODE_MAJ=${NODE_VER%%.*}; NODE_REST=${NODE_VER#*.}; NODE_MIN=${NODE_REST%%.*}
+node_too_old() {
+  [ "$NODE_MAJ" -lt 20 ] && return 0
+  [ "$NODE_MAJ" -eq 20 ] && [ "$NODE_MIN" -lt 19 ] && return 0
+  [ "$NODE_MAJ" -eq 21 ] && return 0                       # 21.x ist abgekündigt
+  [ "$NODE_MAJ" -eq 22 ] && [ "$NODE_MIN" -lt 12 ] && return 0
+  return 1
+}
+if node_too_old; then
+  error "Node.js 20.19+ oder 22.12+ erforderlich (aktuell: $(node -v)) – der Frontend-Build (Vite 7) läuft sonst nicht."
+fi
 command -v npm &>/dev/null || pkg_install_full npm || true
 command -v npm &>/dev/null || error "npm nicht gefunden – bitte npm installieren."
 info "Node.js $(node -v) OK"
