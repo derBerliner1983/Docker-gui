@@ -79,6 +79,26 @@ sudo bash install.sh
 → Erreichbar unter `http://SERVER-IP:4200` · Login: `admin` / `admin`
 ⚠️ **Passwort nach dem ersten Login ändern.**
 
+### Port
+
+| | |
+|---|---|
+| **Standard-Port** | **4200** (HTTP) |
+| Adresse | `http://SERVER-IP:4200` |
+| Gesetzt in | `install.sh` (`PORT="${PORT:-4200}"`) → systemd-Unit `core-hub.service` als `Environment=PORT=…` |
+
+Anderer Port bei der Installation:
+
+```bash
+sudo PORT=8080 bash install.sh
+```
+
+Nachträglich ändern: in `/etc/systemd/system/core-hub.service` die Zeile
+`Environment=PORT=` anpassen, dann
+`sudo systemctl daemon-reload && sudo systemctl restart core-hub`.
+Den Port in der Firewall freigeben, falls eine aktiv ist
+(z. B. `sudo ufw allow 4200/tcp`).
+
 Es wird **kein** Reverse-Proxy mehr installiert. Wer HTTPS möchte, setzt einen
 Proxy eigener Wahl davor (z. B. Caddy, nginx, Traefik, Pangolin) und leitet auf
 `http://SERVER-IP:4200` weiter.

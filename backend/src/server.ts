@@ -62,7 +62,8 @@ async function main() {
   await fastify.register(prefsRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
-  if (fs.existsSync(frontendDist)) {
+  const hasFrontend = fs.existsSync(path.join(frontendDist, 'index.html'));
+  if (hasFrontend) {
     await fastify.register(fastifyStatic, {
       root: frontendDist,
       prefix: '/',
@@ -82,10 +83,44 @@ async function main() {
       }
       reply.type('text/html').sendFile('index.html');
     });
+  } else {
+    // Ohne gebaute Oberfläche lieferte Fastify bisher nur ein 404-JSON – im
+    // Browser sah das nach einer kaputten (schwarzen/leeren) Seite aus. Jetzt
+    // sagt die Seite klar, was fehlt und wie es zu beheben ist.
+    console.warn(`\n[!] Kein Frontend-Build gefunden (${path.join(frontendDist, 'index.html')}).`);
+    console.warn('    Die Oberfläche kann nicht ausgeliefert werden – bitte install.sh erneut ausführen');
+    console.warn('    oder im Ordner frontend/ "npm ci && npm run build" starten.\n');
+    fastify.setNotFoundHandler((req, reply) => {
+      const url = req.url.split('?')[0];
+      if (url.startsWith('/api/') || !(req.headers['accept'] || '').includes('text/html')) {
+        reply.status(503).send({ error: 'Frontend-Build fehlt', path: url });
+        return;
+      }
+      reply.status(503).type('text/html').send(`<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>Core-Hub – Oberfläche fehlt</title>
+<style>body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:0;
+display:flex;align-items:center;justify-content:center;min-height:100vh}
+main{max-width:36rem;padding:2rem;line-height:1.55}h1{font-size:1.25rem;margin:0 0 .75rem}
+code{background:#222;padding:.15rem .4rem;border-radius:4px}
+pre{background:#222;padding:.8rem;border-radius:6px;overflow:auto}</style></head>
+<body><main>
+<h1>Die Oberfläche wurde nicht gebaut</h1>
+<p>Der Dienst läuft, aber es gibt keinen Frontend-Build unter
+<code>${frontendDist}</code>. Deshalb bleibt die Seite leer.</p>
+<p>So beheben:</p>
+<pre>sudo bash install.sh --update
+
+# oder von Hand:
+cd ${path.join(frontendDist, '..')}
+npm ci &amp;&amp; npm run build
+sudo systemctl restart core-hub</pre>
+<p>Bleibt es dabei, zeigt <code>journalctl -u core-hub -n 50</code> den Grund.</p>
+</main></body></html>`);
+    });
   }
 
   await fastify.listen({ port: PORT, host: HOST });
-  console.log(`\n⬡ Core-Hub läuft auf http://localhost:${PORT}\n`);
+  console.log(`\n⬡ Core-Hub läuft auf http://localhost:${PORT}${hasFrontend ? '' : '  (ohne Oberfläche – Frontend-Build fehlt)'}\n`);
 
 
   // Audit-log rotation – delete entries older than 90 days, runs daily
