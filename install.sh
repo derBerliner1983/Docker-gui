@@ -245,26 +245,41 @@ write_sudoers() {
   # Befehle. Nicht vorhandene Pfade stören sudo nicht, aber ein später
   # nachinstalliertes ufw/caddy funktioniert dann sofort ohne erneutes
   # „install.sh --fix-perms".
-  local LIST="" c d p
+  local c d p SEEN=""
+  local -a ITEMS=()
   for c in $CMDS; do
     for d in /usr/bin /usr/sbin /bin /sbin; do
       p="$d/$c"
-      case " $LIST " in *" $p,"*) continue;; esac
-      LIST="$LIST $p,"
+      case " $SEEN " in *" $p "*) continue;; esac
+      SEEN="$SEEN $p"
+      ITEMS+=("$p")
     done
   done
-  LIST="${LIST% ,}"; LIST="${LIST%,}"
-  LIST="$(echo "$LIST" | sed 's/^ *//')"
-  if [ -z "$LIST" ]; then warn "Keine erlaubten Befehle gefunden – sudoers übersprungen."; return 0; fi
+  if [ "${#ITEMS[@]}" -eq 0 ]; then warn "Keine erlaubten Befehle gefunden – sudoers übersprungen."; return 0; fi
 
   # Erst in eine Datei außerhalb von /etc/sudoers.d schreiben: eine fehlerhafte
   # Datei dort würde sudo für ALLE Benutzer lahmlegen.
   local TMP_SUDO="/tmp/core-hub.sudoers.$$"
-  cat > "$TMP_SUDO" <<EOF
-# Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle
-# (automatisch erzeugt von install.sh – Pfade passend zur Distribution)
-$SERVICE_USER ALL=(root) NOPASSWD: $LIST
-EOF
+  # Die Befehle werden auf mehrere Zeilen verteilt statt in eine einzige lange
+  # Liste geschrieben. sudo-rs (Standard auf Arch/CachyOS) bricht eine Liste ab
+  # einer bestimmten Länge mit „too many items in list" ab – und dann gäbe es
+  # gar keine Allowlist. Mehrere Regeln für denselben Benutzer sind zulässig und
+  # ergänzen sich; das klassische sudo verarbeitet beides gleich.
+  local CHUNK=32 i=0 j line
+  {
+    echo "# Core-Hub – passwortloses sudo nur für gezielte Verwaltungsbefehle"
+    echo "# (automatisch erzeugt von install.sh – Pfade passend zur Distribution)"
+    echo "# Auf mehrere Zeilen verteilt, weil sudo-rs sehr lange Listen ablehnt."
+    while [ "$i" -lt "${#ITEMS[@]}" ]; do
+      line=""
+      j=0
+      while [ "$j" -lt "$CHUNK" ] && [ "$i" -lt "${#ITEMS[@]}" ]; do
+        line="${line:+$line, }${ITEMS[$i]}"
+        i=$((i + 1)); j=$((j + 1))
+      done
+      echo "$SERVICE_USER ALL=(root) NOPASSWD: $line"
+    done
+  } > "$TMP_SUDO"
   chmod 0440 "$TMP_SUDO"
 
   # Syntaxprüfung – aber nur, wenn visudo sie hier überhaupt beherrscht.
