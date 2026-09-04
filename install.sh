@@ -841,6 +841,7 @@ dep_install_and_fix
 # Vorhandenes dist sichern, damit ein abgebrochener Build (z. B. Out-of-Memory)
 # keinen weißen Bildschirm hinterlässt – Vite leert dist vor dem Schreiben.
 DIST_BAK=""
+FRONTEND_FAILED=0
 if [ -d dist ] && [ -f dist/index.html ]; then
   DIST_BAK="$(mktemp -d)"
   cp -a dist/. "$DIST_BAK/" 2>/dev/null || true
@@ -851,10 +852,12 @@ if NODE_OPTIONS="--max-old-space-size=1536" npm run build; then
   REF_JS="$(grep -oE 'assets/[^\"]+\.js' dist/index.html 2>/dev/null | head -1)"
   if [ -z "$REF_JS" ] || [ ! -f "dist/$REF_JS" ]; then
     warn "Frontend-Build wirkt unvollständig ($REF_JS fehlt)."
+    FRONTEND_FAILED=1
     if [ -n "$DIST_BAK" ]; then warn "Stelle vorheriges Frontend wieder her."; rm -rf dist && mkdir dist && cp -a "$DIST_BAK/." dist/; fi
   fi
 else
-  warn "Frontend-Build fehlgeschlagen (evtl. zu wenig Speicher – ggf. Swap einrichten)."
+  warn "Frontend-Build fehlgeschlagen (Fehlermeldung siehe oben; bei kleinen Servern kann auch der Arbeitsspeicher knapp sein – dann Swap einrichten)."
+  FRONTEND_FAILED=1
   if [ -n "$DIST_BAK" ]; then warn "Stelle vorheriges Frontend wieder her."; rm -rf dist && mkdir dist && cp -a "$DIST_BAK/." dist/; fi
 fi
 [ -n "$DIST_BAK" ] && rm -rf "$DIST_BAK"
@@ -920,7 +923,13 @@ sleep 2
 if systemctl is-active --quiet "$SERVICE_NAME"; then
   IP="$(primary_ip)"
   info ""
-  if [ "$MODE" = "update" ]; then
+  if [ "$FRONTEND_FAILED" = "1" ]; then
+    # Der Dienst läuft, aber die Oberfläche ist die alte – das muss dastehen,
+    # sonst sucht man vergeblich nach den neuen Bereichen.
+    warn "⚠️  $APP_NAME v$NEW_VERSION: Server aktualisiert, ABER die Oberfläche konnte nicht gebaut werden."
+    warn "    Es läuft weiter die zuletzt gebaute Oberfläche – neue Bereiche fehlen dort."
+    warn "    Die Ursache steht oben im Protokoll (meist ein Fehler im Frontend-Code)."
+  elif [ "$MODE" = "update" ]; then
     info "✅ $APP_NAME auf v$NEW_VERSION aktualisiert!"
   else
     info "✅ $APP_NAME v$NEW_VERSION erfolgreich installiert!"
