@@ -1119,4 +1119,6 @@ export const en: Record<string, string> = {
   'Änderungen konnten nicht geladen werden': 'The changes could not be loaded',
   'Öffentlich': 'Public',
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Public repository – no credentials needed.',
+
+  'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Server unreachable – the service is probably restarting. Please reload the page in a few seconds.',
 };
