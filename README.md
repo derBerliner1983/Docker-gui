@@ -142,6 +142,20 @@ sudo bash install.sh
   Asset-Dateien unter `/assets/…` an und die Seite bleibt weiß
 - `X-Forwarded-*` wird ausgewertet, damit Client-Adresse und Protokoll stimmen
 
+### Ausgesperrt: „Zu viele Fehlversuche"
+
+Nach **5 fehlgeschlagenen Anmeldungen** wird die betreffende IP-Adresse für
+**15 Minuten** gesperrt. Die Sperre steht nur im Arbeitsspeicher des Dienstes –
+ein Neustart hebt sie sofort auf:
+
+```bash
+sudo systemctl restart core-hub
+```
+
+Alternativ einfach 15 Minuten warten. Die Sperre gilt pro IP-Adresse, nicht pro
+Konto; hinter einem Reverse-Proxy zählt die weitergereichte Client-Adresse
+(`X-Forwarded-For`).
+
 ---
 
 ## Technik
