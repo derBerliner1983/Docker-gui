@@ -185,3 +185,50 @@ export interface UpdateNotes {
   insertions: number;
   deletions: number;
 }
+
+// ── Taskmanager: systemd-Dienste ──
+export interface ServiceInfo {
+  name: string;
+  description: string;
+  load: string;
+  /** active | inactive | failed | activating … */
+  active: string;
+  /** running | exited | dead … */
+  sub: string;
+  /** enabled | disabled | static | masked | generated | '' */
+  startup: string;
+  /** true, wenn sich der Autostart umschalten lässt. */
+  canToggleStartup: boolean;
+}
+
+export interface BootUnit { name: string; seconds: number; startup: string }
+
+export interface BootAnalysis {
+  available: boolean;
+  summary: string;
+  totalSeconds: number;
+  units: BootUnit[];
+}
+
+export type ServiceAction = 'start' | 'stop' | 'restart' | 'reload' | 'enable' | 'disable';
+
+// ── Dateimanager ──
+export interface FileEntry {
+  name: string;
+  type: 'dir' | 'file' | 'link' | 'other';
+  size: number;
+  mtime: string;
+  /** Rechte oktal, z. B. „755". */
+  mode: string;
+  /** Rechte lesbar, z. B. „rwxr-xr-x". */
+  modeText: string;
+  owner: string;
+  group: string;
+  target?: string;
+}
+
+export interface FileListing {
+  path: string;
+  parent: string | null;
+  entries: FileEntry[];
+}

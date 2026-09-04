@@ -11,6 +11,8 @@ import { Dashboard } from './pages/Dashboard';
 import { Terminal } from './pages/Terminal';
 import { Account } from './pages/Account';
 import { Settings } from './pages/Settings';
+import { Services } from './pages/Services';
+import { Files } from './pages/Files';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -33,7 +35,9 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/taskmanager" element={<Protected><Services /></Protected>} />
       <Route path="/terminal" element={<Protected><Terminal /></Protected>} />
+      <Route path="/files" element={<Protected><Files /></Protected>} />
       <Route path="/account" element={<Protected><Account /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

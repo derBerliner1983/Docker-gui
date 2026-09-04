@@ -1,4 +1,4 @@
-import { LayoutDashboard, TerminalSquare, Settings } from 'lucide-react';
+import { LayoutDashboard, TerminalSquare, Settings, Activity, FolderTree } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface NavItem {
@@ -23,7 +23,9 @@ export const NAV: NavSection[] = [
     labelKey: 'nav.section.overview',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
+      { to: '/taskmanager', icon: Activity, labelKey: 'nav.taskmanager' },
       { to: '/terminal', icon: TerminalSquare, labelKey: 'nav.terminal' },
+      { to: '/files', icon: FolderTree, labelKey: 'nav.files' },
       { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
     ],
   },

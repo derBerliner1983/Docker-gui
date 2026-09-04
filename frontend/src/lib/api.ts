@@ -1,6 +1,7 @@
 import type {
   User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion, TerminalInfo,
   UpdateSource, UpdateVersion, UpdateNotes,
+  ServiceInfo, ServiceAction, BootAnalysis, FileListing,
 } from './types';
 
 import { tt } from './i18n';
@@ -63,6 +64,51 @@ export const api = {
 
   terminal: {
     info: () => req<TerminalInfo>('/api/terminal/info'),
+  },
+
+  // ── Taskmanager: Dienste und Systemstart ──
+  services: {
+    list: () => req<{ available: boolean; services: ServiceInfo[]; error?: string }>('/api/services'),
+    boot: () => req<BootAnalysis>('/api/services/boot'),
+    logs: (name: string, lines = 150) =>
+      req<{ name: string; log: string }>(`/api/services/${encodeURIComponent(name)}/logs?lines=${lines}`),
+    action: (name: string, action: ServiceAction) =>
+      req<{ ok: boolean; service: ServiceInfo | null }>(
+        `/api/services/${encodeURIComponent(name)}/${action}`, { method: 'POST' },
+      ),
+  },
+
+  // ── Dateimanager ──
+  files: {
+    list: (path: string) => req<FileListing>(`/api/files/list?path=${encodeURIComponent(path)}`),
+    mkdir: (path: string, name: string) =>
+      req<{ ok: boolean; path: string }>('/api/files/mkdir', { method: 'POST', body: JSON.stringify({ path, name }) }),
+    rename: (path: string, newName: string) =>
+      req<{ ok: boolean; path: string }>('/api/files/rename', { method: 'POST', body: JSON.stringify({ path, newName }) }),
+    remove: (path: string, recursive = false) =>
+      req<{ ok: boolean }>('/api/files/delete', { method: 'POST', body: JSON.stringify({ path, recursive }) }),
+    chmod: (path: string, mode: string, recursive = false) =>
+      req<{ ok: boolean }>('/api/files/chmod', { method: 'POST', body: JSON.stringify({ path, mode, recursive }) }),
+    chown: (path: string, owner: string, group: string, recursive = false) =>
+      req<{ ok: boolean }>('/api/files/chown', { method: 'POST', body: JSON.stringify({ path, owner, group, recursive }) }),
+    read: (path: string) => req<{ path: string; content: string; size: number }>(`/api/files/read?path=${encodeURIComponent(path)}`),
+    write: (path: string, content: string) =>
+      req<{ ok: boolean }>('/api/files/write', { method: 'POST', body: JSON.stringify({ path, content }) }),
+    downloadUrl: (path: string) => `/api/files/download?path=${encodeURIComponent(path)}`,
+    upload: async (dir: string, files: FileList | File[]) => {
+      const fd = new FormData();
+      for (const f of Array.from(files)) fd.append('file', f);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/files/upload?path=${encodeURIComponent(dir)}`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: 'include',
+        body: fd,
+      });
+      const body = await res.json().catch(() => ({})) as { error?: string; files?: string[] };
+      if (!res.ok) throw new Error(body.error ?? `HTTP ${res.status}`);
+      return body;
+    },
   },
 
   system: {

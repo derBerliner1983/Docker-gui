@@ -2,7 +2,7 @@
 
 Weboberfläche zur Verwaltung eines Linux-Servers.
 
-> **Diese Fassung ist bewusst auf zwei Bereiche reduziert: Dashboard und Terminal.**
+> **Diese Fassung ist bewusst schlank: Dashboard, Taskmanager, Terminal, Dateimanager und Einstellungen.**
 > Alles andere (Container, VMs, Netzwerke, Backups, Freigaben, Sicherheit,
 > Virenschutz, Updates, Paketverwaltung, Benutzer, Dateimanager, KI, Reverse-Proxy)
 > wurde entfernt und wird später neu aufgebaut. Der Verlauf der alten Fassung
@@ -21,6 +21,25 @@ Weboberfläche zur Verwaltung eines Linux-Servers.
   Gedacht für APUs mit gemeinsamem Speicher wie **AMD Ryzen AI Max**.
 - **Schnittstelle**: Datendurchsatz der Netzwerkkarten
 - **Optimierung**: Hinweise zum Systemzustand
+
+### 🗂️ Taskmanager
+- **Dienste**: alle systemd-Dienste mit Zustand, filterbar nach laufend /
+  im Autostart / fehlgeschlagen / alle, dazu Suche
+- **Starten, stoppen, neu starten** und den **Autostart** ein- und ausschalten
+- **Protokoll** je Dienst (die letzten Zeilen aus `journalctl`)
+- **Systemstart**: wie lange der Rechner braucht und welche Dienste ihn bremsen
+  (`systemd-analyze blame`). Was man nicht braucht, lässt sich direkt aus dem
+  Autostart nehmen – der Dienst bleibt installiert und ist weiter von Hand
+  startbar. Core-Hub selbst kann sich hier nicht abschalten.
+
+### 📁 Dateimanager
+- Ordner durchsehen mit Pfadleiste und Schnellzielen (`/`, `/etc`, `/var/log`, …)
+- **Ordner anlegen**, umbenennen, löschen (Ordner nur mit Rückfrage samt Inhalt)
+- **Rechte** (chmod, oktal) und **Eigentümer** (chown) setzen, auf Wunsch rekursiv
+- **Hoch- und herunterladen**, Textdateien direkt im Browser **bearbeiten** (bis 1 MB)
+- Arbeitet zunächst mit den Rechten des Dienstes und weicht nur bei „keine
+  Berechtigung" auf erhöhte Rechte aus. Systemverzeichnisse wie `/etc` oder
+  `/usr` lassen sich nicht als Ganzes löschen.
 
 ### 🖥️ Terminal
 - Interaktive Shell im Browser (über WebSocket, `xterm.js`)

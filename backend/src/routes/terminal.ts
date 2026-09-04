@@ -96,6 +96,68 @@ function rootReason(): string {
   return parts.filter(Boolean).join(' ');
 }
 
+/**
+ * Läuft „login" auf diesem System überhaupt durch?
+ *
+ * login hängt beim Start sein Terminal auf (vhangup). Steckt zwischen uns und
+ * login noch ein zweites Pseudo-Terminal – und genau das legt sudo an, seit
+ * 1.9.14 standardmäßig und bei sudo-rs (Arch/CachyOS) immer – reißt dieser
+ * Hangup die ganze Kette mit: der Prozess endet nach wenigen Millisekunden mit
+ * SIGHUP, der Browser sieht nur „Verbindung getrennt".
+ *
+ * Ob es klappt, hängt damit an der sudo-Variante und lässt sich nicht aus
+ * Versionsnummern ableiten. Deshalb wird es einmal wirklich ausprobiert: login
+ * startet in einem Wegwerf-Terminal, und wenn es nach einer halben Sekunde noch
+ * lebt, wird es sofort wieder beendet. Läuft der Dienst als root, entfällt der
+ * Umweg über sudo – dann funktioniert login ohnehin.
+ */
+let loginProbe: { at: number; ok: boolean; detail: string } | null = null;
+
+async function probeLogin(): Promise<{ ok: boolean; detail: string }> {
+  if (isRoot) return { ok: true, detail: '' };
+  if (loginProbe && Date.now() - loginProbe.at < 300_000) return loginProbe;
+  let result: { ok: boolean; detail: string };
+  if (!nodePty) {
+    // Ohne node-pty läuft alles über „script"; dort ist dasselbe Problem zu
+    // erwarten, aber nicht zuverlässig prüfbar – dann lieber anbieten.
+    result = { ok: true, detail: '' };
+  } else {
+    try {
+      const spec = shellSpec('login');
+      result = await new Promise((resolve) => {
+        let done = false;
+        let exit: { exitCode: number; signal?: number } | null = null;
+        let term: { onExit: (cb: (e: { exitCode: number; signal?: number }) => void) => void; kill: () => void };
+        try {
+          term = nodePty.spawn(spec.cmd, spec.args, {
+            name: 'xterm-256color', cols: 80, rows: 24, cwd: spec.cwd,
+            env: { ...process.env, TERM: 'xterm-256color' },
+          });
+        } catch (e) {
+          resolve({ ok: false, detail: e instanceof Error ? e.message : 'Start fehlgeschlagen' });
+          return;
+        }
+        term.onExit((e) => { exit = e; });
+        setTimeout(() => {
+          if (done) return;
+          done = true;
+          if (exit) {
+            const how = exit.signal ? `Signal ${exit.signal}` : `Exit-Code ${exit.exitCode}`;
+            resolve({ ok: false, detail: how });
+          } else {
+            try { term.kill(); } catch { /* */ }
+            resolve({ ok: true, detail: '' });
+          }
+        }, 500);
+      });
+    } catch (e) {
+      result = { ok: false, detail: e instanceof Error ? e.message : 'nicht möglich' };
+    }
+  }
+  loginProbe = { at: Date.now(), ...result };
+  return loginProbe;
+}
+
 export interface LinuxUser { name: string; uid: number; shell: string; home: string }
 
 /**
@@ -230,6 +292,7 @@ export async function terminalRoutes(fastify: FastifyInstance) {
     if (req.user.role !== 'admin') return reply.status(403).send({ error: 'Admin erforderlich' });
     const root = canBecomeRoot();
     const users = listLinuxUsers();
+    const loginOk = root && !!LOGIN_BIN ? await probeLogin() : { ok: false, detail: '' };
     reply.send({
       available: true,
       resize: !!nodePty,
@@ -243,8 +306,16 @@ export async function terminalRoutes(fastify: FastifyInstance) {
           reason: !SU_BIN ? '„su" ist auf diesem System nicht vorhanden.' : !root ? rootReason() : null,
         },
         login: {
-          available: root && !!LOGIN_BIN,
-          reason: !LOGIN_BIN ? '„login" fehlt (Paket util-linux).' : !root ? rootReason() : null,
+          available: root && !!LOGIN_BIN && loginOk.ok,
+          reason: !LOGIN_BIN
+            ? '„login" fehlt (Paket util-linux).'
+            : !root
+              ? rootReason()
+              : loginOk.ok
+                ? null
+                : `„login" beendet sich hier sofort wieder (${loginOk.detail}). Es hängt beim Start das Terminal auf,`
+                  + ' was durch das zusätzliche Pseudo-Terminal von sudo die ganze Sitzung mitnimmt – bekannt bei'
+                  + ' sudo-rs (Arch/CachyOS). „Als Linux-Benutzer" macht dasselbe ohne Passwortabfrage.',
         },
         service: { available: true, reason: null },
       },
