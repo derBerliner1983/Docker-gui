@@ -23,7 +23,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string; errorKey?: string; errorVars?: Record<string, string | number> };
-    const rawMsg = body.error ?? `HTTP ${res.status}`;
+    // 502/503/504 ohne JSON-Körper kommen nicht von uns, sondern von einem
+    // Reverse-Proxy davor (Pangolin, Caddy, nginx) – typischerweise während
+    // der Dienst gerade neu startet. „HTTP 503" sagt dem Benutzer nichts.
+    const gateway = !body.error && [502, 503, 504].includes(res.status)
+      ? 'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.'
+      : null;
+    const rawMsg = body.error ?? gateway ?? `HTTP ${res.status}`;
     // Übersetzte Meldung: bevorzugt strukturierter Schlüssel + Variablen
     // (dynamische Texte), sonst der deutsche Quelltext als Schlüssel.
     // Fallback bleibt immer der deutsche Originaltext.

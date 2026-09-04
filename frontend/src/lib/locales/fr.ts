@@ -1006,4 +1006,6 @@ export const fr: Record<string, string> = {
   'Änderungen konnten nicht geladen werden': 'Impossible de charger les modifications',
   'Öffentlich': 'Public',
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Dépôt public – aucun identifiant nécessaire.',
+
+  'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Serveur injoignable – le service est probablement en train de redémarrer. Rechargez la page dans quelques secondes.',
 };

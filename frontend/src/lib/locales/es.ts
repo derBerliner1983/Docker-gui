@@ -1006,4 +1006,6 @@ export const es: Record<string, string> = {
   'Änderungen konnten nicht geladen werden': 'No se pudieron cargar los cambios',
   'Öffentlich': 'Público',
   'Öffentliches Repository – es sind keine Zugangsdaten nötig.': 'Repositorio público: no se necesitan credenciales.',
+
+  'Server nicht erreichbar – der Dienst startet vermutlich gerade neu. Bitte die Seite in ein paar Sekunden neu laden.': 'Servidor no accesible: probablemente el servicio se está reiniciando. Recarga la página en unos segundos.',
 };
