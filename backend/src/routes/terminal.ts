@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
+import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from 'child_process';
+import fs from 'fs';
+import os from 'os';
 import { auditQueries } from '../db/index';
-import { isRoot } from '../lib/privilege';
+import { isRoot, safeExec } from '../lib/privilege';
 
 // node-pty ist eine optionale (native) Abhängigkeit. Wenn sie nicht gebaut
 // werden konnte, fallen wir auf `script` zurück (ohne Live-Resize).
@@ -22,21 +24,134 @@ try {
   nodePty = null;
 }
 
-/** Startet eine interaktive Shell (als root via sudo, falls nicht schon root). */
-function startShell(cols: number, rows: number): PtyLike {
-  // /bin/bash explizit, da die sudoers-Allowlist genau diesen Pfad NOPASSWD erlaubt
-  const shellCmd = isRoot ? '/bin/bash' : 'sudo';
-  const shellArgs = isRoot ? ['-l'] : ['-n', '/bin/bash', '-l'];
-  // cwd muss für den core-hub-Benutzer zugänglich sein (sudo wechselt erst danach zu root)
-  const cwd = process.env.HOME && process.env.HOME !== '/root' ? process.env.HOME : '/';
+// ── Ausführungsarten ─────────────────────────────────────────────────────────
+// Nicht jede Installation hat root, und nicht jeder Benutzer der Oberfläche hat
+// eine eigene Linux-Kennung. Darum legt der Benutzer beim Öffnen fest, wie die
+// Shell gestartet wird.
+export type TerminalMode = 'root' | 'user' | 'login' | 'service';
+
+/** Absoluten Pfad eines Systemprogramms suchen (Distributionen legen es unterschiedlich ab). */
+function findBin(name: string): string | null {
+  for (const dir of ['/usr/bin', '/bin', '/usr/sbin', '/sbin']) {
+    const p = `${dir}/${name}`;
+    try { if (fs.existsSync(p)) return p; } catch { /* */ }
+  }
+  const found = safeExec(`command -v ${name.replace(/[^a-zA-Z0-9_-]/g, '')} 2>/dev/null`).trim();
+  return found || null;
+}
+
+const SU_BIN = findBin('su');
+const LOGIN_BIN = findBin('login');
+const BASH_BIN = findBin('bash') ?? '/bin/bash';
+
+// Das Ergebnis kurz merken: die Prüfung startet einen sudo-Prozess und wird
+// bei jeder Eingabe im Terminal gebraucht.
+let rootCheck: { at: number; ok: boolean } | null = null;
+
+/** Kann der Dienst (ohne Passwort) zu root wechseln? */
+function canBecomeRoot(): boolean {
+  if (isRoot) return true;
+  if (rootCheck && Date.now() - rootCheck.at < 60_000) return rootCheck.ok;
+  let ok = false;
+  try {
+    // -n: niemals nach einem Passwort fragen. Erfolg heißt: sudoers erlaubt bash.
+    execFileSync('sudo', ['-n', BASH_BIN, '-c', 'exit 0'], { timeout: 5000, stdio: 'ignore' });
+    ok = true;
+  } catch {
+    ok = false;
+  }
+  rootCheck = { at: Date.now(), ok };
+  return ok;
+}
+
+export interface LinuxUser { name: string; uid: number; shell: string; home: string }
+
+/**
+ * Anmeldefähige Linux-Benutzer des Rechners: normale Konten (UID ≥ 1000) und
+ * root. Systemkonten und Konten ohne Shell bleiben außen vor – ein Terminal
+ * mit /usr/sbin/nologin wäre nur verwirrend.
+ */
+export function listLinuxUsers(): LinuxUser[] {
+  let content = '';
+  try { content = fs.readFileSync('/etc/passwd', 'utf8'); } catch { return []; }
+  const users: LinuxUser[] = [];
+  for (const line of content.split('\n')) {
+    const parts = line.split(':');
+    if (parts.length < 7) continue;
+    const [name, , uidStr, , , home, shell] = parts;
+    const uid = parseInt(uidStr, 10);
+    if (!name || Number.isNaN(uid)) continue;
+    if (uid !== 0 && uid < 1000) continue;
+    if (uid >= 65534) continue;                       // nobody
+    if (/(nologin|\/false)$/.test(shell)) continue;
+    if (!/^[a-zA-Z0-9._-]+$/.test(name)) continue;    // nur unbedenkliche Namen
+    users.push({ name, uid, shell, home });
+  }
+  return users.sort((a, b) => (a.uid === 0 ? -1 : b.uid === 0 ? 1 : a.name.localeCompare(b.name)));
+}
+
+/** Name des Kontos, unter dem der Dienst selbst läuft. */
+function serviceUserName(): string {
+  try { return os.userInfo().username; } catch { return process.env.USER || 'core-hub'; }
+}
+
+/** Shell-Quoting für einen einzelnen Parameter. */
+function shq(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+interface ShellSpec { cmd: string; args: string[]; cwd: string }
+
+/**
+ * Baut den Startbefehl für die gewünschte Ausführungsart.
+ * Wirft mit einer verständlichen Meldung, wenn die Art hier nicht möglich ist.
+ */
+function shellSpec(mode: TerminalMode, targetUser?: string): ShellSpec {
+  const home = process.env.HOME && process.env.HOME !== '/root' ? process.env.HOME : '/';
+  // cwd muss für den Dienstbenutzer lesbar sein – gewechselt wird erst danach.
+  const cwd = fs.existsSync(home) ? home : '/';
+  const root = canBecomeRoot();
+
+  if (mode === 'service') {
+    return { cmd: BASH_BIN, args: ['-l'], cwd };
+  }
+
+  if (mode === 'root') {
+    if (isRoot) return { cmd: BASH_BIN, args: ['-l'], cwd };
+    if (!root) throw new Error('Keine Root-Rechte verfügbar – bitte eine andere Ausführungsart wählen.');
+    return { cmd: 'sudo', args: ['-n', BASH_BIN, '-l'], cwd };
+  }
+
+  if (mode === 'user') {
+    const name = (targetUser ?? '').trim();
+    if (!listLinuxUsers().some((u) => u.name === name)) {
+      throw new Error('Unbekannter Linux-Benutzer.');
+    }
+    if (!SU_BIN) throw new Error('„su" ist auf diesem System nicht vorhanden.');
+    if (isRoot) return { cmd: SU_BIN, args: ['-', name], cwd };
+    if (!root) throw new Error('Ohne Root-Rechte ist kein Benutzerwechsel möglich – bitte „Am Terminal anmelden" wählen.');
+    // sudoers erlaubt bash als root; su erbt diese Rechte und fragt daher nicht nach einem Passwort.
+    return { cmd: 'sudo', args: ['-n', BASH_BIN, '-c', `exec ${shq(SU_BIN)} - ${shq(name)}`], cwd };
+  }
+
+  // mode === 'login': Benutzername und Passwort werden im Terminal abgefragt.
+  if (!LOGIN_BIN) throw new Error('„login" ist auf diesem System nicht vorhanden.');
+  if (isRoot) return { cmd: LOGIN_BIN, args: [], cwd: '/' };
+  if (!root) throw new Error('Für die Anmeldung am Terminal werden Root-Rechte benötigt.');
+  return { cmd: 'sudo', args: ['-n', BASH_BIN, '-c', `exec ${shq(LOGIN_BIN)}`], cwd: '/' };
+}
+
+/** Startet eine interaktive Shell in der gewünschten Ausführungsart. */
+function startShell(mode: TerminalMode, targetUser: string | undefined, cols: number, rows: number): PtyLike {
+  const spec = shellSpec(mode, targetUser);
   const env = { ...process.env, TERM: 'xterm-256color', LANG: process.env.LANG || 'C.UTF-8' };
 
   if (nodePty) {
-    const term = nodePty.spawn(shellCmd, shellArgs, {
+    const term = nodePty.spawn(spec.cmd, spec.args, {
       name: 'xterm-256color',
       cols: cols || 80,
       rows: rows || 24,
-      cwd,
+      cwd: spec.cwd,
       env,
     });
     return {
@@ -49,9 +164,9 @@ function startShell(cols: number, rows: number): PtyLike {
   }
 
   // Fallback: util-linux `script` erzeugt ebenfalls ein PTY (kein Live-Resize)
-  const innerCmd = isRoot ? '/bin/bash -l' : 'sudo -n /bin/bash -l';
+  const innerCmd = [spec.cmd, ...spec.args].map(shq).join(' ');
   const child: ChildProcessWithoutNullStreams = spawn('script', ['-qfc', innerCmd, '/dev/null'], {
-    cwd,
+    cwd: spec.cwd,
     env: { ...env, COLUMNS: String(cols || 80), LINES: String(rows || 24) },
   }) as ChildProcessWithoutNullStreams;
   return {
@@ -64,18 +179,37 @@ function startShell(cols: number, rows: number): PtyLike {
 }
 
 interface ClientMsg {
-  type: 'data' | 'resize';
+  type: 'data' | 'resize' | 'start';
   data?: string;
   cols?: number;
   rows?: number;
+  mode?: TerminalMode;
+  user?: string;
 }
 
+const MODES: TerminalMode[] = ['root', 'user', 'login', 'service'];
+
 export async function terminalRoutes(fastify: FastifyInstance) {
-  // Infos für das Frontend (ist node-pty verfügbar?)
+  // Infos für das Frontend: welche Ausführungsarten stehen zur Verfügung?
   fastify.get('/api/terminal/info', async (req, reply) => {
     try { await req.jwtVerify(); } catch { return reply.status(401).send({ error: 'Unauthorized' }); }
     if (req.user.role !== 'admin') return reply.status(403).send({ error: 'Admin erforderlich' });
-    reply.send({ available: true, resize: !!nodePty });
+    const root = canBecomeRoot();
+    const users = listLinuxUsers();
+    reply.send({
+      available: true,
+      resize: !!nodePty,
+      runningAsRoot: isRoot,
+      serviceUser: serviceUserName(),
+      users,
+      modes: {
+        root: { available: root, reason: root ? null : 'Der Dienst hat kein passwortloses sudo (install.sh --fix-perms).' },
+        user: { available: root && !!SU_BIN && users.length > 0, reason: !SU_BIN ? '„su" fehlt.' : !root ? 'Ohne Root-Rechte nicht möglich.' : null },
+        login: { available: root && !!LOGIN_BIN, reason: !LOGIN_BIN ? '„login" fehlt (util-linux).' : !root ? 'Ohne Root-Rechte nicht möglich.' : null },
+        service: { available: true, reason: null },
+      },
+      defaultMode: (root ? 'root' : 'service') as TerminalMode,
+    });
   });
 
   fastify.get('/api/terminal', { websocket: true }, (ws, req) => {
@@ -94,27 +228,43 @@ export async function terminalRoutes(fastify: FastifyInstance) {
         return;
       }
 
-      auditQueries.log.run(req.user.id, 'terminal.open', null);
-
       let term: PtyLike | null = null;
       let started = false;
 
-      const ensureStarted = (cols: number, rows: number) => {
+      const start = (mode: TerminalMode, targetUser: string | undefined, cols: number, rows: number) => {
         if (started) return;
         started = true;
-        term = startShell(cols, rows);
+        try {
+          term = startShell(mode, targetUser, cols, rows);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Shell konnte nicht gestartet werden';
+          try { ws.send(`\r\n\x1b[31m${msg}\x1b[0m\r\n`); } catch { /* */ }
+          try { ws.close(1011, 'shell-start-failed'); } catch { /* */ }
+          return;
+        }
+        auditQueries.log.run(req.user.id, 'terminal.open', mode === 'user' ? `user:${targetUser}` : mode);
         term.onData((d) => { try { ws.send(d); } catch { /* */ } });
         term.onExit(() => { try { ws.close(); } catch { /* */ } });
+      };
+
+      // Ohne ausdrückliche Wahl (z.B. alte Oberfläche) bleibt es beim bisherigen
+      // Verhalten: root, sonst das Dienstkonto.
+      const startDefault = (cols: number, rows: number) => {
+        if (started) return;
+        start(canBecomeRoot() ? 'root' : 'service', undefined, cols, rows);
       };
 
       ws.on('message', (raw: Buffer) => {
         let msg: ClientMsg;
         try { msg = JSON.parse(raw.toString()); } catch { return; }
-        if (msg.type === 'resize') {
-          ensureStarted(msg.cols ?? 80, msg.rows ?? 24);
+        if (msg.type === 'start') {
+          const mode = MODES.includes(msg.mode as TerminalMode) ? (msg.mode as TerminalMode) : 'service';
+          start(mode, msg.user, msg.cols ?? 80, msg.rows ?? 24);
+        } else if (msg.type === 'resize') {
+          startDefault(msg.cols ?? 80, msg.rows ?? 24);
           term?.resize(msg.cols ?? 80, msg.rows ?? 24);
         } else if (msg.type === 'data' && typeof msg.data === 'string') {
-          ensureStarted(80, 24);
+          startDefault(80, 24);
           term?.write(msg.data);
         }
       });

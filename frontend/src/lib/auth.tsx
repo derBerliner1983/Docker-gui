@@ -10,6 +10,8 @@ interface AuthContextType {
   loading: boolean;
   login: (username: string, password: string, token?: string) => Promise<{ totpRequired: boolean }>;
   logout: () => Promise<void>;
+  /** Benutzerdaten neu vom Server holen (z.B. nach Änderung des Anzeigenamens). */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -24,6 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ user }) => setUser(user))
       .catch(() => setUser(null))
       .finally(() => setLoading(false));
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try { const { user } = await api.auth.me(); setUser(user); } catch { /* Sitzung bleibt wie sie ist */ }
   }, []);
 
   const logout = useCallback(async () => {
@@ -64,7 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     throw new Error('Anmeldung fehlgeschlagen');
   };
 
-  return <AuthContext.Provider value={{ user, loading, login, logout }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

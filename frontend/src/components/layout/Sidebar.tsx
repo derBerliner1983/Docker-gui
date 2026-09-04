@@ -9,6 +9,7 @@ import { useT, tt } from '../../lib/i18n';
 import { usePrefs } from '../../lib/prefs';
 import { api } from '../../lib/api';
 import { NAV, HIDDEN_NAV_PREF, canHide } from '../../lib/navItems';
+import { useBranding } from '../../lib/branding';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -34,6 +35,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
   const { user, logout } = useAuth();
   const t = useT();
   const navigate = useNavigate();
+  const { appName } = useBranding();
   const [version, setVersion] = useState('');
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const { prefs, setPref } = usePrefs();
@@ -85,6 +87,9 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
     };
   }, [menu]);
 
+  // Anzeigename bevorzugen (der Benutzer kann ihn im Konto-Panel ändern)
+  const displayName = user?.displayName || user?.username || '';
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -125,7 +130,7 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         <div className="sidebar__logo">⬡</div>
         {!collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-            <span className="sidebar__title">{tt('Core-Hub')}</span>
+            <span className="sidebar__title">{appName}</span>
             {version && (
               <span style={{ fontSize: 10.5, color: updateAvailable ? 'var(--color-warning)' : 'var(--color-faint)' }} title={updateAvailable ? t('sidebar.updateAvailable') : undefined}>
                 v{version}{updateAvailable ? ' · Update ▲' : ''}
@@ -216,9 +221,22 @@ export function Sidebar({ collapsed, onToggle, theme, onThemeToggle, mobileOpen,
         document.body,
       )}
 
+      {/* Benutzer-Panel: öffnet das eigene Konto (Name, Passwort, 2FA, Farbschema). */}
       <div className="sidebar__footer">
-        <div className="sidebar__avatar">{user?.username.charAt(0).toUpperCase()}</div>
-        {!collapsed && <span className="sidebar__username">{user?.username}</span>}
+        <NavLink
+          to="/account"
+          className={({ isActive }) => `sidebar__user${isActive ? ' sidebar__user--active' : ''}`}
+          title={tt('Mein Konto')}
+          onClick={handleNavClick}
+        >
+          <div className="sidebar__avatar">{displayName.charAt(0).toUpperCase()}</div>
+          {!collapsed && (
+            <span className="sidebar__usercol">
+              <span className="sidebar__username">{displayName}</span>
+              <span className="sidebar__userrole">{tt('Mein Konto')}</span>
+            </span>
+          )}
+        </NavLink>
         <button className="icon-btn" onClick={onThemeToggle} title={t('sidebar.toggleTheme')}>
           {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
         </button>

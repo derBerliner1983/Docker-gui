@@ -2,10 +2,14 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { I18nProvider } from './lib/i18n';
 import { PrefsProvider } from './lib/prefs';
+import { ThemeProvider } from './lib/theme';
+import { BrandingProvider } from './lib/branding';
 import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Terminal } from './pages/Terminal';
+import { Account } from './pages/Account';
+import { Settings } from './pages/Settings';
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,6 +33,8 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <Login />} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/terminal" element={<Protected><Terminal /></Protected>} />
+      <Route path="/account" element={<Protected><Account /></Protected>} />
+      <Route path="/settings" element={<Protected><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
@@ -37,12 +43,17 @@ function AppRoutes() {
 export function App() {
   return (
     <I18nProvider>
+      {/* Anwendungsname global – wird auch auf der Anmeldeseite gebraucht */}
       {/* basename aus dem Build-Basispfad: nur so stimmen die Routen auch,
           wenn die Oberfläche unter einem Unterpfad ausgeliefert wird. */}
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <AuthProvider>
           <PrefsProvider>
-            <AppRoutes />
+            <ThemeProvider>
+              <BrandingProvider>
+                <AppRoutes />
+              </BrandingProvider>
+            </ThemeProvider>
           </PrefsProvider>
         </AuthProvider>
       </BrowserRouter>

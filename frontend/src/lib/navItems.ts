@@ -1,4 +1,4 @@
-import { LayoutDashboard, TerminalSquare } from 'lucide-react';
+import { LayoutDashboard, TerminalSquare, Settings } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 export interface NavItem {
@@ -24,6 +24,7 @@ export const NAV: NavSection[] = [
     items: [
       { to: '/dashboard', icon: LayoutDashboard, labelKey: 'nav.dashboard' },
       { to: '/terminal', icon: TerminalSquare, labelKey: 'nav.terminal' },
+      { to: '/settings', icon: Settings, labelKey: 'nav.settings' },
     ],
   },
 ];
@@ -32,7 +33,7 @@ export const NAV: NavSection[] = [
  * Menüpunkte, die nicht ausgeblendet werden dürfen – sonst käme man an die
  * Einstellungen (und damit an das Wieder-Einblenden) nicht mehr heran.
  */
-export const ALWAYS_VISIBLE = ['/dashboard'];
+export const ALWAYS_VISIBLE = ['/dashboard', '/settings'];
 
 /** Pref-Schlüssel für die Liste der ausgeblendeten Menüpunkte. */
 export const HIDDEN_NAV_PREF = 'hiddenNav';

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { tt } from '../lib/i18n';
 import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../lib/auth';
+import { useBranding } from '../lib/branding';
+import { useTheme } from '../lib/theme';
 
 export function Login() {
   const { login } = useAuth();
@@ -13,16 +15,9 @@ export function Login() {
   const [totpRequired, setTotpRequired] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [theme, setTheme] = useState<'light' | 'dark'>(
-    () => (localStorage.getItem('theme') as 'light' | 'dark') ?? 'dark'
-  );
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-  };
+  // Farbschema kommt aus dem ThemeProvider (hell/dunkel/System, pro Konto)
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { appName } = useBranding();
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -56,7 +51,7 @@ export function Login() {
 
       <div className="login-card">
         <div className="login-logo">⬡</div>
-        <h1 className="login-title">{tt('Core-Hub')}</h1>
+        <h1 className="login-title">{appName}</h1>
         <p className="login-subtitle">{tt('Linux Server Management')}</p>
 
         <form className="login-form" onSubmit={handleSubmit}>

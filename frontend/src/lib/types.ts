@@ -4,8 +4,26 @@
 export interface User {
   id: number;
   username: string;
+  /** Frei wählbarer Anzeigename; leer → Anmeldename. */
+  displayName?: string;
   role: 'admin' | 'viewer';
   totpEnabled?: boolean;
+}
+
+/** Anmeldefähiges Linux-Konto des Servers (für das Terminal). */
+export interface LinuxUser { name: string; uid: number; shell: string; home: string }
+
+export type TerminalMode = 'root' | 'user' | 'login' | 'service';
+
+export interface TerminalInfo {
+  available: boolean;
+  resize: boolean;
+  runningAsRoot: boolean;
+  /** Konto, unter dem der Core-Hub-Dienst selbst läuft. */
+  serviceUser: string;
+  users: LinuxUser[];
+  modes: Record<TerminalMode, { available: boolean; reason: string | null }>;
+  defaultMode: TerminalMode;
 }
 
 export interface SystemStats {

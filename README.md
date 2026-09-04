@@ -23,7 +23,29 @@ Weboberfläche zur Verwaltung eines Linux-Servers.
 - **Optimierung**: Hinweise zum Systemzustand
 
 ### 🖥️ Terminal
-- Interaktive Root-Shell im Browser (über WebSocket, `xterm.js`)
+- Interaktive Shell im Browser (über WebSocket, `xterm.js`)
+- **Ausführungsart wird vor dem Öffnen abgefragt** – wichtig, wenn nicht jeder
+  Benutzer root ist oder gar keine eigene Linux-Kennung hat:
+  - **Am Terminal anmelden**: die Konsole fragt selbst nach Benutzername und
+    Passwort (`login`), wie an einer echten Konsole
+  - **Als Linux-Benutzer**: startet direkt mit einem auf dem Rechner vorhandenen
+    Konto (Auswahlliste aus `/etc/passwd`, ohne Passwortabfrage)
+  - **Als Administrator (root)**: wie bisher
+  - **Als Dienstkonto**: ohne erhöhte Rechte, mit der Kennung des Dienstes
+  Nicht mögliche Arten werden mit Begründung ausgegraut (z. B. fehlendes
+  passwortloses sudo). Auf Wunsch merkt sich die Oberfläche die Auswahl.
+
+### 👤 Mein Konto
+Erreichbar über das Benutzer-Panel unten in der Seitenleiste:
+- Anzeigename ändern (der Anmeldename bleibt unverändert)
+- Passwort ändern
+- Zwei-Faktor-Anmeldung (TOTP) einrichten, per QR-Code oder Schlüssel, und wieder abschalten
+- Farbschema: **Hell / Dunkel / System** – gespeichert am Benutzerkonto
+
+### ⚙️ Einstellungen
+- **Name der Anwendung** (global für alle Benutzer): erscheint in der Seitenleiste,
+  auf der Anmeldeseite und im Browser-Titel
+- System-Informationen: Version, Hostname, Plattform, Node.js, Datenverzeichnis, Laufzeit
 
 ### 🧩 Rahmen
 - Anmeldung mit Benutzer und Passwort (JWT im Cookie), Abmelden in der Seitenleiste
@@ -31,7 +53,7 @@ Weboberfläche zur Verwaltung eines Linux-Servers.
   Panels lassen sich sortieren, ausblenden und wieder einblenden; „Zurücksetzen"
   stellt den Auslieferungszustand her. Gespeichert wird pro Benutzerkonto.
 - **Menüpunkte ausblenden**: Rechtsklick auf einen Eintrag der Seitenleiste
-- Hell/Dunkel-Umschaltung, fünf Sprachen (DE/EN/FR/ES/IT)
+- Farbschema hell/dunkel/System, fünf Sprachen (DE/EN/FR/ES/IT)
 
 ---
 

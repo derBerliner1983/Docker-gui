@@ -1,4 +1,4 @@
-import type { User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion } from './types';
+import type { User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion, TerminalInfo } from './types';
 
 import { tt } from './i18n';
 
@@ -42,6 +42,18 @@ export const api = {
     me: () => req<{ user: User }>('/api/auth/me'),
     changePassword: (currentPassword: string, newPassword: string) =>
       req('/api/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
+    updateProfile: (displayName: string) =>
+      req<{ ok: boolean; displayName: string }>('/api/auth/profile', { method: 'PUT', body: JSON.stringify({ displayName }) }),
+    twoFactor: {
+      status: () => req<{ enabled: boolean }>('/api/auth/2fa/status'),
+      setup: () => req<{ secret: string; otpauth: string }>('/api/auth/2fa/setup', { method: 'POST' }),
+      enable: (token: string) => req('/api/auth/2fa/enable', { method: 'POST', body: JSON.stringify({ token }) }),
+      disable: (password: string) => req('/api/auth/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) }),
+    },
+  },
+
+  terminal: {
+    info: () => req<TerminalInfo>('/api/terminal/info'),
   },
 
   system: {
@@ -54,6 +66,10 @@ export const api = {
   settings: {
     info: () => req<{ version: string; hostname: string; platform: string; dataDir: string; node: string; uptime: number; features: Record<string, boolean> }>('/api/settings/info'),
     version: (refresh = false) => req<VersionInfo>(`/api/settings/version${refresh ? '?refresh=1' : ''}`),
+    /** Globaler Anwendungsname – auch ohne Anmeldung lesbar. */
+    app: () => req<{ appName: string; defaultAppName: string }>('/api/settings/app'),
+    updateApp: (appName: string) =>
+      req<{ ok: boolean; appName: string }>('/api/settings/app', { method: 'PUT', body: JSON.stringify({ appName }) }),
   },
 
   prefs: {
