@@ -8,6 +8,7 @@ import { Modal } from '../ui/Modal';
 import { api } from '../../lib/api';
 import { timeAgo } from '../../lib/utils';
 import { tt } from '../../lib/i18n';
+import { useBranding } from '../../lib/branding';
 import type { VersionInfo, UpdateSource, UpdateVersion, UpdateNotes } from '../../lib/types';
 
 // Core-Hub-Update: Quelle (Git-Repository) und Versionsauswahl.
@@ -192,6 +193,8 @@ export function UpdateSourcePanel({ onChanged }: { onChanged?: () => void }) {
   );
 }
 export function VersionPanel({ installCmd }: { installCmd: string }) {
+  // Überschrift folgt dem in den Einstellungen vergebenen Namen
+  const { appName } = useBranding();
   const [ver, setVer] = useState<VersionInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -337,7 +340,7 @@ export function VersionPanel({ installCmd }: { installCmd: string }) {
     >
       <div style={{ marginTop: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 22, fontWeight: 700 }}>Core-Hub v{ver?.current ?? '…'}</span>
+          <span style={{ fontSize: 22, fontWeight: 700 }}>{appName} v{ver?.current ?? '…'}</span>
           {ver && ver.updateAvailable && (
             <span className="badge badge--restarting" style={{ height: 26, padding: '0 12px' }}>
               <ArrowUpCircle size={13} /> Update verfügbar: {ver.latest}

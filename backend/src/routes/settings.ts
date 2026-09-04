@@ -12,6 +12,14 @@ import {
   gitRun, gitSafe, scrubSecrets, isValidRef, getUpdateNotes,
 } from '../lib/updatesource';
 
+/** Standardname der Anwendung, wenn in den Einstellungen nichts hinterlegt ist. */
+export const DEFAULT_APP_NAME = 'Core-Hub';
+
+/** Global eingestellter Anwendungsname (leer → Standard). */
+export function appName(): string {
+  return appSettingsQueries.get.get('app_name')?.value?.trim() || DEFAULT_APP_NAME;
+}
+
 function readVersion(): string {
   for (const p of [
     path.join(__dirname, '../../../VERSION'),
@@ -638,7 +646,10 @@ export async function settingsRoutes(fastify: FastifyInstance) {
           'net.ipv6.conf.lo.disable_ipv6 = 1',
           '',
         ].join('\n');
-        try { privExec(`bash -c ${JSON.stringify(`cat > ${SYSCTL_FILE} <<'EOF'\n${conf}EOF`)}`, { timeout: 6000 }); } catch { /* */ }
+        // printf statt Here-Dokument: in `bash -c "…"` bliebe ein \n wörtlich
+        // stehen und die Datei würde gar nicht geschrieben.
+        const lines = conf.trimEnd().split('\n').map((l) => `'${l.replace(/'/g, `'\\''`)}'`).join(' ');
+        try { privExec(`bash -c ${JSON.stringify(`printf '%s\\n' ${lines} > ${SYSCTL_FILE}`)}`, { timeout: 6000 }); } catch { /* */ }
         try { privExec('sysctl -w net.ipv6.conf.all.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
         try { privExec('sysctl -w net.ipv6.conf.default.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
         try { privExec('sysctl -w net.ipv6.conf.lo.disable_ipv6=1', { timeout: 6000 }); } catch { /* */ }
@@ -669,6 +680,27 @@ export async function settingsRoutes(fastify: FastifyInstance) {
       appSettingsQueries.set.run('proxy_backend', backend);
       auditQueries.log.run(req.user.id, 'settings.proxy-visibility', `${enabled ? 'on' : 'off'}/${backend}`);
       reply.send({ ok: true, enabled, backend });
+    },
+  );
+
+  // ── Allgemeine Einstellungen (global für alle Benutzer) ──
+  // Bewusst ohne Anmeldung lesbar: der Name steht schon auf der Anmeldeseite
+  // und im Browser-Titel, bevor sich jemand angemeldet hat.
+  fastify.get('/api/settings/app', async (_req, reply) => {
+    reply.send({ appName: appName(), defaultAppName: DEFAULT_APP_NAME });
+  });
+
+  fastify.put<{ Body: { appName?: string } }>(
+    '/api/settings/app',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      const raw = (req.body?.appName ?? '').trim();
+      if (raw.length > 40) return reply.status(400).send({ error: 'Der Name darf höchstens 40 Zeichen haben' });
+      // Steuerzeichen fernhalten – der Name landet in Titel und Oberfläche
+      if (/[\u0000-\u001f\u007f]/.test(raw)) return reply.status(400).send({ error: 'Der Name enthält ungültige Zeichen' });
+      appSettingsQueries.set.run('app_name', raw);
+      auditQueries.log.run(req.user.id, 'settings.app-name', raw || DEFAULT_APP_NAME);
+      reply.send({ ok: true, appName: raw || DEFAULT_APP_NAME });
     },
   );
 }

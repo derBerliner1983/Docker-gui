@@ -106,7 +106,14 @@ export async function authRoutes(fastify: FastifyInstance) {
         maxAge: 24 * 60 * 60,
         path: '/',
       })
-      .send({ user: { id: user.id, username: user.username, role: user.role }, token: jwtToken });
+      .send({
+        user: {
+          id: user.id, username: user.username, role: user.role,
+          displayName: user.display_name || user.username,
+          totpEnabled: !!user.totp_enabled,
+        },
+        token: jwtToken,
+      });
   });
 
   fastify.post('/api/auth/logout', async (req, reply) => {
@@ -124,8 +131,30 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   fastify.get('/api/auth/me', { preHandler: requireAuth }, async (req, reply) => {
     const user = userQueries.getById.get(req.user.id);
-    reply.send({ user: { ...req.user, totpEnabled: !!user?.totp_enabled } });
+    reply.send({
+      user: {
+        ...req.user,
+        displayName: user?.display_name || req.user.username,
+        totpEnabled: !!user?.totp_enabled,
+      },
+    });
   });
+
+  // Eigenes Profil bearbeiten (aktuell: Anzeigename). Der Anmeldename bleibt
+  // unverändert – er hängt an Sitzungen, Audit-Log und Berechtigungen.
+  fastify.put<{ Body: { displayName?: string } }>(
+    '/api/auth/profile',
+    { preHandler: requireAuth },
+    async (req, reply) => {
+      const raw = (req.body?.displayName ?? '').trim();
+      if (raw.length > 64) return reply.status(400).send({ error: 'Anzeigename darf höchstens 64 Zeichen haben' });
+      // Steuerzeichen fernhalten – der Name landet in der Oberfläche
+      if (/[\u0000-\u001f\u007f]/.test(raw)) return reply.status(400).send({ error: 'Anzeigename enthält ungültige Zeichen' });
+      userQueries.setDisplayName.run(raw || null, req.user.id);
+      auditQueries.log.run(req.user.id, 'profile.update', null);
+      reply.send({ ok: true, displayName: raw || req.user.username });
+    },
+  );
 
   fastify.get('/api/users', { preHandler: requireAdmin }, async (_req, reply) => {
     reply.send({ users: userQueries.getAll.all() });

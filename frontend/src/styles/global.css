@@ -99,8 +99,20 @@ body {
   font-size: 11px; font-weight: 700;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
-.sidebar__username { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; flex: 1; }
+.sidebar__username { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sidebar--collapsed .sidebar__username { display: none; }
+/* Klickbares Benutzer-Panel am unteren Rand → eigenes Konto */
+.sidebar__user {
+  display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;
+  padding: 4px 6px; margin: -4px -6px; border-radius: var(--radius-sm);
+  color: inherit; text-decoration: none;
+}
+.sidebar__user:hover { background: var(--color-hover); }
+.sidebar__user--active { background: var(--color-accent-soft); }
+.sidebar__usercol { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; flex: 1; }
+.sidebar__userrole { font-size: 10.5px; color: var(--color-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar--collapsed .sidebar__usercol { display: none; }
+.sidebar--collapsed .sidebar__user { flex: 0 0 auto; justify-content: center; }
 .icon-btn {
   width: 28px; height: 28px; border-radius: var(--radius-sm);
   border: none; background: none; cursor: pointer;

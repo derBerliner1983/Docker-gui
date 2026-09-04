@@ -133,6 +133,8 @@ function columnExists(table: string, col: string): boolean {
 if (!columnExists('users', 'totp_secret')) db.exec('ALTER TABLE users ADD COLUMN totp_secret TEXT');
 if (!columnExists('users', 'totp_enabled')) db.exec("ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0");
 if (!columnExists('users', 'totp_required')) db.exec("ALTER TABLE users ADD COLUMN totp_required INTEGER NOT NULL DEFAULT 0");
+// Frei wählbarer Anzeigename (der Anmeldename bleibt unverändert)
+if (!columnExists('users', 'display_name')) db.exec('ALTER TABLE users ADD COLUMN display_name TEXT');
 
 // Device sessions for trusted-device 2FA memory
 db.exec(`
@@ -186,13 +188,14 @@ if (!adminExists) {
 export const userQueries = {
   getByUsername: db.prepare<[string], DbUser>('SELECT * FROM users WHERE username = ?'),
   getById: db.prepare<[number], DbUser>('SELECT * FROM users WHERE id = ?'),
-  getAll: db.prepare<[], Omit<DbUser, 'password_hash'>>('SELECT id, username, role, totp_enabled, totp_required, created_at FROM users'),
+  getAll: db.prepare<[], Omit<DbUser, 'password_hash'>>('SELECT id, username, display_name, role, totp_enabled, totp_required, created_at FROM users'),
   create: db.prepare<[string, string, string]>('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'),
   delete: db.prepare<[number]>('DELETE FROM users WHERE id = ?'),
   changePassword: db.prepare<[string, number]>('UPDATE users SET password_hash = ? WHERE id = ?'),
   setTotpSecret: db.prepare<[string | null, number]>('UPDATE users SET totp_secret = ? WHERE id = ?'),
   setTotpEnabled: db.prepare<[number, number]>('UPDATE users SET totp_enabled = ? WHERE id = ?'),
   setTotpRequired: db.prepare<[number, number]>('UPDATE users SET totp_required = ? WHERE id = ?'),
+  setDisplayName: db.prepare<[string | null, number]>('UPDATE users SET display_name = ? WHERE id = ?'),
 };
 
 export const appSettingsQueries = {
