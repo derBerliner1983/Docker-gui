@@ -9,7 +9,8 @@ import { isRoot, safeExec, execOutput } from '../lib/privilege';
 // werden konnte, fallen wir auf `script` zurück (ohne Live-Resize).
 interface PtyLike {
   onData: (cb: (d: string) => void) => void;
-  onExit: (cb: () => void) => void;
+  /** Beendet – mit Exit-Code und Signal, soweit bekannt. */
+  onExit: (cb: (info: { exitCode: number | null; signal: number | null }) => void) => void;
   write: (d: string) => void;
   resize: (cols: number, rows: number) => void;
   kill: () => void;
@@ -187,7 +188,8 @@ function startShell(mode: TerminalMode, targetUser: string | undefined, cols: nu
     });
     return {
       onData: (cb) => term.onData(cb),
-      onExit: (cb) => term.onExit(cb),
+      onExit: (cb) => term.onExit((e: { exitCode: number; signal?: number }) =>
+        cb({ exitCode: e?.exitCode ?? null, signal: e?.signal ?? null })),
       write: (d) => term.write(d),
       resize: (c, r) => { try { term.resize(c || 80, r || 24); } catch { /* */ } },
       kill: () => { try { term.kill(); } catch { /* */ } },
@@ -202,7 +204,8 @@ function startShell(mode: TerminalMode, targetUser: string | undefined, cols: nu
   }) as ChildProcessWithoutNullStreams;
   return {
     onData: (cb) => { child.stdout.on('data', (d) => cb(d.toString())); child.stderr.on('data', (d) => cb(d.toString())); },
-    onExit: (cb) => child.on('close', cb),
+    onExit: (cb) => child.on('close', (code: number | null, signal: NodeJS.Signals | null) =>
+      cb({ exitCode: code, signal: signal ? 1 : null })),
     write: (d) => { try { child.stdin.write(d); } catch { /* */ } },
     resize: () => { /* script unterstützt kein Live-Resize */ },
     kill: () => { try { child.kill(); } catch { /* */ } },
@@ -281,7 +284,24 @@ export async function terminalRoutes(fastify: FastifyInstance) {
         }
         auditQueries.log.run(req.user.id, 'terminal.open', mode === 'user' ? `user:${targetUser}` : mode);
         term.onData((d) => { try { ws.send(d); } catch { /* */ } });
-        term.onExit(() => { try { ws.close(); } catch { /* */ } });
+        // Beendet sich die Shell sofort (z. B. weil „login" auf diesem System
+        // nicht durchkommt), sah man bisher nur „Verbindung getrennt". Jetzt
+        // steht der Exit-Code da – und der Browser bekommt noch die letzten
+        // Ausgabezeilen, bevor der Kanal zugeht.
+        const startedAt = Date.now();
+        term.onExit(({ exitCode, signal }) => {
+          const ms = Date.now() - startedAt;
+          if (ms < 3000 || (exitCode !== 0 && exitCode !== null)) {
+            const how = signal ? `Signal ${signal}` : `Exit-Code ${exitCode ?? '?'}`;
+            const hint = mode === 'login' && ms < 3000
+              ? '\r\n\x1b[33m   „login" ließ sich hier nicht starten. Andere Ausführungsart wählen '
+                + '(„Als Linux-Benutzer" fragt nicht nach einem Passwort, „Als Administrator" gibt root).\x1b[0m'
+              : '';
+            try { ws.send(`\r\n\x1b[33m── Shell beendet nach ${ms} ms (${how}) ──\x1b[0m${hint}\r\n`); } catch { /* */ }
+          }
+          // kurz warten, damit die letzten Bytes den Browser noch erreichen
+          setTimeout(() => { try { ws.close(); } catch { /* */ } }, 200);
+        });
       };
 
       // Ohne ausdrückliche Wahl (z.B. alte Oberfläche) bleibt es beim bisherigen
