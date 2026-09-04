@@ -5,6 +5,7 @@ import { Panel } from '../components/ui/Panel';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useBranding, DEFAULT_APP_NAME } from '../lib/branding';
+import { UpdateSourcePanel, VersionPanel } from '../components/settings/UpdatePanels';
 import { tt } from '../lib/i18n';
 import { formatUptime } from '../lib/utils';
 
@@ -109,12 +110,20 @@ function SystemInfoPanel() {
 }
 
 export function Settings() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  // Nach dem Wechsel der Quelle die Versionsliste neu aufbauen
+  const [sourceKey, setSourceKey] = useState(0);
   return (
     <>
       <Topbar title={tt('Einstellungen')} subtitle={tt('Globale Einstellungen der Anwendung')} />
       <main className="page">
         <div style={{ display: 'grid', gap: 14 }}>
           <GeneralPanel />
+          {/* Update-Quelle und Versionsauswahl nur für Administratoren –
+              die zugehörigen Endpunkte verlangen ohnehin Admin-Rechte. */}
+          {isAdmin && <UpdateSourcePanel onChanged={() => setSourceKey((k) => k + 1)} />}
+          {isAdmin && <VersionPanel key={sourceKey} installCmd={'cd docker-gui\ngit pull\nsudo bash install.sh'} />}
           <SystemInfoPanel />
         </div>
       </main>

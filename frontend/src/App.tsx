@@ -4,6 +4,7 @@ import { I18nProvider } from './lib/i18n';
 import { PrefsProvider } from './lib/prefs';
 import { ThemeProvider } from './lib/theme';
 import { BrandingProvider } from './lib/branding';
+import { AccountPrefsSync } from './lib/prefsSync';
 import { Layout } from './components/layout/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -51,6 +52,8 @@ export function App() {
           <PrefsProvider>
             <ThemeProvider>
               <BrandingProvider>
+                {/* Sprache und Abmeldezeit des Kontos anwenden */}
+                <AccountPrefsSync />
                 <AppRoutes />
               </BrandingProvider>
             </ThemeProvider>

@@ -41,10 +41,21 @@ Erreichbar über das Benutzer-Panel unten in der Seitenleiste:
 - Passwort ändern
 - Zwei-Faktor-Anmeldung (TOTP) einrichten, per QR-Code oder Schlüssel, und wieder abschalten
 - Farbschema: **Hell / Dunkel / System** – gespeichert am Benutzerkonto
+- **Sprache** (DE/EN/FR/ES/IT) – ebenfalls am Konto gespeichert, gilt auf allen Geräten
+- **Abmeldezeit**: nach wie viel Inaktivität automatisch abgemeldet wird
+  (15 Minuten bis 8 Stunden oder „nie"; Voreinstellung 2 Stunden)
 
 ### ⚙️ Einstellungen
 - **Name der Anwendung** (global für alle Benutzer): erscheint in der Seitenleiste,
   auf der Anmeldeseite und im Browser-Titel
+- **Update-Quelle (Git-Repository)**: Repository und Branch sind änderbar (Umzug,
+  eigener Fork); öffentlich ohne Zugangsdaten oder privat mit Benutzername und
+  Token/Passwort – verschlüsselt gespeichert und nie wieder ausgeliefert.
+  „Verbindung testen" prüft Erreichbarkeit und Zugangsdaten.
+- **Version & Updates**: vorgeschlagen wird immer der neueste Stand, über die Liste
+  lässt sich auch ein früherer einspielen (Rollback). „Was ist neu?" zeigt vorab
+  Titel, Beschreibung, Commits und geänderte Dateien; das Update läuft mit
+  Live-Protokoll direkt in der Oberfläche.
 - System-Informationen: Version, Hostname, Plattform, Node.js, Datenverzeichnis, Laufzeit
 
 ### 🧩 Rahmen
@@ -53,7 +64,7 @@ Erreichbar über das Benutzer-Panel unten in der Seitenleiste:
   Panels lassen sich sortieren, ausblenden und wieder einblenden; „Zurücksetzen"
   stellt den Auslieferungszustand her. Gespeichert wird pro Benutzerkonto.
 - **Menüpunkte ausblenden**: Rechtsklick auf einen Eintrag der Seitenleiste
-- Farbschema hell/dunkel/System, fünf Sprachen (DE/EN/FR/ES/IT)
+- Farbschema und Sprache pro Benutzerkonto (fünf Sprachen: DE/EN/FR/ES/IT)
 
 ---
 

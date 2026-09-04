@@ -115,3 +115,73 @@ export interface HardwareInfo {
   sharedMemory: boolean;
   hints: string[];
 }
+
+// ── Core-Hub-Update: Quelle und auswählbare Stände ──
+/** Konfigurierte Update-Quelle (Git-Repository) – ohne Token/Passwort. */
+export interface UpdateSource {
+  url: string;
+  branch: string;
+  visibility: 'public' | 'private';
+  authType: 'token' | 'password';
+  username: string;
+  /** true, wenn ein Token/Passwort hinterlegt ist (der Wert selbst wird nie ausgeliefert). */
+  hasSecret: boolean;
+  configured: boolean;
+  /** Im vorhandenen Checkout eingetragene origin-URL (Vorbelegung). */
+  detectedUrl?: string;
+  detectedBranch?: string;
+  repoRoot?: string | null;
+}
+
+/** Ein auswählbarer Stand (neueste Version, Tag oder älterer Commit). */
+export interface UpdateVersion {
+  ref: string;
+  type: 'branch' | 'tag' | 'commit';
+  version: string;
+  shortSha: string;
+  date: string;
+  subject: string;
+  current: boolean;
+  latest: boolean;
+  author: string;
+  /** Ausführlicher Text (Commit-Body bzw. Tag-Beschreibung) – kann leer sein. */
+  body: string;
+}
+
+/** Eine geänderte Datei mit Zeilenbilanz. */
+export interface UpdateChangedFile {
+  path: string;
+  added: number;
+  deleted: number;
+}
+
+/** Ein einzelner Commit in den Änderungsnotizen. */
+export interface UpdateCommit {
+  sha: string;
+  short: string;
+  date: string;
+  author: string;
+  subject: string;
+  body: string;
+}
+
+/** „Was bringt dieser Stand?" – Titel, Text, Commits und geänderte Dateien. */
+export interface UpdateNotes {
+  ref: string;
+  sha: string;
+  shortSha: string;
+  version: string;
+  date: string;
+  author: string;
+  subject: string;
+  body: string;
+  currentSha: string;
+  currentVersion: string;
+  direction: 'forward' | 'backward' | 'same' | 'diverged';
+  commits: UpdateCommit[];
+  truncated: boolean;
+  files: UpdateChangedFile[];
+  filesTruncated: boolean;
+  insertions: number;
+  deletions: number;
+}

@@ -1,4 +1,7 @@
-import type { User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion, TerminalInfo } from './types';
+import type {
+  User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion, TerminalInfo,
+  UpdateSource, UpdateVersion, UpdateNotes,
+} from './types';
 
 import { tt } from './i18n';
 
@@ -70,6 +73,20 @@ export const api = {
     app: () => req<{ appName: string; defaultAppName: string }>('/api/settings/app'),
     updateApp: (appName: string) =>
       req<{ ok: boolean; appName: string }>('/api/settings/app', { method: 'PUT', body: JSON.stringify({ appName }) }),
+
+    // ── Update-Quelle (Git-Repository) und auswählbare Stände ──
+    updateSource: () => req<UpdateSource>('/api/settings/update-source'),
+    saveUpdateSource: (body: {
+      url: string; branch: string; visibility: 'public' | 'private';
+      authType: 'token' | 'password'; username: string; secret?: string;
+    }) => req<{ ok: boolean; source: UpdateSource }>('/api/settings/update-source', { method: 'PUT', body: JSON.stringify(body) }),
+    testUpdateSource: () => req<{ ok: boolean; url: string; branches: string[]; count: number }>('/api/settings/update-source/test', { method: 'POST' }),
+    updateVersions: (refresh = false) =>
+      req<{ available: boolean; versions: UpdateVersion[]; current: string; branch?: string; error?: string }>(
+        `/api/settings/update/versions${refresh ? '?refresh=1' : ''}`,
+      ),
+    updateNotes: (ref = '') =>
+      req<UpdateNotes>(`/api/settings/update/notes${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`),
   },
 
   prefs: {

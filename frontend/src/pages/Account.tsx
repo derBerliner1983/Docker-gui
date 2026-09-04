@@ -2,13 +2,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import {
   UserRound, KeyRound, ShieldCheck, Smartphone, Copy, Palette, Sun, Moon, MonitorSmartphone,
+  Languages, Clock,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Panel } from '../components/ui/Panel';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useTheme, type ThemeMode } from '../lib/theme';
-import { tt } from '../lib/i18n';
+import { usePrefs } from '../lib/prefs';
+import { IDLE_CHOICES, IDLE_PREF, LANG_PREF, idleMinutes } from '../lib/prefsSync';
+import { tt, useI18n, LANGUAGES, type LangCode } from '../lib/i18n';
 
 type Msg = { type: 'ok' | 'err'; text: string } | null;
 
@@ -263,8 +266,14 @@ const THEME_CHOICES: { mode: ThemeMode; label: string; icon: typeof Sun }[] = [
 
 function AppearancePanel() {
   const { mode, theme, setMode } = useTheme();
+  const { lang, setLang } = useI18n();
+  const { setPref } = usePrefs();
+
+  // Sprache gehört zum Konto: lokal sofort umschalten und serverseitig merken.
+  const chooseLang = (code: LangCode) => { setLang(code); setPref(LANG_PREF, code); };
+
   return (
-    <Panel title={tt('Darstellung')} icon={<Palette size={15} />} storageKey="acc-theme">
+    <Panel title={tt('Darstellung & Sprache')} icon={<Palette size={15} />} storageKey="acc-theme">
       <div style={{ marginTop: 8 }}>
         <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 12 }}>
           {tt('Farbschema der Oberfläche. „System" folgt der Einstellung deines Geräts.')}
@@ -289,6 +298,54 @@ function AppearancePanel() {
             {tt('Aktuell aktiv:')} {theme === 'dark' ? tt('Dunkel') : tt('Hell')}
           </div>
         )}
+
+        <div className="form-group" style={{ marginTop: 18, maxWidth: 260 }}>
+          <label className="form-label"><Languages size={13} style={{ verticalAlign: -2 }} /> {tt('Sprache')}</label>
+          <select className="input input--rect" value={lang} onChange={(e) => chooseLang(e.target.value as LangCode)}>
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.flag} {l.label}</option>
+            ))}
+          </select>
+          <div className="form-hint">{tt('Wird am Benutzerkonto gespeichert und gilt auf allen Geräten.')}</div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** ── Sitzung: automatische Abmeldung ─────────────────────────────────────── */
+function SessionPanel() {
+  const { prefs, setPref } = usePrefs();
+  const minutes = idleMinutes(prefs);
+
+  const label = (m: number) => {
+    if (m === 0) return tt('Nie automatisch abmelden');
+    if (m < 60) return `${m} ${tt('Minuten')}`;
+    const h = m / 60;
+    return `${h} ${h === 1 ? tt('Stunde') : tt('Stunden')}`;
+  };
+
+  return (
+    <Panel title={tt('Abmeldezeit')} icon={<Clock size={15} />} storageKey="acc-session">
+      <div style={{ marginTop: 8, maxWidth: 460 }}>
+        <div style={{ fontSize: 12.5, color: 'var(--color-muted)', marginBottom: 12 }}>
+          {tt('Nach dieser Zeit ohne Maus- oder Tastatureingabe wirst du automatisch abgemeldet.')}
+        </div>
+        <div className="form-group" style={{ maxWidth: 260 }}>
+          <label className="form-label">{tt('Abmelden nach')}</label>
+          <select
+            className="input input--rect"
+            value={minutes}
+            onChange={(e) => setPref(IDLE_PREF, Number(e.target.value))}
+          >
+            {IDLE_CHOICES.map((m) => <option key={m} value={m}>{label(m)}</option>)}
+          </select>
+        </div>
+        {minutes === 0 && (
+          <div className="form-hint" style={{ color: 'var(--color-warning)' }}>
+            {tt('Ohne automatische Abmeldung bleibt eine offene Sitzung bis zum Ablauf des Zugangs (24 Stunden) gültig.')}
+          </div>
+        )}
       </div>
     </Panel>
   );
@@ -305,6 +362,7 @@ export function Account() {
           <PasswordPanel />
           <TwoFactorPanel />
           <AppearancePanel />
+          <SessionPanel />
         </div>
       </main>
     </>
