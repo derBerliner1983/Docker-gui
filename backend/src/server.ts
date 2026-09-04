@@ -16,6 +16,8 @@ import { systemRoutes } from './routes/system';
 import { settingsRoutes } from './routes/settings';
 import { terminalRoutes } from './routes/terminal';
 import { prefsRoutes } from './routes/prefs';
+import { servicesRoutes } from './routes/services';
+import { filesRoutes } from './routes/files';
 
 // JWT_SECRET kommt im Produktivbetrieb aus der Env-Datei (install.sh erzeugt
 // einen dauerhaften, starken Schlüssel). Fällt der weg, wird ein kryptografisch
@@ -60,6 +62,8 @@ async function main() {
   await fastify.register(settingsRoutes);
   await fastify.register(terminalRoutes);
   await fastify.register(prefsRoutes);
+  await fastify.register(servicesRoutes);
+  await fastify.register(filesRoutes);
 
   const frontendDist = path.join(__dirname, '../../frontend/dist');
   const hasFrontend = fs.existsSync(path.join(frontendDist, 'index.html'));
@@ -77,6 +81,22 @@ async function main() {
       const url = req.url.split('?')[0];
       const accepts = (req.headers['accept'] || '').includes('text/html');
       const looksLikeFile = /\.[a-zA-Z0-9]+$/.test(url);
+
+      // @fastify/static registriert mit wildcard:false beim Start eine Route je
+      // vorhandener Datei. Wird die Oberfläche danach neu gebaut, haben die
+      // Dateien neue Namen (Hash) und liefen bislang ins Leere – die Seite
+      // blieb weiß, bis der Dienst neu startete. Deshalb hier noch einmal auf
+      // der Platte nachsehen, bevor 404 gemeldet wird.
+      if (req.method === 'GET' && !url.startsWith('/api/') && looksLikeFile) {
+        const rel = decodeURIComponent(url.replace(/^\/+/, ''));
+        const target = path.resolve(frontendDist, rel);
+        // Kein Ausbruch aus dem dist-Verzeichnis (…/../../etc/passwd)
+        if (target.startsWith(frontendDist + path.sep) && fs.existsSync(target) && fs.statSync(target).isFile()) {
+          reply.sendFile(rel);
+          return;
+        }
+      }
+
       if (req.method !== 'GET' || url.startsWith('/api/') || url.startsWith('/assets/') || looksLikeFile || !accepts) {
         reply.status(404).send({ error: 'Not found', path: url });
         return;
