@@ -156,6 +156,29 @@ Alternativ einfach 15 Minuten warten. Die Sperre gilt pro IP-Adresse, nicht pro
 Konto; hinter einem Reverse-Proxy zählt die weitergereichte Client-Adresse
 (`X-Forwarded-For`).
 
+### Konten anzeigen, Passwort zurücksetzen, 2FA abschalten
+
+Wenn die Anmeldung gar nicht mehr klappt, hilft `install.sh` von der
+Kommandozeile weiter – auch ohne die Oberfläche:
+
+```bash
+# Welche Konten gibt es? (mit Rolle und ob 2FA aktiv ist)
+sudo bash install.sh --users
+
+# Passwort zurücksetzen (fragt sicher nach, ohne Anzeige)
+sudo bash install.sh --reset-password admin
+
+# Zwei-Faktor-Anmeldung abschalten, z. B. bei verlorenem Authenticator
+sudo bash install.sh --disable-2fa admin
+```
+
+Die Befehle arbeiten direkt auf der Datenbank unter `/var/lib/core-hub` und
+brauchen kein zusätzliches `sqlite3`-Paket. Das Passwort lässt sich auch als
+drittes Argument mitgeben (`--reset-password admin GeheimesPasswort`) – dann
+steht es allerdings in der Shell-Historie. Ohne Terminal (im Skript) wird
+eines erzeugt und ausgegeben. Nach dem Zurücksetzen startet der Dienst neu,
+womit auch eine laufende Anmeldesperre verschwindet.
+
 ---
 
 ## Technik

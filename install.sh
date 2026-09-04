@@ -278,6 +278,114 @@ if [ "${1:-}" = "--fix-perms" ] || [ "${1:-}" = "--permissions" ] || [ "${1:-}" 
   exit 0
 fi
 
+# ── Benutzerverwaltung von der Kommandozeile ──────────────────────────────────
+# Für den Fall, dass man sich nicht mehr anmelden kann: Konten anzeigen,
+# Passwort zurücksetzen, 2FA abschalten. Läuft direkt gegen die SQLite-Datei
+# des Dienstes – mit dem Node und den Modulen der Installation (better-sqlite3,
+# bcryptjs), es wird also kein zusätzliches sqlite3-Paket gebraucht.
+DB_FILE="$DATA_DIR/core-hub.db"
+
+# JS von der Standardeingabe ausführen; DB-Pfad kommt über die Umgebung.
+run_db_js() {
+  [ -f "$DB_FILE" ] || error "Keine Datenbank unter $DB_FILE – ist $APP_NAME installiert?"
+  [ -d "$INSTALL_DIR/backend/node_modules/better-sqlite3" ] \
+    && [ -d "$INSTALL_DIR/backend/node_modules/bcryptjs" ] \
+    || error "Module fehlen unter $INSTALL_DIR/backend – bitte zuerst: sudo bash install.sh"
+  local js rc=0
+  js="$(mktemp /tmp/core-hub-db-XXXXXX.cjs)"
+  cat > "$js"
+  # NODE_PATH nötig: die Datei liegt in /tmp, Node sucht Module sonst dort
+  # statt in der Installation.
+  ( cd "$INSTALL_DIR/backend" && DB="$DB_FILE" NODE_PATH="$INSTALL_DIR/backend/node_modules" node "$js" ) || rc=$?
+  rm -f "$js"
+  # Schreibzugriffe als root legen ggf. -wal/-shm neu an; die müssen dem
+  # Dienstbenutzer gehören, sonst startet der Dienst später ohne Schreibrecht.
+  if id "$SERVICE_USER" &>/dev/null; then
+    chown "$SERVICE_USER:$SERVICE_USER" "$DB_FILE" "$DB_FILE-wal" "$DB_FILE-shm" 2>/dev/null || true
+  fi
+  return $rc
+}
+
+if [ "${1:-}" = "--users" ] || [ "${1:-}" = "--benutzer" ]; then
+  info "=== $APP_NAME – Benutzerkonten ==="
+  run_db_js <<'JS'
+const Database = require('better-sqlite3');
+const db = new Database(process.env.DB, { readonly: true });
+const cols = new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name));
+const has = (c) => cols.has(c);
+const rows = db.prepare(`SELECT id, username, ${has('display_name') ? 'display_name' : "'' AS display_name"},
+  role, ${has('totp_enabled') ? 'totp_enabled' : '0 AS totp_enabled'}, created_at FROM users ORDER BY id`).all();
+if (rows.length === 0) { console.log('  (keine Konten – beim nächsten Start wird admin/admin angelegt)'); }
+const pad = (s, n) => String(s ?? '').padEnd(n);
+console.log('  ' + pad('ID', 4) + pad('Anmeldename', 20) + pad('Anzeigename', 20) + pad('Rolle', 10) + pad('2FA', 6) + 'Angelegt');
+console.log('  ' + '-'.repeat(78));
+for (const r of rows) {
+  console.log('  ' + pad(r.id, 4) + pad(r.username, 20) + pad(r.display_name || '–', 20)
+    + pad(r.role, 10) + pad(r.totp_enabled ? 'ja' : 'nein', 6) + (r.created_at || ''));
+}
+JS
+  echo
+  info "Passwort zurücksetzen:  sudo bash install.sh --reset-password <Anmeldename>"
+  info "2FA abschalten:         sudo bash install.sh --disable-2fa <Anmeldename>"
+  exit 0
+fi
+
+if [ "${1:-}" = "--reset-password" ] || [ "${1:-}" = "--passwort" ]; then
+  RESET_USER="${2:-admin}"
+  NEW_PW="${3:-}"
+  GENERATED=0
+  if [ -z "$NEW_PW" ]; then
+    if [ -t 0 ]; then
+      read -rsp "Neues Passwort für '$RESET_USER': " NEW_PW; echo
+      read -rsp "Zur Bestätigung wiederholen: " NEW_PW2; echo
+      [ "$NEW_PW" = "$NEW_PW2" ] || error "Die Passwörter stimmen nicht überein."
+    else
+      # Ohne Terminal (Skript/Pipe) ein zufälliges Passwort erzeugen und zeigen
+      NEW_PW="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-16)"
+      GENERATED=1
+    fi
+  fi
+  [ "${#NEW_PW}" -ge 8 ] || error "Das Passwort muss mindestens 8 Zeichen haben."
+  # Passwort über die Umgebung übergeben, nicht als Argument – Argumente sind
+  # in der Prozessliste (ps) für alle Benutzer sichtbar.
+  RESET_USER="$RESET_USER" NEW_PW="$NEW_PW" run_db_js <<'JS'
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const db = new Database(process.env.DB);
+const name = process.env.RESET_USER;
+const user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(name);
+if (!user) {
+  const all = db.prepare('SELECT username FROM users ORDER BY id').all().map((u) => u.username);
+  console.error(`Benutzer "${name}" gibt es nicht. Vorhanden: ${all.join(', ') || '(keine)'}`);
+  process.exit(1);
+}
+db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(process.env.NEW_PW, 10), user.id);
+console.log(`Passwort für "${user.username}" gesetzt.`);
+JS
+  [ "$GENERATED" = "1" ] && info "Erzeugtes Passwort: $NEW_PW"
+  # Der Dienst hält die Anmeldesperre („zu viele Fehlversuche") nur im
+  # Arbeitsspeicher – der Neustart hebt sie gleich mit auf.
+  if systemctl restart "$SERVICE_NAME" 2>/dev/null; then
+    info "Dienst neu gestartet – die Anmeldesperre wegen zu vieler Fehlversuche ist damit auch weg."
+  fi
+  exit 0
+fi
+
+if [ "${1:-}" = "--disable-2fa" ]; then
+  [ -n "${2:-}" ] || error "Bitte den Anmeldenamen angeben: sudo bash install.sh --disable-2fa <Anmeldename>"
+  RESET_USER="$2" run_db_js <<'JS'
+const Database = require('better-sqlite3');
+const db = new Database(process.env.DB);
+const name = process.env.RESET_USER;
+const user = db.prepare('SELECT id, username FROM users WHERE username = ?').get(name);
+if (!user) { console.error(`Benutzer "${name}" gibt es nicht.`); process.exit(1); }
+db.prepare('UPDATE users SET totp_secret = NULL, totp_enabled = 0, totp_required = 0 WHERE id = ?').run(user.id);
+console.log(`Zwei-Faktor-Anmeldung für "${user.username}" abgeschaltet.`);
+JS
+  if systemctl restart "$SERVICE_NAME" 2>/dev/null; then info "Dienst neu gestartet."; fi
+  exit 0
+fi
+
 # ── Deinstallation ────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--deinstall" ]; then
   info "=== $APP_NAME Deinstallation ==="
