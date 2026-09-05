@@ -26,6 +26,19 @@ export function privShell(cmd: string, opts: ExecSyncOptions = {}): string {
   return privExec(`bash -c ${JSON.stringify(cmd)}`, opts);
 }
 
+/**
+ * Wie privShell, liefert die Ausgabe aber unverändert als Buffer.
+ *
+ * privExec ruft .toString() auf – für Binärdateien (Bilder, Archive) wäre das
+ * fatal: alles, was kein gültiges UTF-8 ist, würde durch Ersatzzeichen
+ * ausgetauscht und die Datei käme beschädigt beim Browser an.
+ */
+export function privShellBuffer(cmd: string, opts: ExecSyncOptions = {}): Buffer {
+  const inner = `bash -c ${JSON.stringify(cmd)}`;
+  const full = isRoot ? inner : `sudo -n ${inner}`;
+  return execSync(full, { timeout: 15000, ...opts, encoding: 'buffer' }) as unknown as Buffer;
+}
+
 /** execFile variant (no shell parsing) with optional sudo prefix. */
 export function privExecFile(bin: string, args: string[], opts: ExecSyncOptions = {}): string {
   if (isRoot) {

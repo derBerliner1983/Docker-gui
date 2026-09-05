@@ -1,7 +1,7 @@
 import type {
   User, SystemStats, VersionInfo, HardwareInfo, OptimizeSuggestion, TerminalInfo,
   UpdateSource, UpdateVersion, UpdateNotes,
-  ServiceInfo, ServiceAction, BootAnalysis, FileListing,
+  ServiceInfo, ServiceAction, BootAnalysis, FileListing, FileSearchResult,
 } from './types';
 
 import { tt } from './i18n';
@@ -81,6 +81,8 @@ export const api = {
   // ── Dateimanager ──
   files: {
     list: (path: string) => req<FileListing>(`/api/files/list?path=${encodeURIComponent(path)}`),
+    search: (path: string, q: string) =>
+      req<FileSearchResult>(`/api/files/search?path=${encodeURIComponent(path)}&q=${encodeURIComponent(q)}`),
     mkdir: (path: string, name: string) =>
       req<{ ok: boolean; path: string }>('/api/files/mkdir', { method: 'POST', body: JSON.stringify({ path, name }) }),
     rename: (path: string, newName: string) =>

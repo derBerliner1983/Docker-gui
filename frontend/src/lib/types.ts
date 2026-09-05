@@ -215,6 +215,8 @@ export type ServiceAction = 'start' | 'stop' | 'restart' | 'reload' | 'enable' |
 // ── Dateimanager ──
 export interface FileEntry {
   name: string;
+  /** Vollständiger Pfad – nur bei Suchergebnissen gesetzt. */
+  path?: string;
   type: 'dir' | 'file' | 'link' | 'other';
   size: number;
   mtime: string;
@@ -230,5 +232,14 @@ export interface FileEntry {
 export interface FileListing {
   path: string;
   parent: string | null;
+  entries: FileEntry[];
+}
+
+export interface FileSearchResult {
+  /** Ordner, ab dem gesucht wurde. */
+  path: string;
+  query: string;
+  /** true, wenn die Obergrenze erreicht wurde und es mehr Treffer gäbe. */
+  truncated: boolean;
   entries: FileEntry[];
 }
