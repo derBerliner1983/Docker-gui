@@ -1,6 +1,6 @@
 {
   "name": "core-hub-backend",
-  "version": "0.35.1",
+  "version": "0.35.2",
   "private": true,
   "allowScripts": {
     "better-sqlite3": true,

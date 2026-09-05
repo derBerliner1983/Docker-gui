@@ -222,8 +222,9 @@ export function Files() {
                 {q.label}
               </button>
             ))}
-            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
-              <div style={{ position: 'relative' }}>
+            {/* Schrumpft auf schmalen Schirmen mit, statt rechts hinauszulaufen. */}
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center', flex: '1 1 220px', minWidth: 0, justifyContent: 'flex-end' }}>
+              <div style={{ position: 'relative', flex: '1 1 auto', minWidth: 0 }}>
                 <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-faint)' }} />
                 <input
                   className="input input--rect"
@@ -231,7 +232,7 @@ export function Files() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }}
-                  style={{ paddingLeft: 28, minWidth: 240 }}
+                  style={{ paddingLeft: 28, width: '100%', minWidth: 0 }}
                 />
               </div>
               <button className="btn btn--outline btn--sm" onClick={runSearch} disabled={searching || query.trim().length < 2}>
@@ -333,7 +334,7 @@ export function Files() {
                           <td className="dtable__mono" style={{ fontSize: 12 }}>{e.mode} <span className="text-muted">{e.modeText}</span></td>
                           <td className="text-muted" style={{ fontSize: 12, wordBreak: 'break-all' }}>{e.owner}:{e.group}</td>
                           <td>
-                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            <div className="row-actions">
                               {e.type === 'file' && (
                                 <button className="btn btn--outline btn--sm" title={tt('Bearbeiten')} onClick={() => void startEdit(e)}>
                                   <Pencil size={12} />

@@ -317,7 +317,7 @@ export function Services() {
                                 )}
                               </td>
                               <td>
-                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <div className="row-actions">
                                   {running ? (
                                     <button className="btn btn--outline btn--sm" disabled={isBusy} onClick={() => act(s.name, 'stop')} title={tt('Stoppen')}>
                                       <Square size={12} /> {tt('Stopp')}
