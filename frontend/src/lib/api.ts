@@ -97,6 +97,8 @@ export const api = {
     write: (path: string, content: string) =>
       req<{ ok: boolean }>('/api/files/write', { method: 'POST', body: JSON.stringify({ path, content }) }),
     downloadUrl: (path: string) => `/api/files/download?path=${encodeURIComponent(path)}`,
+    /** Ordner als tar.gz – Ordner lassen sich nicht als einzelne Datei laden. */
+    archiveUrl: (path: string) => `/api/files/download-archive?path=${encodeURIComponent(path)}`,
     upload: async (dir: string, files: FileList | File[]) => {
       const fd = new FormData();
       for (const f of Array.from(files)) fd.append('file', f);

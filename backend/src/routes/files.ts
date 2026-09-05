@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { spawn } from 'child_process';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
@@ -389,6 +390,42 @@ export async function filesRoutes(fastify: FastifyInstance) {
       } catch (err: unknown) {
         reply.status(400).send({ error: describeExecError(err, 'Datei konnte nicht gelesen werden') });
       }
+    },
+  );
+
+  // ── Ordner als Archiv herunterladen ──
+  // Ein Ordner lässt sich nicht als einzelne Datei ausliefern; tar packt ihn
+  // im Vorbeigehen. Bewusst als Datenstrom (spawn statt execSync): ein großer
+  // Ordner würde sonst komplett im Arbeitsspeicher landen.
+  fastify.get<{ Querystring: { path?: string } }>(
+    '/api/files/download-archive',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      let target: string;
+      try { target = safePath(req.query.path); } catch (e) { return reply.status(400).send({ error: (e as Error).message }); }
+      if (target === '/') return reply.status(400).send({ error: 'Das Wurzelverzeichnis lässt sich nicht als Archiv packen.' });
+
+      const parent = path.dirname(target);
+      const base = path.basename(target);
+      // -C wechselt vorher ins Elternverzeichnis, damit im Archiv nur der
+      // Ordner selbst steht und nicht der ganze Pfad ab /.
+      const inner = `tar -czf - -C ${JSON.stringify(parent)} -- ${JSON.stringify(base)}`;
+      const [cmd, args] = isRoot
+        ? ['bash', ['-c', inner]]
+        : ['sudo', ['-n', 'bash', '-c', inner]];
+
+      const child = spawn(cmd as string, args as string[], { stdio: ['ignore', 'pipe', 'pipe'] });
+      let errOut = '';
+      child.stderr.on('data', (d: Buffer) => { errOut += d.toString().slice(0, 2000); });
+      child.on('close', (code) => {
+        if (code !== 0) req.log.warn({ path: target, code, err: errOut.trim() }, 'tar für Archiv-Download fehlgeschlagen');
+      });
+
+      auditQueries.log.run(req.user.id, 'files.download-archive', target);
+      reply
+        .header('Content-Disposition', `attachment; filename="${base.replace(/["\\]/g, '_')}.tar.gz"`)
+        .type('application/gzip');
+      return reply.send(child.stdout);
     },
   );
 

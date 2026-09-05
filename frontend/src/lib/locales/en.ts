@@ -1203,4 +1203,5 @@ export const en: Record<string, string> = {
   'Bitte mindestens zwei Zeichen suchen.': 'Please search with at least two characters.',
   'Suchbegriff zu lang.': 'Search term too long.',
   'Suche fehlgeschlagen': 'Search failed',
+  'Ordner als tar.gz herunterladen': 'Download folder as tar.gz',
 };

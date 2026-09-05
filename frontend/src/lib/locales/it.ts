@@ -1090,4 +1090,5 @@ export const it: Record<string, string> = {
   'Bitte mindestens zwei Zeichen suchen.': 'Cerca con almeno due caratteri.',
   'Suchbegriff zu lang.': 'Termine di ricerca troppo lungo.',
   'Suche fehlgeschlagen': 'Ricerca non riuscita',
+  'Ordner als tar.gz herunterladen': 'Scarica la cartella come tar.gz',
 };

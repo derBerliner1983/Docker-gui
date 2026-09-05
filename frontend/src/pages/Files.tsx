@@ -296,8 +296,8 @@ export function Files() {
                         <th style={{ width: 100 }}>{tt('Größe')}</th>
                         <th style={{ width: 140 }}>{tt('Geändert')}</th>
                         <th style={{ width: 120 }}>{tt('Rechte')}</th>
-                        <th style={{ width: 150 }}>{tt('Eigentümer')}</th>
-                        <th style={{ width: 190 }}>{tt('Aktionen')}</th>
+                        <th style={{ width: 130 }}>{tt('Eigentümer')}</th>
+                        <th style={{ width: 250 }}>{tt('Aktionen')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -335,14 +335,21 @@ export function Files() {
                           <td>
                             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                               {e.type === 'file' && (
-                                <>
-                                  <button className="btn btn--outline btn--sm" title={tt('Bearbeiten')} onClick={() => void startEdit(e)}>
-                                    <Pencil size={12} />
-                                  </button>
-                                  <a className="btn btn--outline btn--sm" title={tt('Herunterladen')} href={api.files.downloadUrl(pathOf(e))}>
-                                    <Download size={12} />
-                                  </a>
-                                </>
+                                <button className="btn btn--outline btn--sm" title={tt('Bearbeiten')} onClick={() => void startEdit(e)}>
+                                  <Pencil size={12} />
+                                </button>
+                              )}
+                              {/* Herunterladen gibt es für beides: Dateien direkt,
+                                  Ordner als tar.gz-Archiv. */}
+                              {(e.type === 'file' || e.type === 'dir') && (
+                                <a
+                                  className="btn btn--outline btn--sm"
+                                  style={{ color: 'var(--color-accent)' }}
+                                  title={e.type === 'dir' ? tt('Ordner als tar.gz herunterladen') : tt('Herunterladen')}
+                                  href={e.type === 'dir' ? api.files.archiveUrl(pathOf(e)) : api.files.downloadUrl(pathOf(e))}
+                                >
+                                  <Download size={12} />
+                                </a>
                               )}
                               <button className="btn btn--outline btn--sm" title={tt('Umbenennen')} onClick={() => { setInput(e.name); setDialog({ kind: 'rename', entry: e }); }}>
                                 <FileIcon size={12} />
