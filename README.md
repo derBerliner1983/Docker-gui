@@ -40,7 +40,7 @@ Weboberfläche zur Verwaltung eines Linux-Servers.
   egal). Treffer zeigen den vollen Pfad, ein Klick springt dorthin; alle Aktionen
   wirken direkt auf dem Treffer. `/proc`, `/sys`, `/dev` und `/run` werden
   übersprungen.
-- **Hoch- und herunterladen**, Textdateien direkt im Browser **bearbeiten** (bis 1 MB)
+- **Hochladen** (mehrere Dateien) und **Herunterladen** – Dateien direkt, ganze **Ordner als tar.gz**; Textdateien direkt im Browser **bearbeiten** (bis 1 MB)
 - Arbeitet zunächst mit den Rechten des Dienstes und weicht nur bei „keine
   Berechtigung" auf erhöhte Rechte aus. Systemverzeichnisse wie `/etc` oder
   `/usr` lassen sich nicht als Ganzes löschen.
