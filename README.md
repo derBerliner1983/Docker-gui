@@ -36,6 +36,10 @@ Weboberfläche zur Verwaltung eines Linux-Servers.
 - Ordner durchsehen mit Pfadleiste und Schnellzielen (`/`, `/etc`, `/var/log`, …)
 - **Ordner anlegen**, umbenennen, löschen (Ordner nur mit Rückfrage samt Inhalt)
 - **Rechte** (chmod, oktal) und **Eigentümer** (chown) setzen, auf Wunsch rekursiv
+- **Suchen**: rekursiv ab dem aktuellen Ordner nach Namen (Groß-/Kleinschreibung
+  egal). Treffer zeigen den vollen Pfad, ein Klick springt dorthin; alle Aktionen
+  wirken direkt auf dem Treffer. `/proc`, `/sys`, `/dev` und `/run` werden
+  übersprungen.
 - **Hoch- und herunterladen**, Textdateien direkt im Browser **bearbeiten** (bis 1 MB)
 - Arbeitet zunächst mit den Rechten des Dienstes und weicht nur bei „keine
   Berechtigung" auf erhöhte Rechte aus. Systemverzeichnisse wie `/etc` oder

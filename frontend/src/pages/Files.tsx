@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Folder, File as FileIcon, Link2, ChevronRight, HardDrive, FolderPlus, Upload, Download,
-  Pencil, Trash2, Lock, UserCog, Home, RefreshCw, Save, X,
+  Pencil, Trash2, Lock, UserCog, Home, RefreshCw, Save, X, Search, CornerUpLeft,
 } from 'lucide-react';
 import { Topbar } from '../components/layout/Topbar';
 import { Modal } from '../components/ui/Modal';
 import { api } from '../lib/api';
 import { tt } from '../lib/i18n';
 import { formatBytes } from '../lib/utils';
-import type { FileEntry, FileListing } from '../lib/types';
+import type { FileEntry, FileListing, FileSearchResult } from '../lib/types';
 
 /**
  * Dateimanager: Ordner durchsehen, anlegen, umbenennen, löschen, Rechte und
@@ -68,12 +68,18 @@ export function Files() {
   const [recursive, setRecursive] = useState(false);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Suche: solange ein Ergebnis vorliegt, zeigt die Tabelle die Treffer statt
+  // des Ordnerinhalts. „query" ist das Eingabefeld, „search" das Ergebnis.
+  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState<FileSearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
 
   const load = useCallback(async (target: string) => {
     setLoading(true); setError('');
     try {
       const r = await api.files.list(target);
       setListing(r);
+      setSearch(null);
       setPath(r.path);
       try { localStorage.setItem(PATH_PREF, r.path); } catch { /* */ }
     } catch (err) {
@@ -96,7 +102,7 @@ export function Files() {
   const startEdit = async (entry: FileEntry) => {
     setDialog({ kind: 'edit', entry, content: '', loading: true });
     try {
-      const r = await api.files.read(`${path === '/' ? '' : path}/${entry.name}`);
+      const r = await api.files.read(entry.path ?? `${path === '/' ? '' : path}/${entry.name}`);
       setDialog({ kind: 'edit', entry, content: r.content, loading: false });
     } catch (err) {
       setDialog(null);
@@ -105,6 +111,8 @@ export function Files() {
   };
 
   const full = (name: string) => `${path === '/' ? '' : path}/${name}`;
+  /** Voller Pfad eines Eintrags – Suchtreffer bringen ihn schon mit. */
+  const pathOf = (e: FileEntry) => e.path ?? full(e.name);
 
   const remove = async (e: FileEntry) => {
     const isDir = e.type === 'dir';
@@ -114,7 +122,7 @@ export function Files() {
     if (!confirm(question)) return;
     setBusy(true); setMsg(null);
     try {
-      await api.files.remove(full(e.name), isDir);
+      await api.files.remove(pathOf(e), isDir);
       ok(`„${e.name}" ${tt('gelöscht')}.`);
     } catch (err) { fail(err); } finally { setBusy(false); }
   };
@@ -127,20 +135,35 @@ export function Files() {
         await api.files.mkdir(path, input);
         ok(`${tt('Ordner angelegt')}: ${input}`);
       } else if (dialog.kind === 'rename') {
-        await api.files.rename(full(dialog.entry.name), input);
+        await api.files.rename(pathOf(dialog.entry), input);
         ok(`${tt('Umbenannt in')} „${input}".`);
       } else if (dialog.kind === 'chmod') {
-        await api.files.chmod(full(dialog.entry.name), input, recursive);
+        await api.files.chmod(pathOf(dialog.entry), input, recursive);
         ok(`${tt('Rechte gesetzt')}: ${input}`);
       } else if (dialog.kind === 'chown') {
-        await api.files.chown(full(dialog.entry.name), input, input2, recursive);
+        await api.files.chown(pathOf(dialog.entry), input, input2, recursive);
         ok(`${tt('Eigentümer gesetzt')}: ${input}${input2 ? `:${input2}` : ''}`);
       } else if (dialog.kind === 'edit') {
-        await api.files.write(full(dialog.entry.name), dialog.content);
+        await api.files.write(pathOf(dialog.entry), dialog.content);
         ok(`„${dialog.entry.name}" ${tt('gespeichert')}.`);
       }
       setDialog(null); setInput(''); setInput2(''); setRecursive(false);
     } catch (err) { fail(err); } finally { setBusy(false); }
+  };
+
+  const runSearch = async () => {
+    const q = query.trim();
+    if (q.length < 2) { setMsg({ type: 'err', text: tt('Bitte mindestens zwei Zeichen suchen.') }); return; }
+    setSearching(true); setMsg(null); setError('');
+    try {
+      setSearch(await api.files.search(path, q));
+    } catch (err) { fail(err); } finally { setSearching(false); }
+  };
+
+  /** Zu einem Treffer springen: Ordner öffnen, bei Dateien den Elternordner. */
+  const goToHit = (e: FileEntry) => {
+    const p = e.path ?? full(e.name);
+    void load(e.type === 'dir' ? p : p.slice(0, p.lastIndexOf('/')) || '/');
   };
 
   const upload = async (files: FileList | null) => {
@@ -187,18 +210,34 @@ export function Files() {
             </div>
           )}
 
-          {/* Schnellziele */}
+          {/* Schnellziele und Suche */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <HardDrive size={14} style={{ color: 'var(--color-faint)' }} />
             {QUICK.map((q) => (
               <button
                 key={q.path}
-                className={`btn btn--sm ${path === q.path ? 'btn--primary' : 'btn--outline'}`}
+                className={`btn btn--sm ${path === q.path && !search ? 'btn--primary' : 'btn--outline'}`}
                 onClick={() => void load(q.path)}
               >
                 {q.label}
               </button>
             ))}
+            <div style={{ display: 'flex', gap: 6, marginLeft: 'auto', alignItems: 'center' }}>
+              <div style={{ position: 'relative' }}>
+                <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--color-faint)' }} />
+                <input
+                  className="input input--rect"
+                  placeholder={tt('Name suchen – ab hier abwärts')}
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void runSearch(); }}
+                  style={{ paddingLeft: 28, minWidth: 240 }}
+                />
+              </div>
+              <button className="btn btn--outline btn--sm" onClick={runSearch} disabled={searching || query.trim().length < 2}>
+                {searching ? <span className="spinner" style={{ width: 12, height: 12 }} /> : <Search size={13} />} {tt('Suchen')}
+              </button>
+            </div>
           </div>
 
           {/* Pfadleiste */}
@@ -222,6 +261,24 @@ export function Files() {
 
           {error && <div className="login-error">{error}</div>}
 
+          {search && (
+            <div className="card">
+              <div className="card-body" style={{ padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <Search size={14} style={{ color: 'var(--color-accent)' }} />
+                <span style={{ fontSize: 13 }}>
+                  <strong>{search.entries.length}{search.truncated ? '+' : ''}</strong> {tt('Treffer für')} „{search.query}"
+                  <span className="text-muted"> {tt('unterhalb von')} <code>{search.path}</code></span>
+                </span>
+                {search.truncated && (
+                  <span className="text-muted" style={{ fontSize: 12 }}>({tt('gekürzt – bitte genauer suchen')})</span>
+                )}
+                <button className="btn btn--outline btn--sm" style={{ marginLeft: 'auto' }} onClick={() => { setSearch(null); setQuery(''); }}>
+                  <CornerUpLeft size={13} /> {tt('Zurück zum Ordner')}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="card">
             <div className="card-body" style={{ padding: 0 }}>
               {loading && !listing ? (
@@ -244,7 +301,7 @@ export function Files() {
                       </tr>
                     </thead>
                     <tbody>
-                      {listing?.parent !== null && listing && (
+                      {!search && listing?.parent !== null && listing && (
                         <tr>
                           <td colSpan={6}>
                             <button className="btn btn--ghost btn--sm" onClick={() => void load(listing.parent!)}>
@@ -253,18 +310,22 @@ export function Files() {
                           </td>
                         </tr>
                       )}
-                      {(listing?.entries ?? []).map((e) => (
+                      {(search ? search.entries : listing?.entries ?? []).map((e) => (
                         <tr key={e.name}>
                           <td>
                             <button
                               className="btn btn--ghost btn--sm"
                               style={{ padding: 0, gap: 8, maxWidth: '100%', justifyContent: 'flex-start', cursor: e.type === 'dir' ? 'pointer' : 'default' }}
-                              onClick={() => open(e)}
-                              title={e.target ? `→ ${e.target}` : e.name}
+                              onClick={() => (search ? goToHit(e) : open(e))}
+                              title={e.path ?? (e.target ? `→ ${e.target}` : e.name)}
                             >
                               {icon(e)}
                               <span style={{ wordBreak: 'break-all', textAlign: 'left' }}>{e.name}</span>
                             </button>
+                            {/* Bei Treffern zeigt der Pfad, wo die Datei liegt. */}
+                            {e.path && (
+                              <div style={{ fontSize: 11, color: 'var(--color-faint)', wordBreak: 'break-all' }}>{e.path}</div>
+                            )}
                             {e.target && <div style={{ fontSize: 11, color: 'var(--color-faint)' }}>→ {e.target}</div>}
                           </td>
                           <td className="text-muted" style={{ fontSize: 12 }}>{e.type === 'dir' ? '—' : formatBytes(e.size)}</td>
@@ -278,7 +339,7 @@ export function Files() {
                                   <button className="btn btn--outline btn--sm" title={tt('Bearbeiten')} onClick={() => void startEdit(e)}>
                                     <Pencil size={12} />
                                   </button>
-                                  <a className="btn btn--outline btn--sm" title={tt('Herunterladen')} href={api.files.downloadUrl(full(e.name))}>
+                                  <a className="btn btn--outline btn--sm" title={tt('Herunterladen')} href={api.files.downloadUrl(pathOf(e))}>
                                     <Download size={12} />
                                   </a>
                                 </>
@@ -299,7 +360,10 @@ export function Files() {
                           </td>
                         </tr>
                       ))}
-                      {listing && listing.entries.length === 0 && (
+                      {search && search.entries.length === 0 && (
+                        <tr><td colSpan={6} className="text-muted" style={{ padding: 16 }}>{tt('Nichts gefunden.')}</td></tr>
+                      )}
+                      {!search && listing && listing.entries.length === 0 && (
                         <tr><td colSpan={6} className="text-muted" style={{ padding: 16 }}>{tt('Dieser Ordner ist leer.')}</td></tr>
                       )}
                     </tbody>

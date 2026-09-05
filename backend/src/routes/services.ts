@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth, requireAdmin } from '../middleware/auth';
-import { privExec, safeExec, hasBinary, describeExecError } from '../lib/privilege';
+import { privExec, privShell, safeExec, hasBinary, describeExecError } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 /**
@@ -148,7 +148,7 @@ export async function servicesRoutes(fastify: FastifyInstance) {
         // journalctl darf auch ohne Root laufen, wenn der Dienst in der Gruppe
         // systemd-journal ist – deshalb erst direkt, dann mit erhöhten Rechten.
         const direct = safeExec(`journalctl -u ${JSON.stringify(name)} -n ${lines} --no-pager 2>/dev/null`, 20000);
-        const out = direct.trim() ? direct : privExec(`journalctl -u ${JSON.stringify(name)} -n ${lines} --no-pager`, { timeout: 20000 });
+        const out = direct.trim() ? direct : privShell(`journalctl -u ${JSON.stringify(name)} -n ${lines} --no-pager`, { timeout: 20000 });
         reply.send({ name, log: out });
       } catch (err: unknown) {
         reply.status(500).send({ error: describeExecError(err, 'Protokoll konnte nicht gelesen werden') });

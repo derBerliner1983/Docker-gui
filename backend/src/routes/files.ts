@@ -3,7 +3,7 @@ import fs from 'fs';
 import fsp from 'fs/promises';
 import path from 'path';
 import { requireAdmin } from '../middleware/auth';
-import { privExec, isRoot, describeExecError, isPermissionError } from '../lib/privilege';
+import { privExec, privShell, privShellBuffer, isRoot, describeExecError, isPermissionError } from '../lib/privilege';
 import { auditQueries } from '../db/index';
 
 /**
@@ -126,9 +126,11 @@ async function listDirect(dir: string): Promise<FileEntry[]> {
  * Datensätze.
  */
 function listEscalated(dir: string): FileEntry[] {
-  const fmt = '%y\\x1f%s\\x1f%T@\\x1f%m\\x1f%u\\x1f%g\\x1f%l\\x1f%f\\x1e';
+  // Trennzeichen oktal: „find -printf" kennt \\xNN nicht und würde es mit einer
+  // Warnung wörtlich ausgeben – \\037 (0x1f) und \\036 (0x1e) versteht es.
+  const fmt = '%y\\037%s\\037%T@\\037%m\\037%u\\037%g\\037%l\\037%f\\036';
   const cmd = `find ${JSON.stringify(dir)} -maxdepth 1 -mindepth 1 -printf ${JSON.stringify(fmt)}`;
-  const out = privExec(cmd, { timeout: 20000, maxBuffer: 16 * 1024 * 1024 });
+  const out = privShell(cmd, { timeout: 20000, maxBuffer: 16 * 1024 * 1024 });
   const entries: FileEntry[] = [];
   for (const rec of out.split('\x1e')) {
     if (!rec.trim()) continue;
@@ -247,7 +249,7 @@ export async function filesRoutes(fastify: FastifyInstance) {
         }
         const st = await withEscalation(
           () => fsp.lstat(target),
-          () => ({ isDirectory: () => privExec(`bash -c ${JSON.stringify(`test -d ${JSON.stringify(target)}`)}`, { timeout: 8000 }) !== undefined }) as unknown as fs.Stats,
+          () => ({ isDirectory: () => privShell(`test -d ${JSON.stringify(target)}`, { timeout: 8000 }) !== undefined }) as unknown as fs.Stats,
         );
         const isDir = st.isDirectory();
         if (isDir && !req.body?.recursive) {
@@ -318,14 +320,14 @@ export async function filesRoutes(fastify: FastifyInstance) {
         const target = safePath(req.query.path);
         const st = await withEscalation(
           () => fsp.stat(target),
-          () => ({ size: parseInt(privExec(`bash -c ${JSON.stringify(`stat -c %s ${JSON.stringify(target)}`)}`, { timeout: 8000 }).trim(), 10) }) as fs.Stats,
+          () => ({ size: parseInt(privShell(`stat -c %s ${JSON.stringify(target)}`, { timeout: 8000 }).trim(), 10) }) as fs.Stats,
         );
         if (st.size > MAX_TEXT_BYTES) {
           return reply.status(413).send({ error: `Die Datei ist ${(st.size / 1024 / 1024).toFixed(1)} MB groß – der Editor öffnet bis 1 MB.` });
         }
         const content = await withEscalation(
           () => fsp.readFile(target, 'utf8'),
-          () => privExec(`cat ${JSON.stringify(target)}`, { timeout: 15000, maxBuffer: MAX_TEXT_BYTES * 2 }),
+          () => privShell(`cat ${JSON.stringify(target)}`, { timeout: 15000, maxBuffer: MAX_TEXT_BYTES * 2 }),
         );
         reply.send({ path: target, content, size: st.size });
       } catch (err: unknown) {
@@ -380,11 +382,73 @@ export async function filesRoutes(fastify: FastifyInstance) {
           const code = (err as NodeJS.ErrnoException)?.code;
           if (isRoot || (code !== 'EACCES' && code !== 'EPERM')) throw err;
           // Nur mit erhöhten Rechten lesbar: über cat, mit Größenbegrenzung
-          const buf = privExec(`cat ${JSON.stringify(target)}`, { timeout: 60000, maxBuffer: MAX_DOWNLOAD_ESCALATED, encoding: 'buffer' } as never);
+          // Bewusst als Buffer: .toString() würde Binärdateien zerstören.
+          const buf = privShellBuffer(`cat ${JSON.stringify(target)}`, { timeout: 60000, maxBuffer: MAX_DOWNLOAD_ESCALATED });
           return reply.send(buf);
         }
       } catch (err: unknown) {
         reply.status(400).send({ error: describeExecError(err, 'Datei konnte nicht gelesen werden') });
+      }
+    },
+  );
+
+  // ── Suchen ──
+  // Rekursiv ab dem aktuellen Ordner, Name enthält den Suchbegriff
+  // (Groß-/Kleinschreibung egal). Läuft immer über find, weil das auch in
+  // Unterordnern greift, die der Dienst selbst nicht lesen darf.
+  fastify.get<{ Querystring: { path?: string; q?: string; limit?: string } }>(
+    '/api/files/search',
+    { preHandler: requireAdmin },
+    async (req, reply) => {
+      let dir: string;
+      try { dir = safePath(req.query.path || '/'); } catch (e) { return reply.status(400).send({ error: (e as Error).message }); }
+      const q = (req.query.q ?? '').trim();
+      if (q.length < 2) return reply.status(400).send({ error: 'Bitte mindestens zwei Zeichen suchen.' });
+      if (q.length > 100) return reply.status(400).send({ error: 'Suchbegriff zu lang.' });
+      const limit = Math.min(Math.max(parseInt(req.query.limit ?? '300', 10) || 300, 1), 1000);
+
+      // Der Begriff geht als Muster an find. Shell-Sonderzeichen sind durch die
+      // Anführungszeichen entschärft; die Glob-Zeichen von find selbst (* ? [)
+      // maskieren wir, damit „a*b" wirklich nach „a*b" sucht.
+      const pattern = `*${q.replace(/[*?[\\]/g, (c) => `\\${c}`)}*`;
+      // %p ist der volle Pfad – bei einer Suche steht das Ergebnis ja irgendwo
+      // unterhalb und nicht im aktuellen Ordner.
+      const fmt = '%y\\037%s\\037%T@\\037%m\\037%u\\037%g\\037%l\\037%p\\036';
+      // Pseudo-Dateisysteme auslassen: dort gibt es nichts zu finden, es kostet
+      // aber Sekunden und produziert Fehlerzeilen.
+      const prune = ['/proc', '/sys', '/dev', '/run'].map((d) => `-path ${JSON.stringify(d)}`).join(' -o ');
+      const cmd = `find ${JSON.stringify(dir)} \\( ${prune} \\) -prune -o -iname ${JSON.stringify(pattern)} -printf ${JSON.stringify(fmt)} 2>/dev/null | head -c 4000000`;
+
+      try {
+        const out = privShell(cmd, { timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
+        const entries: (FileEntry & { path: string })[] = [];
+        for (const rec of out.split('\x1e')) {
+          if (!rec.trim()) continue;
+          const [y, size, mtime, mode, owner, group, target, full] = rec.split('\x1f');
+          if (!full) continue;
+          const type: FileEntry['type'] = y === 'd' ? 'dir' : y === 'f' ? 'file' : y === 'l' ? 'link' : 'other';
+          entries.push({
+            name: path.basename(full),
+            path: full,
+            type,
+            size: type === 'dir' ? 0 : parseInt(size || '0', 10),
+            mtime: new Date(parseFloat(mtime || '0') * 1000).toISOString(),
+            mode: (mode || '0').padStart(3, '0'),
+            modeText: modeToText(parseInt(mode || '0', 8)),
+            owner: owner || '?',
+            group: group || '?',
+            ...(type === 'link' ? { target: target || '' } : {}),
+          });
+          if (entries.length >= limit) break;
+        }
+        reply.send({ path: dir, query: q, truncated: entries.length >= limit, entries });
+      } catch (err: unknown) {
+        // find endet mit 1, wenn gar nichts gefunden wurde – das ist kein Fehler.
+        const out = describeExecError(err, '');
+        if (/Status 1\b/.test(out) || out === '') {
+          return reply.send({ path: dir, query: q, truncated: false, entries: [] });
+        }
+        reply.status(500).send({ error: describeExecError(err, 'Suche fehlgeschlagen') });
       }
     },
   );

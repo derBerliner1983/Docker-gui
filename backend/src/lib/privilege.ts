@@ -13,6 +13,32 @@ export function privExec(cmd: string, opts: ExecSyncOptions = {}): string {
   return execSync(full, { timeout: 15000, ...opts }).toString();
 }
 
+/**
+ * Wie privExec, aber über eine Shell: `sudo -n bash -c "…"`.
+ *
+ * Gedacht für Werkzeuge, die nicht einzeln in der sudoers-Allowlist stehen
+ * (find, cat, stat, journalctl …). Sicherheitlich ändert das nichts: bash steht
+ * dort ohne Einschränkung und kann ohnehin jedes Programm starten. Der Umweg
+ * sorgt nur dafür, dass eine ältere Allowlist nicht zu „sudo: … can't do that"
+ * führt, bevor install.sh --fix-perms gelaufen ist.
+ */
+export function privShell(cmd: string, opts: ExecSyncOptions = {}): string {
+  return privExec(`bash -c ${JSON.stringify(cmd)}`, opts);
+}
+
+/**
+ * Wie privShell, liefert die Ausgabe aber unverändert als Buffer.
+ *
+ * privExec ruft .toString() auf – für Binärdateien (Bilder, Archive) wäre das
+ * fatal: alles, was kein gültiges UTF-8 ist, würde durch Ersatzzeichen
+ * ausgetauscht und die Datei käme beschädigt beim Browser an.
+ */
+export function privShellBuffer(cmd: string, opts: ExecSyncOptions = {}): Buffer {
+  const inner = `bash -c ${JSON.stringify(cmd)}`;
+  const full = isRoot ? inner : `sudo -n ${inner}`;
+  return execSync(full, { timeout: 15000, ...opts, encoding: 'buffer' }) as unknown as Buffer;
+}
+
 /** execFile variant (no shell parsing) with optional sudo prefix. */
 export function privExecFile(bin: string, args: string[], opts: ExecSyncOptions = {}): string {
   if (isRoot) {

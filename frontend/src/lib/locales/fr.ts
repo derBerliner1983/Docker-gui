@@ -1078,4 +1078,16 @@ export const fr: Record<string, string> = {
   'Wird geladen…': 'Chargement…',
   '(leer)': '(vide)',
   'Änderungen wirken direkt auf dem Server – wie auf der Kommandozeile. Systemverzeichnisse wie /etc oder /usr lassen sich nicht als Ganzes löschen.': 'Les modifications s’appliquent directement sur le serveur – comme en ligne de commande. Les répertoires système tels que /etc ou /usr ne peuvent pas être supprimés en entier.',
+
+  // ── Suche im Dateimanager ──
+  'Name suchen – ab hier abwärts': 'Rechercher par nom – à partir d’ici',
+  'Suchen': 'Rechercher',
+  'Treffer für': 'résultats pour',
+  'unterhalb von': 'sous',
+  'gekürzt – bitte genauer suchen': 'tronqué – affinez la recherche',
+  'Zurück zum Ordner': 'Retour au dossier',
+  'Nichts gefunden.': 'Aucun résultat.',
+  'Bitte mindestens zwei Zeichen suchen.': 'Veuillez saisir au moins deux caractères.',
+  'Suchbegriff zu lang.': 'Terme de recherche trop long.',
+  'Suche fehlgeschlagen': 'Échec de la recherche',
 };

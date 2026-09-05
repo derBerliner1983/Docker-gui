@@ -1191,4 +1191,16 @@ export const en: Record<string, string> = {
   'Wird geladen…': 'Loading…',
   '(leer)': '(empty)',
   'Änderungen wirken direkt auf dem Server – wie auf der Kommandozeile. Systemverzeichnisse wie /etc oder /usr lassen sich nicht als Ganzes löschen.': 'Changes take effect directly on the server – just like on the command line. System directories such as /etc or /usr cannot be deleted as a whole.',
+
+  // ── Suche im Dateimanager ──
+  'Name suchen – ab hier abwärts': 'Search by name – from here downwards',
+  'Suchen': 'Search',
+  'Treffer für': 'hits for',
+  'unterhalb von': 'below',
+  'gekürzt – bitte genauer suchen': 'truncated – please narrow the search',
+  'Zurück zum Ordner': 'Back to folder',
+  'Nichts gefunden.': 'Nothing found.',
+  'Bitte mindestens zwei Zeichen suchen.': 'Please search with at least two characters.',
+  'Suchbegriff zu lang.': 'Search term too long.',
+  'Suche fehlgeschlagen': 'Search failed',
 };
