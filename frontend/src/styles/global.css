@@ -441,6 +441,15 @@ body {
 .dtable__sort-ind { display: inline-flex; align-items: center; vertical-align: middle; margin-left: 3px; }
 .table-scroll { max-height: 460px; overflow-y: auto; margin: 0 -16px; padding: 0 16px; }
 
+/* Aktionsknöpfe in einer Tabellenzeile.
+   Am Schreibtisch nebeneinander; sobald es eng wird (Handy, auch quer), ein
+   festes Raster mit zwei Spalten. Ohne das bricht jeder Knopf in eine eigene
+   Zeile und eine Zeile wird sechs Knöpfe hoch. */
+.row-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+@media (max-width: 1100px) {
+  .row-actions { display: grid; grid-template-columns: repeat(2, max-content); gap: 4px; }
+}
+
 /* ── Toggle Switch ──────────────────────────────── */
 .switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -531,7 +540,13 @@ body {
   .sidebar__collapse { display: none; }
 
   /* Topbar */
-  .topbar { padding: 0 14px; gap: 8px; }
+  /* Auf schmalen Schirmen darf die Titelleiste umbrechen und mitwachsen –
+     sonst quetschen sich Titel und Knöpfe ineinander. */
+  .topbar {
+    height: auto; min-height: var(--topbar-height);
+    padding: 8px 14px; gap: 8px; row-gap: 6px; flex-wrap: wrap;
+  }
+  .topbar__actions { flex-wrap: wrap; }
   .topbar__menu-btn { display: flex; }
 
   /* Main area takes full width */
